@@ -11,7 +11,7 @@ Window::WindowClass::WindowClass() : hInstance(GetModuleHandle(NULL))
 
 	wc.cbSize = sizeof(WNDCLASSEX);				// Size of the structure
 	wc.style = CS_HREDRAW | CS_VREDRAW;			// Redraw on resize
-	wc.lpfnWndProc = DefWindowProc;				// Default window procedure
+	wc.lpfnWndProc = HandleMsgSetup;			// Default window procedure
 	wc.hInstance = GetInstance();				// Instance handle
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);	// Load default arrow cursor
 	wc.lpszClassName = GetName();
@@ -67,4 +67,44 @@ Window::Window(int width, int height, const LPCWSTR name, int nCmdShow)
 Window::~Window()
 {
 	DestroyWindow(hWnd);
+}
+
+LRESULT CALLBACK Window::HandleMsgSetup(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	// if the message is not WM_NCCREATE, forward it to the default window procedure
+	if (msg != WM_NCCREATE)
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+
+	// use create parameter passed in from CreateWindow to store window class pointer at WinAPI side
+	// Extract pointer to window class from creation data
+	const CREATESTRUCTW* pCreate = reinterpret_cast<CREATESTRUCTW*>(lParam);
+	Window* const pWnd = static_cast<Window*>(pCreate->lpCreateParams);
+
+	// Set the window pointer in the user data
+	SetWindowLongPtr(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pWnd));
+
+	// Set message proc to normal handler now that setup is finished
+	SetWindowLongPtr(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Window::HandleMsgThunk));
+
+	// forward message to window class handler
+	return pWnd->HandleMsg(hWnd, msg, wParam, lParam);
+}
+
+LRESULT CALLBACK Window::HandleMsgThunk(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	// Retrieve pointer to window class from user data
+	Window* const pWnd = reinterpret_cast<Window*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+	// Forward message to window class handler
+	return pWnd->HandleMsg(hWnd, msg, wParam, lParam);
+}
+
+LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	switch (msg)
+	{
+	case WM_CLOSE:
+		PostQuitMessage(0);
+		return 0;
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
