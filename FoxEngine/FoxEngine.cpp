@@ -2,7 +2,19 @@
 //  
 
 #include "framework.h"  
-#include "FoxEngine.h"  
+#include "FoxEngine.h"
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		return 0;
+		break;
+	}
+	return DefWindowProc(hwnd, message, wParam, lParam);
+}
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -19,7 +31,7 @@ int CALLBACK WinMain(
 
 	wc.cbSize = sizeof(WNDCLASSEX);				// Size of the structure
 	wc.style = CS_HREDRAW | CS_VREDRAW;			// Redraw on resize
-	wc.lpfnWndProc = DefWindowProc;				// Default window procedure
+	wc.lpfnWndProc = WindowProc;				// Default window procedure
 	wc.hInstance = hInstance;					// Instance handle
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);	// Load default arrow cursor
 	wc.lpszClassName = pClassName;
@@ -45,6 +57,19 @@ int CALLBACK WinMain(
 	// Display the window
 	ShowWindow(hWnd, nCmdShow);
 
-	while (true) {}
-	return 0;
+	// Enter main loop
+	MSG msg = { 0 };
+	while (true)
+	{
+		// Check for messages
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+
+			if (msg.message == WM_QUIT)
+				break;
+		}
+	}
+	return msg.wParam;
 }
