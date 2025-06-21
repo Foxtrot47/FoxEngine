@@ -60,6 +60,11 @@ public:
 	void FlushChar();
 	void Flush();
 
+	// autorepeat control
+	void EnableAutorepeat();
+	void DisableAutorepeat();
+	bool AutorepeatIsEnabled() const;
+
 private:
 	void OnKeyPressed(unsigned char keycode);
 	void OnKeyReleased(unsigned char keycode);
@@ -70,6 +75,7 @@ private:
 private:
 	static constexpr unsigned int nKeys = 256u;
 	static constexpr unsigned int bufferSize = 16u;
+	bool autorepeatEnabled = false;
 	std::bitset<nKeys> keyStates;
 	std::queue<Event> keyBuffer;
 	std::queue<char> charBuffer;

@@ -57,6 +57,21 @@ void Keyboard::Flush()
 	FlushChar();
 }
 
+void Keyboard::EnableAutorepeat()
+{
+	autorepeatEnabled = true;
+}
+
+void Keyboard::DisableAutorepeat()
+{
+	autorepeatEnabled = false;
+}
+
+bool Keyboard::AutorepeatIsEnabled() const
+{
+	return autorepeatEnabled;
+}
+
 void Keyboard::OnKeyPressed(unsigned char keycode)
 {
 	keyStates[keycode] = true;
