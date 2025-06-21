@@ -7,13 +7,11 @@ bool Keyboard::KeyIsPressed(unsigned char keycode) const
 
 Keyboard::Event Keyboard::ReadyKey()
 {
-	if (keyBuffer.size() > 0u)
-	{
+	if (keyBuffer.size() > 0u) {
 		Keyboard::Event e = keyBuffer.front();
 		keyBuffer.pop();
 		return e;
-	}
-	else {
+	} else {
 		return Keyboard::Event();
 	}
 }
@@ -30,13 +28,11 @@ void Keyboard::FlushKey()
 
 char Keyboard::ReadChar()
 {
-	if (charBuffer.size() > 0u)
-	{
+	if (charBuffer.size() > 0u) {
 		unsigned char charCode = charBuffer.front();
 		charBuffer.pop();
 		return charCode;
-	}
-	else {
+	} else {
 		return 0;
 	}
 }
@@ -97,11 +93,9 @@ void Keyboard::ClearState()
 	keyStates.reset();
 }
 
-template<typename T>
-void Keyboard::TrimBuffer(std::queue<T>& buffer)
+template <typename T> void Keyboard::TrimBuffer(std::queue<T> &buffer)
 {
-	while (buffer.size() > bufferSize)
-	{
+	while (buffer.size() > bufferSize) {
 		buffer.pop();
 	}
 }

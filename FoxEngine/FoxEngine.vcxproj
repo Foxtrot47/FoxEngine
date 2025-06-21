@@ -137,6 +137,7 @@
   <ItemGroup>
     <ClInclude Include="FoxEngine.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="Graphics.h" />
     <ClInclude Include="Keeyboard.h" />
     <ClInclude Include="Mouse.h" />
     <ClInclude Include="Resource.h" />
@@ -145,6 +146,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FoxEngine.cpp" />
+    <ClCompile Include="Graphics.cpp" />
     <ClCompile Include="Keeyboard.cpp" />
     <ClCompile Include="Mouse.cpp" />
     <ClCompile Include="Window.cpp" />

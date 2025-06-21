@@ -62,11 +62,18 @@ Window::Window(int width, int height, const LPCWSTR name, int nCmdShow) : width(
 
 	// Display the window
 	ShowWindow(hWnd, nCmdShow);
+
+	pGfx = std::make_unique<Graphics>(hWnd);
 }
 
 Window::~Window()
 {
 	DestroyWindow(hWnd);
+}
+
+Graphics& Window::Gfx()
+{
+	return *pGfx;
 }
 
 LRESULT CALLBACK Window::HandleMsgSetup(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
