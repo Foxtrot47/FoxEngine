@@ -54,9 +54,16 @@ public:
 	bool KeyIsEmpty() const;
 	void FlushKey();
 
+	// char event stuff
+	char ReadChar();
+	bool CharIsEmpty() const;
+	void FlushChar();
+	void Flush();
+
 private:
 	void OnKeyPressed(unsigned char keycode);
 	void OnKeyReleased(unsigned char keycode);
+	void OnChar(char character);
 	void ClearState();
 	template<typename T>
 	static void TrimBuffer(std::queue<T>& buffer);
