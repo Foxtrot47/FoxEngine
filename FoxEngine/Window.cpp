@@ -34,7 +34,7 @@ HINSTANCE Window::WindowClass::GetInstance()
 	return wndClass.hInstance;
 }
 
-Window::Window(int width, int height, const LPCWSTR name, int nCmdShow)
+Window::Window(int width, int height, const LPCWSTR name, int nCmdShow) : width(width), height(height)
 {
 	// Calculate window size based on desired client region size
 	RECT wr{};
