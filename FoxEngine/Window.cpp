@@ -128,6 +128,67 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CHAR:
 		kbd.OnChar(static_cast<unsigned char>(wParam));
 		break;
+
+		// mouse messages
+
+	case WM_MOUSEMOVE:
+		const POINTS pt = MAKEPOINTS(lParam);
+		// in client region -> log move and log enter + capture mouse (if not previously in window)
+		if (pt.x >= 0 && pt.x < width && pt.y >= 0 && pt.y < height)
+		{
+			mouse.OnMouseMove(pt.x, pt.y);
+			if (!mouse.IsInWindow())
+			{
+				mouse.OnMouseEnter();
+				SetCapture(hWnd); // Capture mouse input
+			}
+			else {
+				if (wParam & (MK_LBUTTON | MK_RBUTTON))
+				{
+					// If mouse is pressed, log move event
+					mouse.OnMouseMove(pt.x, pt.y);
+				}
+				else {
+					ReleaseCapture(); // Release mouse capture if no buttons are pressed
+					mouse.OnMouseLeave();
+				}
+			}
+		}
+		break;
+
+	case WM_LBUTTONDOWN:
+		const POINTS ptLeft = MAKEPOINTS(lParam);
+		mouse.OnLeftButtonPressed(ptLeft.x, ptLeft.y);
+		break;
+	case WM_RBUTTONDOWN:
+		const POINTS ptRight = MAKEPOINTS(lParam);
+		mouse.OnRightButtonPressed(ptRight.x, ptRight.y);
+		break;
+	case WM_LBUTTONUP:
+		const POINTS ptLeftUp = MAKEPOINTS(lParam);
+		mouse.OnLeftButtonReleased(ptLeftUp.x, ptLeftUp.y);
+		// release mouse if outside of window
+		if (ptLeftUp.x < 0 || ptLeftUp.x >= width || ptLeftUp.y < 0 || ptLeftUp.y >= height)
+		{
+			ReleaseCapture();
+			mouse.OnMouseLeave();
+		}
+		break;
+	case WM_RBUTTONUP:
+		const POINTS ptRightUp = MAKEPOINTS(lParam);
+		mouse.OnRightButtonReleased(ptRightUp.x, ptRightUp.y);
+		// release mouse if outside of window
+		if (ptRightUp.x < 0 || ptRightUp.x >= width || ptRightUp.y < 0 || ptRightUp.y >= height)
+		{
+			ReleaseCapture();
+			mouse.OnMouseLeave();
+		}
+		break;
+	case WM_MOUSEWHEEL:
+		const POINTS ptWheel = MAKEPOINTS(lParam);
+		const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+		mouse.OnWheelDelta(ptWheel.x, ptWheel.y, delta);
+		break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }

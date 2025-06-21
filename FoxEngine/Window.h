@@ -1,6 +1,7 @@
 #pragma once
 #include "framework.h"
 #include "Keeyboard.h"
+#include "Mouse.h"
 
 class Window
 {
@@ -31,9 +32,14 @@ private:
 	LRESULT HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);						// Handle messages for this window
 public:
 	Keyboard kbd;
+	Mouse mouse;
 private:
 	int width;
 	int height;
 	HWND hWnd;
 };
 
+// just define the macro to not import entire gdi library
+#ifndef MAKEPOINTS
+#define MAKEPOINTS(l) (*((POINTS*)&(l)))
+#endif

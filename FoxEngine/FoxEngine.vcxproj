@@ -138,6 +138,7 @@
     <ClInclude Include="FoxEngine.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Keeyboard.h" />
+    <ClInclude Include="Mouse.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="Window.h" />
@@ -145,6 +146,7 @@
   <ItemGroup>
     <ClCompile Include="FoxEngine.cpp" />
     <ClCompile Include="Keeyboard.cpp" />
+    <ClCompile Include="Mouse.cpp" />
     <ClCompile Include="Window.cpp" />
   </ItemGroup>
   <ItemGroup>
