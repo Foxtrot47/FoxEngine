@@ -33,7 +33,7 @@ HINSTANCE Window::WindowClass::GetInstance()
 {
 	return wndClass.hInstance;
 }
-
+ 
 Window::Window(int width, int height, const LPCWSTR name, int nCmdShow)
 {
 	// Calculate window size based on desired client region size
@@ -105,6 +105,13 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CLOSE:
 		PostQuitMessage(0);
 		return 0;
+
+		// keyboard messages
+	case WM_KEYDOWN:
+		kbd.OnKeyPressed(static_cast<unsigned char>(wParam));
+		break;
+	case WM_KEYUP:
+		kbd.OnKeyReleased(static_cast<unsigned char>(wParam));
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }

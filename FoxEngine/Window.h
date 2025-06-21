@@ -1,5 +1,6 @@
 #pragma once
 #include "framework.h"
+#include "Keeyboard.h"
 
 class Window
 {
@@ -28,6 +29,8 @@ private:
 	static LRESULT CALLBACK HandleMsgSetup(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);	// Initial message setup
 	static LRESULT CALLBACK HandleMsgThunk(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);	// Thunk to call member function
 	LRESULT HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);						// Handle messages for this window
+public:
+	Keyboard kbd;
 private:
 	int width;
 	int height;
