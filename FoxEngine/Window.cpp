@@ -33,7 +33,7 @@ HINSTANCE Window::WindowClass::GetInstance()
 {
 	return wndClass.hInstance;
 }
- 
+
 Window::Window(int width, int height, const LPCWSTR name, int nCmdShow)
 {
 	// Calculate window size based on desired client region size
@@ -105,6 +105,11 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CLOSE:
 		PostQuitMessage(0);
 		return 0;
+
+		// clear keystate when window looses focus to prevent input getting stuck
+	case WM_KILLFOCUS:
+		kbd.ClearState();
+		break;
 
 		// keyboard messages
 	case WM_KEYDOWN:
