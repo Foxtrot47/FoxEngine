@@ -113,6 +113,8 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		// keyboard messages
 	case WM_KEYDOWN:
+		// syskey commands need to be handled to track ALT key (VK_MENU) and Function keys
+	case WM_SYSKEYDOWN:
 		// Check if the key is already pressed or if autorepeat is enabled
 		if (!(lParam & 0x40000000) || kbd.AutorepeatIsEnabled())
 		{
@@ -120,6 +122,7 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_KEYUP:
+	case WM_SYSKEYUP:
 		kbd.OnKeyReleased(static_cast<unsigned char>(wParam));
 		break;
 	case WM_CHAR:
