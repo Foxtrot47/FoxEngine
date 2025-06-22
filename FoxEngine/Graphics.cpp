@@ -73,17 +73,24 @@ void Graphics::DrawTriangle()
 
 	struct Vertex
 	{
-		float x;
-		float y;
-		float r;
-		float g;
-		float b;
+		struct
+		{
+			float x;
+			float y;
+		} pos;
+		struct
+		{
+			unsigned char r;
+			unsigned char g;
+			unsigned char b;
+			unsigned char a;
+		} color;
 	};
 
 	const Vertex vertices[] = {
-		{ 0.0f,  0.5f, 1.0f, 0.0f, 0.0f },	// Top vertex
-		{ 0.5f,-0.5f, 0.0f, 1.0f, 0.0f},	// Bottom left vertex
-		{ -0.5f,-0.5f, 0.0f, 0.0f, 1.0f },	// Bottom right vertex
+		{ 0.0f,  0.5f, 255, 0, 0 },	// Top vertex
+		{ 0.5f,-0.5f, 0, 255, 0},	// Bottom left vertex
+		{ -0.5f,-0.5f, 0, 0, 255 },	// Bottom right vertex
 	};
 
 	bufferDesc.Usage = D3D11_USAGE_DEFAULT;				// Default usage
@@ -133,7 +140,7 @@ void Graphics::DrawTriangle()
 	const D3D11_INPUT_ELEMENT_DESC ied[] =
 	{
 		{ "Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "Color", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "Color", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	pDevice->CreateInputLayout(
