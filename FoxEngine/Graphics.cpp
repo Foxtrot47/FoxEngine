@@ -75,12 +75,15 @@ void Graphics::DrawTriangle()
 	{
 		float x;
 		float y;
+		float r;
+		float g;
+		float b;
 	};
 
 	const Vertex vertices[] = {
-		{ 0.0f,  0.5f },	// Top vertex
-		{ 0.5f,-0.5f },		// Bottom left vertex
-		{ -0.5f,-0.5f },	// Bottom right vertex
+		{ 0.0f,  0.5f, 1.0f, 0.0f, 0.0f },	// Top vertex
+		{ 0.5f,-0.5f, 0.0f, 1.0f, 0.0f},	// Bottom left vertex
+		{ -0.5f,-0.5f, 0.0f, 0.0f, 1.0f },	// Bottom right vertex
 	};
 
 	bufferDesc.Usage = D3D11_USAGE_DEFAULT;				// Default usage
@@ -129,7 +132,8 @@ void Graphics::DrawTriangle()
 	Microsoft::WRL::ComPtr<ID3D11InputLayout> pInputLayout = nullptr;
 	const D3D11_INPUT_ELEMENT_DESC ied[] =
 	{
-		"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0
+		{ "Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "Color", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	pDevice->CreateInputLayout(
