@@ -35,20 +35,52 @@ Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(
 		nullptr,                       // The feature level
 		&pContext                   // The device context
 	);
+
+	// gain access to texture subresource of the swap chain (back buffer)
+	ID3D11Resource* pBackBuffer = nullptr;
+	if (pSwapChain) {
+		HRESULT hr = pSwapChain->GetBuffer(0, __uuidof(ID3D11Resource), reinterpret_cast<void**>(&pBackBuffer));
+		if (SUCCEEDED(hr) && pBackBuffer) {
+			pDevice->CreateRenderTargetView(pBackBuffer, nullptr, &pTarget); // Create a render target view  
+			pBackBuffer->Release(); // Release the back buffer after use  
+		}
+	}
 }
 
 Graphics::~Graphics()
 {
+	// Release the render target view
+	if (pTarget != nullptr)
+	{
+		pTarget->Release();
+	}
 	// Release the device context
-	if (pContext) {
+	if (pContext != nullptr) {
 		pContext->Release();
 	}
 	// Release the swap chain
-	if (pSwapChain) {
+	if (pSwapChain != nullptr) {
 		pSwapChain->Release();
 	}
 	// Release the device
-	if (pDevice) {
+	if (pDevice != nullptr) {
 		pDevice->Release();
+	}
+}
+
+void Graphics::EndFrame()
+{
+	// Present the back buffer to the front buffer
+	if (pSwapChain) {
+		pSwapChain->Present(1, 0); // 1 for vsync, 0 for no flags
+	}
+}
+
+void Graphics::ClearBuffer(float red, float green, float blue)
+{
+	// Clear the back buffer to a specific color
+	if (pContext) {
+		const float clearColor[4] = { red, green, blue, 1.0f }; // RGBA color
+		pContext->ClearRenderTargetView(pTarget, clearColor); // Clear the render target view
 	}
 }
