@@ -1,6 +1,7 @@
 #include "Graphics.h"
 
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "D3DCompiler.lib")
 
 Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(nullptr)
 {
@@ -61,4 +62,67 @@ void Graphics::ClearBuffer(float red, float green, float blue)
 		const float clearColor[4] = { red, green, blue, 1.0f }; // RGBA color
 		pContext->ClearRenderTargetView(pTarget.Get(), clearColor); // Clear the render target view
 	}
+}
+
+void Graphics::DrawTriangle()
+{
+	Microsoft::WRL::ComPtr<ID3D11Buffer> pVertexBuffer = nullptr;
+
+	D3D11_BUFFER_DESC bufferDesc;
+	ZeroMemory(&bufferDesc, sizeof(D3D11_BUFFER_DESC));
+
+	struct Vertex
+	{
+		float x;
+		float y;
+	};
+
+	const Vertex vertices[] = {
+		{ 0.0f,  0.5f },	// Top vertex
+		{ -0.5f, -0.5f },	// Bottom left vertex
+		{ 0.5f, -0.5f }		// Bottom right vertex
+	};
+
+	bufferDesc.Usage = D3D11_USAGE_DEFAULT;				// Default usage
+	bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;	// Bind as a vertex buffer
+	bufferDesc.CPUAccessFlags = 0;						// No CPU access
+	bufferDesc.ByteWidth = sizeof(vertices);			// Total size of the buffer
+	bufferDesc.StructureByteStride = sizeof(Vertex);	// Size of each vertex
+
+	D3D11_SUBRESOURCE_DATA srData;
+	ZeroMemory(&srData, sizeof(D3D11_SUBRESOURCE_DATA));
+	srData.pSysMem = vertices;			// Pointer to the vertex data
+
+	pDevice->CreateBuffer(&bufferDesc, &srData, &pVertexBuffer);
+
+	const UINT stride = sizeof(Vertex);	// Size of each vertex
+	const UINT offset = 0u;				// No offset
+	pContext->IASetVertexBuffers(
+		0u,								// Start at slot 0
+		1u,								// One buffer
+		&pVertexBuffer,					// Pointer to the vertex buffer
+		&stride,						// Size of each vertex
+		&offset							// No offset
+	);
+
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> pVertexShader;
+	Microsoft::WRL::ComPtr<ID3DBlob> pBlob;
+	std::wstring shaderPath = GetExecutableDirectory() + L"\\VertexShader.cso";
+	if (!std::filesystem::exists(shaderPath)) {
+		throw std::runtime_error("Shader file not found: " + std::string(shaderPath.begin(), shaderPath.end()));
+	}
+	D3DReadFileToBlob(shaderPath.c_str(), &pBlob); // Load compiled vertex shader
+	pDevice->CreateVertexShader(pBlob->GetBufferPointer(), pBlob->GetBufferSize(), nullptr, &pVertexShader);
+
+	pContext->VSSetShader(pVertexShader.Get(), nullptr, 0u);	// Set the vertex shader
+	pContext->Draw(3, 0); // Draw a triangle (3 vertices, starting at index 0)
+}
+
+std::wstring Graphics::GetExecutableDirectory()
+{
+	wchar_t path[MAX_PATH];
+	GetModuleFileNameW(nullptr, path, MAX_PATH);
+
+	std::filesystem::path exePath(path);
+	return exePath.parent_path().wstring(); // Strip the exe filename
 }
