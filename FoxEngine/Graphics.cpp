@@ -22,17 +22,17 @@ Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(
 
 	// Create a device, device context and swap chain using the information in the scd struct
 	D3D11CreateDeviceAndSwapChain(
-		nullptr,                       // Default adapter
+		nullptr,                    // Default adapter
 		D3D_DRIVER_TYPE_HARDWARE,   // Use hardware rendering
-		nullptr,                       // No software device
-		0,                          // No flags
-		nullptr,                       // Default feature level array
+		nullptr,                    // No software device
+		D3D11_CREATE_DEVICE_DEBUG,	// No flags
+		nullptr,                    // Default feature level array
 		0,                          // Default feature level array size
 		D3D11_SDK_VERSION,          // Always set this to D3D11_SDK_VERSION
 		&scd,                       // The swap chain description
 		&pSwapChain,                // The swap chain
 		&pDevice,                   // The device
-		nullptr,                       // The feature level
+		nullptr,                    // The feature level
 		&pContext                   // The device context
 	);
 
