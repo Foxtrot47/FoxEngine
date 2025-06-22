@@ -79,8 +79,8 @@ void Graphics::DrawTriangle()
 
 	const Vertex vertices[] = {
 		{ 0.0f,  0.5f },	// Top vertex
-		{ -0.5f, -0.5f },	// Bottom left vertex
-		{ 0.5f, -0.5f }		// Bottom right vertex
+		{ 0.5f,-0.5f },		// Bottom left vertex
+		{ -0.5f,-0.5f },	// Bottom right vertex
 	};
 
 	bufferDesc.Usage = D3D11_USAGE_DEFAULT;				// Default usage
@@ -100,13 +100,23 @@ void Graphics::DrawTriangle()
 	pContext->IASetVertexBuffers(
 		0u,								// Start at slot 0
 		1u,								// One buffer
-		&pVertexBuffer,					// Pointer to the vertex buffer
+		pVertexBuffer.GetAddressOf(),	// Pointer to the vertex buffer
 		&stride,						// Size of each vertex
 		&offset							// No offset
 	);
 
-	Microsoft::WRL::ComPtr<ID3D11VertexShader> pVertexShader;
 	Microsoft::WRL::ComPtr<ID3DBlob> pBlob;
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> pPixelShader;
+	std::wstring pixelShaderPath = GetExecutableDirectory() + L"\\PixelShader.cso";
+	if (!std::filesystem::exists(pixelShaderPath)) {
+		throw std::runtime_error("Shader file not found: " + std::string(pixelShaderPath.begin(), pixelShaderPath.end()));
+	}
+	D3DReadFileToBlob(pixelShaderPath.c_str(), &pBlob);
+	pDevice->CreatePixelShader(pBlob->GetBufferPointer(), pBlob->GetBufferSize(), nullptr, &pPixelShader);
+
+	pContext->PSSetShader(pPixelShader.Get(), nullptr, 0u);		// Set the pixel shader
+
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> pVertexShader;
 	std::wstring shaderPath = GetExecutableDirectory() + L"\\VertexShader.cso";
 	if (!std::filesystem::exists(shaderPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(shaderPath.begin(), shaderPath.end()));
@@ -114,7 +124,39 @@ void Graphics::DrawTriangle()
 	D3DReadFileToBlob(shaderPath.c_str(), &pBlob); // Load compiled vertex shader
 	pDevice->CreateVertexShader(pBlob->GetBufferPointer(), pBlob->GetBufferSize(), nullptr, &pVertexShader);
 
-	pContext->VSSetShader(pVertexShader.Get(), nullptr, 0u);	// Set the vertex shader
+	pContext->VSSetShader(pVertexShader.Get(), nullptr, 0u);		// Set the vertex shader
+
+	Microsoft::WRL::ComPtr<ID3D11InputLayout> pInputLayout = nullptr;
+	const D3D11_INPUT_ELEMENT_DESC ied[] =
+	{
+		"Position", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0
+	};
+
+	pDevice->CreateInputLayout(
+		ied,								// Input element description
+		(UINT)std::size(ied),				// Number of elements in the array
+		pBlob->GetBufferPointer(),			// Pointer to the compiled shader bytecode
+		pBlob->GetBufferSize(),				// Size of the compiled shader bytecode
+		&pInputLayout						// Output pointer to the input layout
+	);
+
+	pContext->IASetInputLayout(pInputLayout.Get());						// Set the input layout
+
+	pContext->OMSetRenderTargets(1u, pTarget.GetAddressOf(), nullptr); // Set the render target
+
+	D3D11_VIEWPORT vp;
+	ZeroMemory(&vp, sizeof(D3D11_VIEWPORT));
+	vp.Width = 1920;							// Set viewport width
+	vp.Height = 1080;							// Set viewport height
+	vp.MinDepth = 0;							// Minimum depth
+	vp.MaxDepth = 1;							// Maximum depth
+	vp.TopLeftX = 0;							// Top-left X position
+	vp.TopLeftY = 0;							// Top-left Y position
+	pContext->RSSetViewports(1, &vp);			// Set the viewport
+
+
+	pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // Set the primitive topology to triangle list
+
 	pContext->Draw(3, 0); // Draw a triangle (3 vertices, starting at index 0)
 }
 
