@@ -4,6 +4,7 @@
 #include "framework.h"  
 #include "FoxEngine.h"
 #include "Window.h"
+#include "Timer.h"
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -12,6 +13,7 @@ int CALLBACK WinMain(
 	_In_ int nCmdShow
 )
 {
+	Timer timer;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
 
 	// Enter main loop
@@ -27,8 +29,9 @@ int CALLBACK WinMain(
 			if (msg.message == WM_QUIT)
 				break;
 		}
+		const float c = sin(timer.Peek()) / 2.0f + 0.5f;
 		wnd.Gfx().ClearBuffer(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
-		wnd.Gfx().DrawTriangle(10.0f); // Draw a triangle (or any other graphics operation)
+		wnd.Gfx().DrawTriangle(timer.Peek()); // Draw a triangle (or any other graphics operation)
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
 	return msg.wParam;
