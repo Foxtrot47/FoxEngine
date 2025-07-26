@@ -6,7 +6,7 @@ struct PS_INPUT
 
 cbuffer CBuf
 {
-    row_major matrix transform;
+    matrix transform;
 }
 
 PS_INPUT main(float2 pos : POSITION, float3 color : Color)

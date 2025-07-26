@@ -1,4 +1,5 @@
 #include "Graphics.h"
+#include <DirectxMath.h>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "D3DCompiler.lib")
@@ -64,7 +65,7 @@ void Graphics::ClearBuffer(float red, float green, float blue)
 	}
 }
 
-void Graphics::DrawTriangle( float angle )
+void Graphics::DrawTriangle(float angle)
 {
 	Microsoft::WRL::ComPtr<ID3D11Buffer> pVertexBuffer = nullptr;
 
@@ -142,18 +143,16 @@ void Graphics::DrawTriangle( float angle )
 	pContext->IASetIndexBuffer(pIndexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0u);
 
 	struct ConstantBuffer {
-		struct {
-			float element[4][4];
-		} transformation;
+		DirectX::XMMATRIX transform; // Transformation matrix
 	};
 
 	const ConstantBuffer cb =
 	{
 		{
-			(3.0f / 4.0f ) * std::cos(angle),  std::sin(angle),	0.0f,	0.0f,
-			(3.0f / 4.0f ) * -std::sin(angle), std::cos(angle),	0.0f,	0.0f,
-			0.0f,			  0.0f,				1.0f,	0.0f,
-			0.0f,			  0.0f,				0.0f,	1.0f,
+			DirectX::XMMatrixTranspose(
+				DirectX::XMMatrixRotationZ(angle) *
+				DirectX::XMMatrixScaling(9.0f / 16.0f, 1.0f, 1.0f) // Scale the triangle
+			)
 		}
 	};
 
@@ -228,7 +227,7 @@ void Graphics::DrawTriangle( float angle )
 
 	pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // Set the primitive topology to triangle list
 
-	pContext->DrawIndexed((UINT)std::size( indices ),0u, 0u); // Draw a triangle (3 vertices, starting at index 0)
+	pContext->DrawIndexed((UINT)std::size(indices), 0u, 0u); // Draw a triangle (3 vertices, starting at index 0)
 }
 
 std::wstring Graphics::GetExecutableDirectory()
