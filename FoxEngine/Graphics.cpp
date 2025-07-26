@@ -150,8 +150,8 @@ void Graphics::DrawTriangle( float angle )
 	const ConstantBuffer cb =
 	{
 		{
-			std::cos(angle),  std::sin(angle),	0.0f,	0.0f,
-			-std::sin(angle), std::cos(angle),	0.0f,	0.0f,
+			(3.0f / 4.0f ) * std::cos(angle),  std::sin(angle),	0.0f,	0.0f,
+			(3.0f / 4.0f ) * -std::sin(angle), std::cos(angle),	0.0f,	0.0f,
 			0.0f,			  0.0f,				1.0f,	0.0f,
 			0.0f,			  0.0f,				0.0f,	1.0f,
 		}
