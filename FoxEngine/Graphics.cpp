@@ -197,7 +197,7 @@ void Graphics::DrawCube(float angle, float x, float y)
 				DirectX::XMMatrixRotationZ(angle) *
 				DirectX::XMMatrixRotationX(angle)*
 				DirectX::XMMatrixTranslation(x, y, 8.0f) * // Translate the triangle
-				DirectX::XMMatrixPerspectiveFovLH( 1.0f, 9.0f / 16.0f, 0.5, 10.0f ) // Perspective projection
+				DirectX::XMMatrixPerspectiveFovLH( 1.0f, 16.0f / 9.0f, 0.5, 10.0f ) // Perspective projection
 			)
 		}
 	};
