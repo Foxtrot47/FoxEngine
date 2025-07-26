@@ -88,9 +88,12 @@ void Graphics::DrawTriangle()
 	};
 
 	const Vertex vertices[] = {
-		{ 0.0f,  0.5f, 255, 0, 0 },	// Top vertex
-		{ 0.5f,-0.5f, 0, 255, 0},	// Bottom left vertex
-		{ -0.5f,-0.5f, 0, 0, 255 },	// Bottom right vertex
+		{ 0.0f,0.5f,255,0,0,0 },
+		{ 0.5f,-0.5f,0,255,0,0},
+		{ -0.5f,-0.5f,0,0,255,0 },
+		{ -0.3f, 0.3f,0,255,0,0},
+		{ 0.3f,0.3f,0,0,255,0},
+		{ 0.0f,-0.8f,255,0,0,0}
 	};
 
 	bufferDesc.Usage = D3D11_USAGE_DEFAULT;				// Default usage
@@ -114,6 +117,30 @@ void Graphics::DrawTriangle()
 		&stride,						// Size of each vertex
 		&offset							// No offset
 	);
+
+	const unsigned short indices[] =
+	{
+		0,1,2,
+		0,2,3,
+		0,4,1,
+		2,1,5,
+	};
+	Microsoft::WRL::ComPtr<ID3D11Buffer> pIndexBuffer;
+	D3D11_BUFFER_DESC ibd;
+	ZeroMemory(&ibd, sizeof(ibd));
+	ibd.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	ibd.Usage = D3D11_USAGE_DEFAULT;
+	ibd.CPUAccessFlags = 0u;
+	ibd.MiscFlags = 0u;
+	ibd.ByteWidth = sizeof(indices);
+	ibd.StructureByteStride = sizeof(unsigned short);
+	D3D11_SUBRESOURCE_DATA isd;
+	ZeroMemory(&isd, sizeof(isd));
+	isd.pSysMem = indices;
+	pDevice->CreateBuffer(&ibd, &isd, &pIndexBuffer);
+
+	pContext->IASetIndexBuffer(pIndexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0u);
+
 
 	Microsoft::WRL::ComPtr<ID3DBlob> pBlob;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> pPixelShader;
@@ -168,7 +195,7 @@ void Graphics::DrawTriangle()
 
 	pContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST); // Set the primitive topology to triangle list
 
-	pContext->Draw(3, 0); // Draw a triangle (3 vertices, starting at index 0)
+	pContext->DrawIndexed((UINT)std::size( indices ),0u, 0u); // Draw a triangle (3 vertices, starting at index 0)
 }
 
 std::wstring Graphics::GetExecutableDirectory()
