@@ -65,7 +65,7 @@ void Graphics::ClearBuffer(float red, float green, float blue)
 	}
 }
 
-void Graphics::DrawTriangle(float angle)
+void Graphics::DrawTriangle(float angle, float x, float y)
 {
 	Microsoft::WRL::ComPtr<ID3D11Buffer> pVertexBuffer = nullptr;
 
@@ -151,7 +151,8 @@ void Graphics::DrawTriangle(float angle)
 		{
 			DirectX::XMMatrixTranspose(
 				DirectX::XMMatrixRotationZ(angle) *
-				DirectX::XMMatrixScaling(9.0f / 16.0f, 1.0f, 1.0f) // Scale the triangle
+				DirectX::XMMatrixScaling(9.0f / 16.0f, 1.0f, 1.0f) * // Scale the triangle
+				DirectX::XMMatrixTranslation(x, y, 0.0f) // Translate the triangle
 			)
 		}
 	};

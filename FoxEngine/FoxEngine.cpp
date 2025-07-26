@@ -31,7 +31,11 @@ int CALLBACK WinMain(
 		}
 		const float c = sin(timer.Peek()) / 2.0f + 0.5f;
 		wnd.Gfx().ClearBuffer(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
-		wnd.Gfx().DrawTriangle(timer.Peek()); // Draw a triangle (or any other graphics operation)
+		wnd.Gfx().DrawTriangle(
+			timer.Peek(),
+			wnd.mouse.GetPosX() / 960.0f - 1.0f, // normalize x position to [-1, 1]
+			-wnd.mouse.GetPosY() / 540.0f + 1.0f // normalize y position to [-1, 1] (inverted because screen coordinates have origin at top-left)
+		); 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
 	return msg.wParam;
