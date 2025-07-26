@@ -28,7 +28,7 @@ int CALLBACK WinMain(
 				break;
 		}
 		wnd.Gfx().ClearBuffer(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
-		wnd.Gfx().DrawTriangle(); // Draw a triangle (or any other graphics operation)
+		wnd.Gfx().DrawTriangle(10.0f); // Draw a triangle (or any other graphics operation)
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
 	return msg.wParam;
