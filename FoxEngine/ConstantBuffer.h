@@ -34,6 +34,19 @@ public:
 		};
 		GetDevice(gfx)->CreateBuffer(&cbd, nullptr, &pConstantBuffer);
 	}
+	void Update(Graphics& gfx, const C& consts)
+	{
+		D3D11_MAPPED_SUBRESOURCE msr;
+		GetContext(gfx)->Map(
+			pConstantBuffer.Get(),
+			0u,
+			D3D11_MAP_WRITE_DISCARD,
+			0u,
+			&msr
+		);
+		memcpy(msr.pData, &consts, sizeof(consts));
+		GetContext(gfx)->Unmap(pConstantBuffer.Get(), 0u);
+	}
 protected:
 	Microsoft::WRL::ComPtr<ID3D11Buffer> pConstantBuffer;
 };

@@ -2,7 +2,23 @@
 #include "BindableBase.h"
 #include "FileUtils.h"
 
-Box::Box(Graphics& gfx)
+Box::Box(Graphics& gfx,
+	std::mt19937& rng,
+	std::uniform_real_distribution<float>& angularDistribution,
+	std::uniform_real_distribution<float>& deltaDistribution,
+	std::uniform_real_distribution<float>& orbitalDistribution,
+	std::uniform_real_distribution<float>& radiusDistribution)
+	:
+	radius(radiusDistribution(rng)),
+	deltaRoll(deltaDistribution(rng)),
+	deltaPitch(deltaDistribution(rng)),
+	deltaYaw(deltaDistribution(rng)),
+	deltaPhi(orbitalDistribution(rng)),
+	deltaTheta(orbitalDistribution(rng)),
+	deltaChi(orbitalDistribution(rng)),
+	chi(angularDistribution(rng)),
+	theta(angularDistribution(rng)),
+	phi(angularDistribution(rng))
 {
 
 	struct Vertex
@@ -48,21 +64,6 @@ Box::Box(Graphics& gfx)
 
 	AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
 
-	struct ConstantBuffer {
-		DirectX::XMMATRIX transform; // Transformation matrix
-	};
-
-	const ConstantBuffer cb =
-	{
-		{
-			DirectX::XMMatrixTranspose(
-				DirectX::XMMatrixTranslation(1.0f, 1.0f, 10) * // Translate the triangle
-				DirectX::XMMatrixPerspectiveFovLH(1.0f, 16.0f / 9.0f, 0.5, 10.0f) // Perspective projection
-			)
-		}
-	}; 
-	AddBind(std::make_unique<VertexConstantBuffer<ConstantBuffer>>(gfx, cb));
-
 	struct ColorConstantBuffer
 	{
 		struct
@@ -93,9 +94,24 @@ Box::Box(Graphics& gfx)
 	AddBind(std::make_unique<InputLayout>(gfx, ied, pVertexShaderByteCode));
 
 	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
+
+	AddBind(std::make_unique<TransformConstantBuffer>(gfx, *this));
+}
+
+void Box::Update(float deltaTime)
+{
+	roll += deltaRoll * deltaTime;
+	pitch += deltaPitch * deltaTime;
+	yaw += deltaYaw * deltaTime;
+	theta += deltaTheta * deltaTime;
+	phi += deltaPhi * deltaTime;
+	chi += deltaChi * deltaTime;
 }
 
 DirectX::XMMATRIX Box::GetTransformXM() const
 {
-	return DirectX::XMMatrixTranslation(1.0f, 1.0f, 6.0f);
+	return DirectX::XMMatrixRotationRollPitchYaw(pitch, yaw, roll) *
+		DirectX::XMMatrixTranslation(radius, 0.0f, 0.0f) *
+		DirectX::XMMatrixRotationRollPitchYaw(theta, phi, chi) *
+		DirectX::XMMatrixTranslation(0.0f, 0.0f, 20.0f);
 }

@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <wrl.h>
+#include <random>
 
 class Graphics
 {
