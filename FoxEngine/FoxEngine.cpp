@@ -5,6 +5,8 @@
 #include "FoxEngine.h"
 #include "Window.h"
 #include "Timer.h"
+#include "Box.h"
+#include <memory>
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -15,6 +17,7 @@ int CALLBACK WinMain(
 {
 	Timer timer;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
+	auto box = std::make_unique<Box>(wnd.Gfx());
 
 	// Enter main loop
 	MSG msg = { 0 };
@@ -29,13 +32,10 @@ int CALLBACK WinMain(
 			if (msg.message == WM_QUIT)
 				break;
 		}
-		const float c = sin(timer.Peek()) / 2.0f + 0.5f;
+		auto dt = timer.Mark();
 		wnd.Gfx().ClearBuffer(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
-		wnd.Gfx().DrawCube(
-			timer.Peek(),
-			wnd.mouse.GetPosX() / 960.0f - 1.0f, // normalize x position to [-1, 1]
-			-wnd.mouse.GetPosY() / 540.0f + 1.0f // normalize y position to [-1, 1] (inverted because screen coordinates have origin at top-left)
-		); 
+		box->Draw(wnd.Gfx());
+
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
 	return msg.wParam;
