@@ -24,7 +24,7 @@ private:
 
 	float deltaRoll;
 	float deltaPitch;
-	float deltaYaw;	
+	float deltaYaw;
 
 	float deltaTheta;
 	float deltaPhi;

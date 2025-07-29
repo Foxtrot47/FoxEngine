@@ -24,15 +24,21 @@ int CALLBACK WinMain(
 	std::uniform_real_distribution<float> orbitalDistribution(0.0f, 3.1415f * 0.3f);
 	std::uniform_real_distribution<float> radiusDistribution(6.0f, 20.0f);
 
-	auto box = std::make_unique<Box>(
-		wnd.Gfx(),
-		rng,
-		angularDistribution,
-		deltaDistribution,
-		orbitalDistribution,
-		radiusDistribution
-	);
+	std::vector<std::unique_ptr<class Box>> boxes;
 
+	for ( auto index = 0; index < 80 ; index++)
+	{
+		boxes.push_back(
+			std::make_unique<Box>(
+				wnd.Gfx(),
+				rng,
+				angularDistribution,
+				deltaDistribution,
+				orbitalDistribution,
+				radiusDistribution
+			)
+		);
+	}
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 40.0f));
 
 	// Enter main loop
@@ -51,8 +57,11 @@ int CALLBACK WinMain(
 		auto deltaTime = timer.Mark();
 		wnd.Gfx().ClearBuffer(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
 
-		box->Update(deltaTime);
-		box->Draw(wnd.Gfx());
+		for (auto& box : boxes)
+		{
+			box->Update(deltaTime);
+			box->Draw(wnd.Gfx());
+		}
 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
