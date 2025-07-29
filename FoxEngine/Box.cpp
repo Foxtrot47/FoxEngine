@@ -20,79 +20,83 @@ Box::Box(Graphics& gfx,
 	theta(angularDistribution(rng)),
 	phi(angularDistribution(rng))
 {
-	struct Vertex
+
+	if (!IsStaticInitialized())
 	{
-		struct
+		struct Vertex
 		{
-			float x;
-			float y;
-			float z;
-		} pos;
-	};
+			struct
+			{
+				float x;
+				float y;
+				float z;
+			} pos;
+		};
 
-	const std::vector<Vertex> vertices =
-	{
-		{ -1.0f,-1.0f,-1.0f	 },
-		{ 1.0f,-1.0f,-1.0f	 },
-		{ -1.0f,1.0f,-1.0f	 },
-		{ 1.0f,1.0f,-1.0f	  },
-		{ -1.0f,-1.0f,1.0f	 },
-		{ 1.0f,-1.0f,1.0f	  },
-		{ -1.0f,1.0f,1.0f	 },
-		{ 1.0f,1.0f,1.0f	 },
-	};
-
-	AddBind(std::make_unique<VertexBuffer>(gfx, vertices));
-
-	auto pVertexShader = std::make_unique<VertexShader>(gfx, GetExecutableDirectory() + L"\\VertexShader.cso");
-	auto pVertexShaderByteCode = pVertexShader->GetByteCode();
-
-	AddBind(std::move(pVertexShader));
-
-	AddBind(std::make_unique<PixelShader>(gfx, GetExecutableDirectory() + L"\\PixelShader.cso"));
-
-	const std::vector<unsigned short> indices =
-	{
-		0,2,1, 2,3,1,
-		1,3,5, 3,7,5,
-		2,6,3, 3,6,7,
-		4,5,7, 4,7,6,
-		0,4,2, 2,4,6,
-		0,1,4, 1,5,4
-	};
-
-	AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
-
-	struct ColorConstantBuffer
-	{
-		struct
+		const std::vector<Vertex> vertices =
 		{
-			float r;
-			float g;
-			float b;
-			float a;
-		} face_colors[6];
-	};
-	const ColorConstantBuffer colorConstantBuffer =
-	{
+			{ -1.0f,-1.0f,-1.0f	 },
+			{ 1.0f,-1.0f,-1.0f	 },
+			{ -1.0f,1.0f,-1.0f	 },
+			{ 1.0f,1.0f,-1.0f	  },
+			{ -1.0f,-1.0f,1.0f	 },
+			{ 1.0f,-1.0f,1.0f	  },
+			{ -1.0f,1.0f,1.0f	 },
+			{ 1.0f,1.0f,1.0f	 },
+		};
+
+		AddStaticBindable(std::make_unique<VertexBuffer>(gfx, vertices));
+
+		auto pVertexShader = std::make_unique<VertexShader>(gfx, GetExecutableDirectory() + L"\\VertexShader.cso");
+		auto pVertexShaderByteCode = pVertexShader->GetByteCode();
+
+		AddStaticBindable(std::move(pVertexShader));
+
+		AddStaticBindable(std::make_unique<PixelShader>(gfx, GetExecutableDirectory() + L"\\PixelShader.cso"));
+
+		const std::vector<unsigned short> indices =
 		{
-			{ 1.0f, 0.0f, 0.0f, 1.0f }, // Red
-			{ 0.0f, 1.0f, 0.0f, 1.0f }, // Green
-			{ 0.0f, 0.0f, 1.0f, 1.0f }, // Blue
-			{ 1.0f, 1.0f, 0.0f, 1.0f }, // Yellow
-			{ 1.0f, 0.5f, 0.5f, 1.0f }, // Light Red
-			{ 0.5f, 1.0f, 1.0f, 1.0f }  // Cyan
-		}
-	};
-	AddBind(std::make_unique<PixelConstantBuffer<ColorConstantBuffer>>(gfx, colorConstantBuffer));
+			0,2,1, 2,3,1,
+			1,3,5, 3,7,5,
+			2,6,3, 3,6,7,
+			4,5,7, 4,7,6,
+			0,4,2, 2,4,6,
+			0,1,4, 1,5,4
+		};
 
-	const std::vector<D3D11_INPUT_ELEMENT_DESC> ied =
-	{
-		{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+		AddStaticIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
 
-	AddBind(std::make_unique<InputLayout>(gfx, ied, pVertexShaderByteCode));
+		struct ColorConstantBuffer
+		{
+			struct
+			{
+				float r;
+				float g;
+				float b;
+				float a;
+			} face_colors[6];
+		};
+		const ColorConstantBuffer colorConstantBuffer =
+		{
+			{
+				{ 1.0f, 0.0f, 0.0f, 1.0f }, // Red
+				{ 0.0f, 1.0f, 0.0f, 1.0f }, // Green
+				{ 0.0f, 0.0f, 1.0f, 1.0f }, // Blue
+				{ 1.0f, 1.0f, 0.0f, 1.0f }, // Yellow
+				{ 1.0f, 0.5f, 0.5f, 1.0f }, // Light Red
+				{ 0.5f, 1.0f, 1.0f, 1.0f }  // Cyan
+			}
+		};
+		AddStaticBindable(std::make_unique<PixelConstantBuffer<ColorConstantBuffer>>(gfx, colorConstantBuffer));
 
-	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
+		const std::vector<D3D11_INPUT_ELEMENT_DESC> ied =
+		{
+			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+
+		AddStaticBindable(std::make_unique<InputLayout>(gfx, ied, pVertexShaderByteCode));
+
+		AddStaticBindable(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
+	}
 
 	AddBind(std::make_unique<TransformConstantBuffer>(gfx, *this));
 }

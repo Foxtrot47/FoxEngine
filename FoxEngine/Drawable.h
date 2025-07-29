@@ -6,6 +6,8 @@ class Bindable;
 
 class Drawable
 {
+	template<class T>
+	friend class DrawableBase;
 public:
 	Drawable() = default;
 	Drawable(const Drawable&) = delete;
@@ -18,7 +20,9 @@ public:
 	virtual DirectX::XMMATRIX GetTransformXM() const = 0;
 	virtual ~Drawable() = default;
 private:
-	const IndexBuffer* pIndexBuffer = nullptr;
+	virtual const std::vector<std::unique_ptr<Bindable>>& GetStaticBindables() const = 0;
+private:
+	const class IndexBuffer* pIndexBuffer = nullptr;
 	std::vector<std::unique_ptr<Bindable>> bindables;
 };
 
