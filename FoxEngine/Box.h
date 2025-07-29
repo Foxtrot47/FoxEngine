@@ -17,16 +17,18 @@ private:
 	float roll = 0.0f;
 	float pitch = 0.0f;
 	float yaw = 0.0f;
-	float deltaRoll;
-	float deltaPitch;
-	float deltaYaw;
 
-	// orbital rotation
 	float theta;
 	float phi;
 	float chi;
+
+	float deltaRoll;
+	float deltaPitch;
+	float deltaYaw;	
+
 	float deltaTheta;
 	float deltaPhi;
 	float deltaChi;
+
 };
 

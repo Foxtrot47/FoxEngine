@@ -20,7 +20,6 @@ Box::Box(Graphics& gfx,
 	theta(angularDistribution(rng)),
 	phi(angularDistribution(rng))
 {
-
 	struct Vertex
 	{
 		struct
@@ -47,7 +46,7 @@ Box::Box(Graphics& gfx,
 
 	auto pVertexShader = std::make_unique<VertexShader>(gfx, GetExecutableDirectory() + L"\\VertexShader.cso");
 	auto pVertexShaderByteCode = pVertexShader->GetByteCode();
-	
+
 	AddBind(std::move(pVertexShader));
 
 	AddBind(std::make_unique<PixelShader>(gfx, GetExecutableDirectory() + L"\\PixelShader.cso"));
@@ -59,7 +58,7 @@ Box::Box(Graphics& gfx,
 		2,6,3, 3,6,7,
 		4,5,7, 4,7,6,
 		0,4,2, 2,4,6,
-		0,1,4, 1,5,4 
+		0,1,4, 1,5,4
 	};
 
 	AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
