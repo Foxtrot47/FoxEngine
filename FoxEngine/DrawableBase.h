@@ -23,6 +23,20 @@ protected:
 		pIndexBuffer = indexBuffer.get();
 		staticBindables.push_back(std::move(indexBuffer));
 	}
+	// method to set the index buffer from static bindables
+	void SetIndexBufferFromStatic()
+	{
+		assert("Attempting to add index buffer a second time" && pIndexBuffer == nullptr);
+		for (const auto& bindable: staticBindables)
+		{
+			if (const auto pointer = dynamic_cast<IndexBuffer*>(bindable.get()))
+			{
+				pIndexBuffer = pointer;
+				return;
+			}
+		}
+		assert("No index buffer found in static bindables" && pIndexBuffer != nullptr);
+	}
 private:
 	std::vector<std::unique_ptr<Bindable>>& GetStaticBindables() const override
 	{

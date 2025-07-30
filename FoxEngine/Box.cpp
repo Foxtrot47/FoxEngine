@@ -97,6 +97,9 @@ Box::Box(Graphics& gfx,
 
 		AddStaticBindable(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
 	}
+	else {
+		SetIndexBufferFromStatic();
+	}
 
 	AddBind(std::make_unique<TransformConstantBuffer>(gfx, *this));
 }
