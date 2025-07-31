@@ -31,67 +31,88 @@ Box::Box(Graphics& gfx,
 				float y;
 				float z;
 			} pos;
+			struct
+			{
+				float u;
+				float v;
+			} text;
 		};
 
 		const std::vector<Vertex> vertices =
 		{
-			{ -1.0f,-1.0f,-1.0f	 },
-			{ 1.0f,-1.0f,-1.0f	 },
-			{ -1.0f,1.0f,-1.0f	 },
-			{ 1.0f,1.0f,-1.0f	  },
-			{ -1.0f,-1.0f,1.0f	 },
-			{ 1.0f,-1.0f,1.0f	  },
-			{ -1.0f,1.0f,1.0f	 },
-			{ 1.0f,1.0f,1.0f	 },
+			// Front face
+			{ {-1.0f, -1.0f,  1.0f}, {0.0f, 1.0f} },  // bottom-left
+			{ { 1.0f, -1.0f,  1.0f}, {1.0f, 1.0f} },  // bottom-right
+			{ {-1.0f,  1.0f,  1.0f}, {0.0f, 0.0f} },  // top-left
+			{ { 1.0f,  1.0f,  1.0f}, {1.0f, 0.0f} },  // top-right
+
+			// Back face
+			{ { 1.0f, -1.0f, -1.0f}, {0.0f, 1.0f} },
+			{ {-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f} },
+			{ { 1.0f,  1.0f, -1.0f}, {0.0f, 0.0f} },
+			{ {-1.0f,  1.0f, -1.0f}, {1.0f, 0.0f} },
+
+			// Left face
+			{ {-1.0f, -1.0f, -1.0f}, {0.0f, 1.0f} },
+			{ {-1.0f, -1.0f,  1.0f}, {1.0f, 1.0f} },
+			{ {-1.0f,  1.0f, -1.0f}, {0.0f, 0.0f} },
+			{ {-1.0f,  1.0f,  1.0f}, {1.0f, 0.0f} },
+
+			// Right face
+			{ { 1.0f, -1.0f,  1.0f}, {0.0f, 1.0f} },
+			{ { 1.0f, -1.0f, -1.0f}, {1.0f, 1.0f} },
+			{ { 1.0f,  1.0f,  1.0f}, {0.0f, 0.0f} },
+			{ { 1.0f,  1.0f, -1.0f}, {1.0f, 0.0f} },
+
+			// Top face
+			{ {-1.0f,  1.0f,  1.0f}, {0.0f, 1.0f} },
+			{ { 1.0f,  1.0f,  1.0f}, {1.0f, 1.0f} },
+			{ {-1.0f,  1.0f, -1.0f}, {0.0f, 0.0f} },
+			{ { 1.0f,  1.0f, -1.0f}, {1.0f, 0.0f} },
+
+			// Bottom face
+			{ {-1.0f, -1.0f, -1.0f}, {0.0f, 1.0f} },
+			{ { 1.0f, -1.0f, -1.0f}, {1.0f, 1.0f} },
+			{ {-1.0f, -1.0f,  1.0f}, {0.0f, 0.0f} },
+			{ { 1.0f, -1.0f,  1.0f}, {1.0f, 0.0f} },
 		};
 
 		AddStaticBindable(std::make_unique<VertexBuffer>(gfx, vertices));
 
-		auto pVertexShader = std::make_unique<VertexShader>(gfx, GetExecutableDirectory() + L"\\VertexShader.cso");
+		AddStaticBindable(std::make_unique<Texture>(gfx, "F:\\Software\\Projects\\FoxEngine\\FoxEngine\\Textures\\cube.png"));
+
+		auto pVertexShader = std::make_unique<VertexShader>(gfx, GetExecutableDirectory() + L"\\TexturedVS.cso");
 		auto pVertexShaderByteCode = pVertexShader->GetByteCode();
 
 		AddStaticBindable(std::move(pVertexShader));
 
-		AddStaticBindable(std::make_unique<PixelShader>(gfx, GetExecutableDirectory() + L"\\PixelShader.cso"));
+		AddStaticBindable(std::make_unique<PixelShader>(gfx, GetExecutableDirectory() + L"\\TexturedPS.cso"));
 
 		const std::vector<unsigned short> indices =
 		{
-			0,2,1, 2,3,1,
-			1,3,5, 3,7,5,
-			2,6,3, 3,6,7,
-			4,5,7, 4,7,6,
-			0,4,2, 2,4,6,
-			0,1,4, 1,5,4
+			// Front face
+			0,  1,  2,    2,  1,  3,
+			// Back face  
+			4,  5,  6,    6,  5,  7,
+			// Left face
+			8,  9,  10,   10, 9,  11,
+			// Right face
+			12, 13, 14,   14, 13, 15,
+			// Top face
+			16, 17, 18,   18, 17, 19,
+			// Bottom face
+			20, 21, 22,   22, 21, 23
 		};
 
 		AddStaticIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
 
-		struct ColorConstantBuffer
-		{
-			struct
-			{
-				float r;
-				float g;
-				float b;
-				float a;
-			} face_colors[6];
-		};
-		const ColorConstantBuffer colorConstantBuffer =
-		{
-			{
-				{ 1.0f, 0.0f, 0.0f, 1.0f }, // Red
-				{ 0.0f, 1.0f, 0.0f, 1.0f }, // Green
-				{ 0.0f, 0.0f, 1.0f, 1.0f }, // Blue
-				{ 1.0f, 1.0f, 0.0f, 1.0f }, // Yellow
-				{ 1.0f, 0.5f, 0.5f, 1.0f }, // Light Red
-				{ 0.5f, 1.0f, 1.0f, 1.0f }  // Cyan
-			}
-		};
-		AddStaticBindable(std::make_unique<PixelConstantBuffer<ColorConstantBuffer>>(gfx, colorConstantBuffer));
+
 
 		const std::vector<D3D11_INPUT_ELEMENT_DESC> ied =
 		{
-			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		};
 
 		AddStaticBindable(std::make_unique<InputLayout>(gfx, ied, pVertexShaderByteCode));
 
