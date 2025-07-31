@@ -79,7 +79,7 @@ Box::Box(Graphics& gfx,
 
 		AddStaticBindable(std::make_unique<VertexBuffer>(gfx, vertices));
 
-		AddStaticBindable(std::make_unique<Texture>(gfx, "F:\\Software\\Projects\\FoxEngine\\FoxEngine\\Textures\\cube.png"));
+		AddStaticBindable(std::make_unique<Texture>(gfx, GetExecutableDirectory() + L"\\Textures\\cube.png"));
 
 		auto pVertexShader = std::make_unique<VertexShader>(gfx, GetExecutableDirectory() + L"\\TexturedVS.cso");
 		auto pVertexShaderByteCode = pVertexShader->GetByteCode();

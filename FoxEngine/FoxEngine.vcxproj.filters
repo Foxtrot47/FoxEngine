@@ -186,4 +186,7 @@
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="TextureConversion.targets" />
+  </ItemGroup>
 </Project>

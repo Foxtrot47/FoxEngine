@@ -1,27 +1,63 @@
 #include "Texture.h"
 #include "DirectXTex.h"
+#include <filesystem>
 
 #pragma comment(lib, "DirectXTex.lib")
 
-Texture::Texture(Graphics& gfx, const std::string& path)
+Texture::Texture(Graphics& gfx, const std::wstring& path)
 {
-	std::wstring wPath = std::wstring(path.begin(), path.end());
+	// Try to load DDS version first
+	std::filesystem::path originalPath(path);
+	std::filesystem::path ddsPath = originalPath;
+	ddsPath.replace_extension(L".dds");
+
+	// Debug path for logging
+	std::string stringPath(originalPath.string());
 
 	DirectX::TexMetadata metadata;
 	DirectX::ScratchImage scratchImage;
+	HRESULT hr = E_FAIL;
 
-	HRESULT hr = DirectX::LoadFromWICFile(
-		wPath.c_str(),
-		DirectX::WIC_FLAGS_NONE,
-		&metadata,
-		scratchImage
-	);
+	// Try DDS first (faster loading, compressed)
+	if (std::filesystem::exists(ddsPath))
+	{
+		std::wstring wDdsPath = ddsPath.wstring();
+		hr = DirectX::LoadFromDDSFile(
+			wDdsPath.c_str(),
+			DirectX::DDS_FLAGS_NONE,
+			&metadata,
+			scratchImage
+		);
+
+		if (SUCCEEDED(hr))
+		{
+			// Log that we're using DDS
+			OutputDebugStringA(("Loaded DDS: " + ddsPath.string() + "\n").c_str());
+		}
+	}
+
+	// Fallback to original format if DDS doesn't exist or failed
+	if (FAILED(hr))
+	{
+		hr = DirectX::LoadFromWICFile(
+			path.c_str(),
+			DirectX::WIC_FLAGS_NONE,
+			&metadata,
+			scratchImage
+		);
+
+		if (SUCCEEDED(hr))
+		{
+			OutputDebugStringA(("Loaded WIC: " + stringPath + " (Consider converting to DDS)\n").c_str());
+		}
+	}
 
 	if (FAILED(hr))
 	{
-		throw std::runtime_error("Failed to load texture from file: " + path);
+		throw std::runtime_error("Failed to load texture: " + stringPath);
 	}
 
+	// Create texture and shader resource view
 	hr = DirectX::CreateShaderResourceView(
 		GetDevice(gfx),
 		scratchImage.GetImages(),
@@ -32,7 +68,7 @@ Texture::Texture(Graphics& gfx, const std::string& path)
 
 	if (FAILED(hr))
 	{
-		throw std::runtime_error("Failed to create texture view");
+		throw std::runtime_error("Failed to create texture view for: " + stringPath);
 	}
 
 	D3D11_SAMPLER_DESC samplerDesc = {
