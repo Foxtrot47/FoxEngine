@@ -1,5 +1,6 @@
 #include "Graphics.h"
 #include "imgui_impl_dx11.h"
+#include "imgui_impl_win32.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "D3DCompiler.lib")
@@ -106,14 +107,26 @@ Graphics::~Graphics()
 
 void Graphics::EndFrame()
 {
+	if (imGuiEnabled)
+	{
+		ImGui::Render();
+		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	}
 	// Present the back buffer to the front buffer
 	if (pSwapChain) {
 		pSwapChain->Present(1, 0); // 1 for vsync, 0 for no flags
 	}
 }
 
-void Graphics::ClearBuffer(float red, float green, float blue)
+void Graphics::BeginFrame(float red, float green, float blue)
 {
+	if (imGuiEnabled)
+	{
+		ImGui_ImplDX11_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+	}
+
 	// Clear the back buffer to a specific color
 	if (pContext) {
 		const float clearColor[4] = { red, green, blue, 1.0f }; // RGBA color
@@ -140,4 +153,19 @@ void Graphics::SetProjection(DirectX::FXMMATRIX proj)
 DirectX::XMMATRIX Graphics::GetProjection() const
 {
 	return projection;
+}
+
+void Graphics::EnableImGui()
+{
+	imGuiEnabled = true;
+}
+
+void Graphics::DisableImGui()
+{
+	imGuiEnabled = false;
+}
+
+bool Graphics::IsImGuiEnabled() const
+{
+	return imGuiEnabled;
 }

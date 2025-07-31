@@ -18,10 +18,13 @@ public:
 	Graphics& operator=(const Graphics&) = delete;
 	~Graphics();
 	void EndFrame();
-	void ClearBuffer(float red, float green, float blue);
+	void BeginFrame(float red, float green, float blue);
 	void DrawIndexed(UINT count);
 	void SetProjection(DirectX::FXMMATRIX proj);
 	DirectX::XMMATRIX GetProjection() const;
+	void EnableImGui();
+	void DisableImGui();
+	bool IsImGuiEnabled() const;
 private:
 	DirectX::XMMATRIX projection;
 	Microsoft::WRL::ComPtr<ID3D11Device> pDevice = nullptr;
@@ -29,5 +32,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11DeviceContext> pContext = nullptr;
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pTarget = nullptr;
 	Microsoft::WRL::ComPtr<ID3D11DepthStencilView> pDepthStencilView = nullptr;
+	bool imGuiEnabled = true;
 };
 

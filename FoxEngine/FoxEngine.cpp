@@ -60,7 +60,17 @@ int CALLBACK WinMain(
 				break;
 		}
 		auto deltaTime = timer.Mark();
-		wnd.Gfx().ClearBuffer(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
+
+		if (wnd.kbd.KeyIsPressed(VK_SPACE))
+		{
+			wnd.Gfx().DisableImGui();
+		}
+		else
+		{
+			wnd.Gfx().EnableImGui();
+		}
+
+		wnd.Gfx().BeginFrame(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
 
 		for (auto& box : boxes)
 		{
@@ -68,14 +78,8 @@ int CALLBACK WinMain(
 			box->Draw(wnd.Gfx());
 		}
 
-		// Start the Dear ImGui frame
-		ImGui_ImplDX11_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
 		ImGui::ShowDemoWindow(); // Show demo window! :)
 
-		ImGui::Render();
-		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
