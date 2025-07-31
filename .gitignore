@@ -362,3 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 FoxEngine/vcpkg_installed/
+
+# DearImGui user settings
+FoxEngine/imgui.ini
