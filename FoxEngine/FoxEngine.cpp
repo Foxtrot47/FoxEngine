@@ -1,16 +1,7 @@
 // FoxEngine.cpp : Defines the entry point for the application.  
 //  
 
-#include <memory>
-#include "framework.h"  
 #include "FoxEngine.h"
-#include "Window.h"
-#include "Timer.h"
-#include "Box.h"
-#include "ImGuiManager.h"
-#include "imgui.h"
-#include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
