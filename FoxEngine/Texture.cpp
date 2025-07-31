@@ -2,7 +2,6 @@
 #include "DirectXTex.h"
 #include <filesystem>
 
-#pragma comment(lib, "DirectXTex.lib")
 
 Texture::Texture(Graphics& gfx, const std::wstring& path)
 {

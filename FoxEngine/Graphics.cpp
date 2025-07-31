@@ -1,4 +1,5 @@
 #include "Graphics.h"
+#include "imgui_impl_dx11.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "D3DCompiler.lib")
@@ -94,6 +95,13 @@ Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(
 	vp.TopLeftX = 0;							// Top-left X position
 	vp.TopLeftY = 0;							// Top-left Y position
 	pContext->RSSetViewports(1, &vp);
+
+	ImGui_ImplDX11_Init(pDevice.Get(), pContext.Get());
+}
+
+Graphics::~Graphics()
+{
+	ImGui_ImplDX11_Shutdown();
 }
 
 void Graphics::EndFrame()

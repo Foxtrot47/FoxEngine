@@ -16,7 +16,7 @@ public:
 	Graphics() = delete;
 	Graphics(const Graphics&) = delete;
 	Graphics& operator=(const Graphics&) = delete;
-	~Graphics() = default;
+	~Graphics();
 	void EndFrame();
 	void ClearBuffer(float red, float green, float blue);
 	void DrawIndexed(UINT count);

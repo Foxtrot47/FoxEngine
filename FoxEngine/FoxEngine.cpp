@@ -1,12 +1,16 @@
 // FoxEngine.cpp : Defines the entry point for the application.  
 //  
 
+#include <memory>
 #include "framework.h"  
 #include "FoxEngine.h"
 #include "Window.h"
 #include "Timer.h"
 #include "Box.h"
-#include <memory>
+#include "ImGuiManager.h"
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx11.h"
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -16,6 +20,7 @@ int CALLBACK WinMain(
 )
 {
 	Timer timer;
+	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
 
 	std::mt19937 rng(std::random_device{}());
@@ -62,6 +67,15 @@ int CALLBACK WinMain(
 			box->Update(deltaTime);
 			box->Draw(wnd.Gfx());
 		}
+
+		// Start the Dear ImGui frame
+		ImGui_ImplDX11_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+		ImGui::ShowDemoWindow(); // Show demo window! :)
+
+		ImGui::Render();
+		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}

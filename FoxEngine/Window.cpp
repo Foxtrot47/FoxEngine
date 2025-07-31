@@ -1,5 +1,6 @@
 
 #include "Window.h"
+#include <imgui_impl_win32.h>
 
 Window::WindowClass Window::WindowClass::wndClass;
 
@@ -63,11 +64,15 @@ Window::Window(int width, int height, const LPCWSTR name, int nCmdShow) : width(
 	// Display the window
 	ShowWindow(hWnd, nCmdShow);
 
+	// Init ImGui Win32 Impl
+	ImGui_ImplWin32_Init(hWnd);
+
 	pGfx = std::make_unique<Graphics>(hWnd);
 }
 
 Window::~Window()
 {
+	ImGui_ImplWin32_Shutdown();
 	DestroyWindow(hWnd);
 }
 
@@ -107,6 +112,11 @@ LRESULT CALLBACK Window::HandleMsgThunk(HWND hWnd, UINT msg, WPARAM wParam, LPAR
 
 LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	// commented out in imgui_impl_win32 to avoid conflicts 
+	extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+		return true; 
+
 	switch (msg)
 	{
 	case WM_CLOSE:
