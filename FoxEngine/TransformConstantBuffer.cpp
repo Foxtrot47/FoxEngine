@@ -12,12 +12,14 @@ TransformConstantBuffer::TransformConstantBuffer(Graphics& gfx, const Drawable& 
 
 void TransformConstantBuffer::Bind(Graphics& gfx)
 {
-	vertexConstantBuffer->Update(gfx,
-		DirectX::XMMatrixTranspose(
-			parent.GetTransformXM() * gfx.GetProjection()
-		)
-	);
-	vertexConstantBuffer->Bind(gfx);
+    vertexConstantBuffer->Update(gfx,
+        DirectX::XMMatrixTranspose(
+			parent.GetTransformXM() *
+			gfx.GetCamera() *
+			gfx.GetProjection()
+        )
+    );
+    vertexConstantBuffer->Bind(gfx);
 }
 
 std::unique_ptr<VertexConstantBuffer<DirectX::XMMATRIX>> TransformConstantBuffer::vertexConstantBuffer;

@@ -169,3 +169,13 @@ bool Graphics::IsImGuiEnabled() const
 {
 	return imGuiEnabled;
 }
+
+void Graphics::SetCamera(DirectX::FXMMATRIX _camera)
+{
+	camera = _camera;
+}
+
+DirectX::XMMATRIX Graphics::GetCamera() const
+{
+	return camera;
+}

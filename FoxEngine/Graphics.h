@@ -25,6 +25,8 @@ public:
 	void EnableImGui();
 	void DisableImGui();
 	bool IsImGuiEnabled() const;
+	void SetCamera(DirectX::FXMMATRIX);
+	DirectX::XMMATRIX GetCamera() const;
 private:
 	DirectX::XMMATRIX projection;
 	Microsoft::WRL::ComPtr<ID3D11Device> pDevice = nullptr;
@@ -33,5 +35,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> pTarget = nullptr;
 	Microsoft::WRL::ComPtr<ID3D11DepthStencilView> pDepthStencilView = nullptr;
 	bool imGuiEnabled = true;
+	DirectX::XMMATRIX camera;
 };
 
