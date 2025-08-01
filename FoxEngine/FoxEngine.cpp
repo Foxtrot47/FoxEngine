@@ -70,9 +70,7 @@ int CALLBACK WinMain(
 			box->Update(deltaTime);
 			box->Draw(wnd.Gfx());
 		}
-
-		ImGui::ShowDemoWindow(); // Show demo window! :)
-
+		droneCam.CreateControlWindow();
 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}

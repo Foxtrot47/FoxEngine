@@ -5,6 +5,7 @@ class Camera
 {
 public:
 	DirectX::XMMATRIX GetViewMatrix() const;
+	void CreateControlWindow();
 	void Reset();
 private:
 	float orbitalRadius = 20.0f;
