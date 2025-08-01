@@ -13,6 +13,7 @@ int CALLBACK WinMain(
 	Timer timer;
 	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
+	Camera droneCam;
 
 	std::mt19937 rng(std::random_device{}());
 	std::uniform_real_distribution<float> angularDistribution(0.0f, 3.1415f * 2.0f);
@@ -36,7 +37,6 @@ int CALLBACK WinMain(
 		);
 	}
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 40.0f));
-	wnd.Gfx().SetCamera(DirectX::XMMatrixTranslation(0.0f, 0.0f, 20.0f));
 
 	// Enter main loop
 	MSG msg = { 0 };
@@ -47,7 +47,7 @@ int CALLBACK WinMain(
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
-
+			 
 			if (msg.message == WM_QUIT)
 				break;
 		}
@@ -63,6 +63,7 @@ int CALLBACK WinMain(
 		}
 
 		wnd.Gfx().BeginFrame(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
+		wnd.Gfx().SetCamera(droneCam.GetViewMatrix());
 
 		for (auto& box : boxes)
 		{
