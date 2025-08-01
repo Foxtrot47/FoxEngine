@@ -132,6 +132,11 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_KEYDOWN:
 		// syskey commands need to be handled to track ALT key (VK_MENU) and Function keys
 	case WM_SYSKEYDOWN:
+		// don't process keypress if imgui is reading
+		if (ImGui::GetIO().WantCaptureKeyboard)
+		{
+			break;
+		}
 		// Check if the key is already pressed or if autorepeat is enabled
 		if (!(lParam & 0x40000000) || kbd.AutorepeatIsEnabled())
 		{
@@ -140,15 +145,27 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_KEYUP:
 	case WM_SYSKEYUP:
+		if (ImGui::GetIO().WantCaptureKeyboard)
+		{
+			break;
+		}
 		kbd.OnKeyReleased(static_cast<unsigned char>(wParam));
 		break;
 	case WM_CHAR:
+		if (ImGui::GetIO().WantCaptureKeyboard)
+		{
+			break;
+		}
 		kbd.OnChar(static_cast<unsigned char>(wParam));
 		break;
 
 		// mouse messages
 
 	case WM_MOUSEMOVE:
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			break;
+		}
 		const POINTS pt = MAKEPOINTS(lParam);
 		// in client region -> log move and log enter + capture mouse (if not previously in window)
 		if (pt.x >= 0 && pt.x < width && pt.y >= 0 && pt.y < height)
@@ -174,14 +191,26 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		break;
 
 	case WM_LBUTTONDOWN:
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			break;
+		}
 		const POINTS ptLeft = MAKEPOINTS(lParam);
 		mouse.OnLeftButtonPressed(ptLeft.x, ptLeft.y);
 		break;
 	case WM_RBUTTONDOWN:
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			break;
+		}
 		const POINTS ptRight = MAKEPOINTS(lParam);
 		mouse.OnRightButtonPressed(ptRight.x, ptRight.y);
 		break;
 	case WM_LBUTTONUP:
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			break;
+		}
 		const POINTS ptLeftUp = MAKEPOINTS(lParam);
 		mouse.OnLeftButtonReleased(ptLeftUp.x, ptLeftUp.y);
 		// release mouse if outside of window
@@ -192,6 +221,10 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_RBUTTONUP:
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			break;
+		}
 		const POINTS ptRightUp = MAKEPOINTS(lParam);
 		mouse.OnRightButtonReleased(ptRightUp.x, ptRightUp.y);
 		// release mouse if outside of window
@@ -202,6 +235,10 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_MOUSEWHEEL:
+		if (ImGui::GetIO().WantCaptureMouse)
+		{
+			break;
+		}
 		const POINTS ptWheel = MAKEPOINTS(lParam);
 		const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
 		mouse.OnWheelDelta(ptWheel.x, ptWheel.y, delta);
