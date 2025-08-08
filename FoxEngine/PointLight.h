@@ -1,6 +1,10 @@
 #pragma once
 #include "Graphics.h"
 #include "ConstantBuffer.h"
+#include <memory>
+#include "SolidSphere.h"
+
+class SolidSphere;
 
 class PointLight
 {
@@ -8,6 +12,8 @@ public:
 	PointLight(Graphics& gfx);
 	void Bind(Graphics& gfx);
 	void SpawnControlWindow();
+
+	void DrawSphere(Graphics& gfx);
 private:
 	struct LightCBuff
 	{
@@ -19,5 +25,7 @@ private:
 	DirectX::XMFLOAT3 pos = { 0.0f, 0.0f, 0.0f };
 	DirectX::XMFLOAT3 color = { 1.0f, 1.0f, 1.0f };
 	std::unique_ptr<PixelConstantBuffer<LightCBuff>> lightPSCbuff;
+
+	std::unique_ptr<class SolidSphere> sphere;
 };
 

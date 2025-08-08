@@ -7,6 +7,7 @@ PointLight::PointLight(Graphics& gfx)
 	{
 		lightPSCbuff = std::make_unique<PixelConstantBuffer<LightCBuff>>(gfx);
 	}
+	sphere = std::make_unique<SolidSphere>(gfx, 0.3f, 20, 20);
 }
 
 void PointLight::SpawnControlWindow()
@@ -24,6 +25,14 @@ void PointLight::SpawnControlWindow()
 		ImGui::SliderFloat("B", &color.z, 0.0f, 1.0f, "%.1f");
 	}
 	ImGui::End();
+}
+
+void PointLight::DrawSphere(Graphics& gfx)
+{
+	if (!sphere) return;
+
+	sphere->SetPosition(pos);
+	sphere->Draw(gfx);
 }
 
 void PointLight::Bind(Graphics& gfx)

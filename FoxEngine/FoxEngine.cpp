@@ -72,6 +72,8 @@ int CALLBACK WinMain(
 			box->Update(deltaTime);
 			box->Draw(wnd.Gfx());
 		}
+		light.DrawSphere(wnd.Gfx());
+
 		droneCam.CreateControlWindow();
 		light.SpawnControlWindow();
 
