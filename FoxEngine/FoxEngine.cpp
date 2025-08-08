@@ -14,6 +14,7 @@ int CALLBACK WinMain(
 	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
 	Camera droneCam;
+	PointLight light(wnd.Gfx());
 
 	std::mt19937 rng(std::random_device{}());
 	std::uniform_real_distribution<float> angularDistribution(0.0f, 3.1415f * 2.0f);
@@ -23,18 +24,18 @@ int CALLBACK WinMain(
 
 	std::vector<std::unique_ptr<class Box>> boxes;
 
-	for ( auto index = 0; index < 80 ; index++)
+	for (auto index = 0; index < 80; index++)
 	{
 		boxes.push_back(
 			std::make_unique<Box>(
-		wnd.Gfx(),
-		rng,
-		angularDistribution,
-		deltaDistribution,
-		orbitalDistribution,
-		radiusDistribution
+				wnd.Gfx(),
+				rng,
+				angularDistribution,
+				deltaDistribution,
+				orbitalDistribution,
+				radiusDistribution
 			)
-	);
+		);
 	}
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 40.0f));
 
@@ -47,7 +48,7 @@ int CALLBACK WinMain(
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
-			 
+
 			if (msg.message == WM_QUIT)
 				break;
 		}
@@ -64,13 +65,15 @@ int CALLBACK WinMain(
 
 		wnd.Gfx().BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
 		wnd.Gfx().SetCamera(droneCam.GetViewMatrix());
+		light.Bind(wnd.Gfx());
 
 		for (auto& box : boxes)
 		{
-		box->Update(deltaTime);
-		box->Draw(wnd.Gfx());
+			box->Update(deltaTime);
+			box->Draw(wnd.Gfx());
 		}
 		droneCam.CreateControlWindow();
+		light.SpawnControlWindow();
 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
