@@ -12,7 +12,7 @@ public:
 		DirectX::XMMATRIX modelViewProjection;
 		DirectX::XMMATRIX modelMatrix;
 	};
-	TransformConstantBuffer(Graphics& gfx, const Drawable& parent);
+	TransformConstantBuffer(Graphics& gfx, const Drawable& parent, UINT slot = 0u);
 	void Bind(Graphics& gfx) override;
 private:
 	static std::unique_ptr<VertexConstantBuffer<Transforms>> vertexConstantBuffer;

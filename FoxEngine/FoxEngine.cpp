@@ -13,7 +13,7 @@ int CALLBACK WinMain(
 	Timer timer;
 	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
-	Camera droneCam;
+	Camera droneCam(wnd.Gfx());
 	PointLight light(wnd.Gfx());
 
 	std::mt19937 rng(std::random_device{}());
@@ -66,6 +66,7 @@ int CALLBACK WinMain(
 		wnd.Gfx().BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
 		wnd.Gfx().SetCamera(droneCam.GetViewMatrix());
 		light.Bind(wnd.Gfx());
+		droneCam.Bind(wnd.Gfx());
 
 		for (auto& box : boxes)
 		{

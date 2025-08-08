@@ -1,6 +1,14 @@
 #include "Camera.h"
 #include "imgui.h"
 
+Camera::Camera(Graphics& gfx)
+{
+	if (!cameraCBuff)
+	{
+		cameraCBuff = std::make_unique<PixelConstantBuffer<CamerCbuff>>(gfx, 11u);
+	}
+}
+
 DirectX::XMMATRIX Camera::GetViewMatrix() const
 {
 	// Calculate the camera position based on spherical coordinates
@@ -46,4 +54,23 @@ void Camera::Reset()
 	yaw = 0.0f;
 	theta = 0.0f;
 	phi = 0.0f;
+}
+
+void Camera::Bind(Graphics& gfx)
+{
+	const CamerCbuff buffer = { GetPositionWS(), 0.0f};
+	cameraCBuff->Update(gfx, buffer);
+	cameraCBuff->Bind(gfx);
+}
+
+DirectX::XMFLOAT3 Camera::GetPositionWS() const
+{
+	using namespace DirectX;
+	XMVECTOR posV = XMVector3Transform(
+		XMVectorSet(0.0f, 0.0f, -orbitalRadius, 0.0f),
+		XMMatrixRotationRollPitchYaw(phi, -theta, 0.0f)
+	);
+	XMFLOAT3 pos;
+	XMStoreFloat3(&pos, posV);
+	return pos;
 }
