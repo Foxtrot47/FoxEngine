@@ -2,7 +2,7 @@
 #include "framework.h"
 #include <filesystem>
 
-std::wstring GetExecutableDirectory()
+inline std::wstring GetExecutableDirectory()
 {
 	wchar_t path[MAX_PATH];
 	GetModuleFileNameW(nullptr, path, MAX_PATH);
