@@ -27,14 +27,14 @@ int CALLBACK WinMain(
 	{
 		boxes.push_back(
 			std::make_unique<Box>(
-				wnd.Gfx(),
-				rng,
-				angularDistribution,
-				deltaDistribution,
-				orbitalDistribution,
-				radiusDistribution
+		wnd.Gfx(),
+		rng,
+		angularDistribution,
+		deltaDistribution,
+		orbitalDistribution,
+		radiusDistribution
 			)
-		);
+	);
 	}
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 40.0f));
 
@@ -62,13 +62,13 @@ int CALLBACK WinMain(
 			wnd.Gfx().EnableImGui();
 		}
 
-		wnd.Gfx().BeginFrame(0.0f, 0.5f, 1.0f); // Clear the back buffer to blue
+		wnd.Gfx().BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
 		wnd.Gfx().SetCamera(droneCam.GetViewMatrix());
 
 		for (auto& box : boxes)
 		{
-			box->Update(deltaTime);
-			box->Draw(wnd.Gfx());
+		box->Update(deltaTime);
+		box->Draw(wnd.Gfx());
 		}
 		droneCam.CreateControlWindow();
 
