@@ -2,6 +2,10 @@ cbuffer LightCBuffer : register(b0)
 {
     float3 lightPos;
     float3 lightColor;
+    float ambientStrength;
+    float3 ambientLight;
+    float specularIntensity;
+    float specularPower;
 };
 
 cbuffer CamerCbuffer : register(b11)
@@ -14,11 +18,6 @@ SamplerState splr : register(s0);
 
 float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexCoord) : SV_Target
 {
-    float ambientStrength = 0.1f;
-    float3 ambientLight = float3(1.0f, 1.0f, 1.0f);
-    float specularIntensity = 1.0f;
-    float specularPower = 10.0f;
-    
     float3 N = normalize(normal);
     float3 vectorToLight = lightPos - worldPos;
     float distanceToLight = length(vectorToLight);

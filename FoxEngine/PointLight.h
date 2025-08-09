@@ -13,19 +13,23 @@ public:
 	void Bind(Graphics& gfx);
 	void SpawnControlWindow();
 
-	void DrawSphere(Graphics& gfx);
+	void DrawSphere(Graphics& gfx) const;
+	void Reset();
 private:
 	struct LightCBuff
 	{
-		DirectX::XMFLOAT3 pos;
+		DirectX::XMFLOAT3 lightPos;
 		float padding;
 		DirectX::XMFLOAT3 lightColor;
-		float padding2;
+		float ambientStrength;
+		DirectX::XMFLOAT3 ambientLight;
+		float specularIntensity;
+		float specularPower;
+		float padding2[3];
 	};
-	DirectX::XMFLOAT3 pos = { 0.0f, 0.0f, 0.0f };
-	DirectX::XMFLOAT3 color = { 1.0f, 1.0f, 1.0f };
-	std::unique_ptr<PixelConstantBuffer<LightCBuff>> lightPSCbuff;
-
+	LightCBuff lightCbuff;
+	std::unique_ptr<PixelConstantBuffer<LightCBuff>> plightPSCbuff;
 	std::unique_ptr<class SolidSphere> sphere;
+	bool valuesChanged;
 };
 
