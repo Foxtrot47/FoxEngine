@@ -1,5 +1,6 @@
 {
   "dependencies": [
+    "assimp",
     "directxtex",
     {
       "name": "imgui",
