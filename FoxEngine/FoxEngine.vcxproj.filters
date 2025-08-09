@@ -114,6 +114,9 @@
     <ClInclude Include="SolidSphere.h">
       <Filter>Header Files\Drawable</Filter>
     </ClInclude>
+    <ClInclude Include="Mesh.h">
+      <Filter>Header Files\Drawable</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Window.cpp">
@@ -161,9 +164,6 @@
     <ClCompile Include="ImGuiManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="DrawableBase.cpp">
-      <Filter>Source Files\Drawable</Filter>
-    </ClCompile>
     <ClCompile Include="TransformConstantBuffer.cpp">
       <Filter>Source Files\Drawable</Filter>
     </ClCompile>
@@ -180,6 +180,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SolidSphere.cpp">
+      <Filter>Source Files\Drawable</Filter>
+    </ClCompile>
+    <ClCompile Include="Mesh.cpp">
       <Filter>Source Files\Drawable</Filter>
     </ClCompile>
   </ItemGroup>
@@ -216,6 +219,9 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="SolidSphereVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SolidSpherePS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

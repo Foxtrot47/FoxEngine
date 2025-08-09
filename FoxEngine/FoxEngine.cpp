@@ -2,6 +2,11 @@
 //  
 
 #include "FoxEngine.h"
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+#include "FileUtils.h"
+#include "Mesh.h"
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -16,28 +21,11 @@ int CALLBACK WinMain(
 	Camera droneCam(wnd.Gfx());
 	PointLight light(wnd.Gfx());
 
-	std::mt19937 rng(std::random_device{}());
-	std::uniform_real_distribution<float> angularDistribution(0.0f, 3.1415f * 2.0f);
-	std::uniform_real_distribution<float> deltaDistribution(0.0f, 3.1415f * 2.0f);
-	std::uniform_real_distribution<float> orbitalDistribution(0.0f, 3.1415f * 0.3f);
-	std::uniform_real_distribution<float> radiusDistribution(6.0f, 20.0f);
+	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 1000.0f));
 
-	std::vector<std::unique_ptr<class Box>> boxes;
-
-	for (auto index = 0; index < 80; index++)
-	{
-		boxes.push_back(
-			std::make_unique<Box>(
-				wnd.Gfx(),
-				rng,
-				angularDistribution,
-				deltaDistribution,
-				orbitalDistribution,
-				radiusDistribution
-			)
-		);
-	}
-	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 40.0f));
+	auto modelPath = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01.FBX";
+	auto texturePath = GetExecutableDirectory() + L"\\Textures\\T_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01_D.EXR";
+	auto cone = std::make_unique<Mesh>(wnd.Gfx(),modelPath,texturePath);
 
 	// Enter main loop
 	MSG msg = { 0 };
@@ -68,11 +56,8 @@ int CALLBACK WinMain(
 		light.Bind(wnd.Gfx());
 		droneCam.Bind(wnd.Gfx());
 
-		for (auto& box : boxes)
-		{
-			box->Update(deltaTime);
-			box->Draw(wnd.Gfx());
-		}
+		cone->Draw(wnd.Gfx());
+
 		light.DrawSphere(wnd.Gfx());
 
 		droneCam.CreateControlWindow();

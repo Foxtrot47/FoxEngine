@@ -15,6 +15,16 @@ void PointLight::SpawnControlWindow()
 {
 	if(ImGui::Begin("Light"))
 	{
+
+		ImGui::Text("Position");
+		if (ImGui::SliderFloat("X", &lightCbuff.lightPos.x, -100.0f, 100.0f, "%.1f"))
+			valuesChanged = true;
+
+		if (ImGui::SliderFloat("Y", &lightCbuff.lightPos.y, -100.0f, 100.0f, "%.1f"))
+			valuesChanged = true;
+		if (ImGui::SliderFloat("Z", &lightCbuff.lightPos.z, -100.0f, 100.0f, "%.1f"))
+			valuesChanged = true;
+		
 		if (ImGui::ColorEdit3("Light Color", reinterpret_cast<float*>(&lightCbuff.lightColor)))
 			valuesChanged = true;
         
