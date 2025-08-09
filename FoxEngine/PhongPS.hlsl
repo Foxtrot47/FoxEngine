@@ -35,5 +35,5 @@ float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexC
     float spec = pow(max(0.0f, dot(reflectionDirection, vectorToCamera)), specularPower);
     float3 specular = lightColor * specularIntensity * spec * attenuation;
 
-    return float4(tex.Sample(splr, tc).rgb * (ambient + diffuse + specular), 1.0f);
+    return tex.Sample(splr, tc) * float4(saturate(ambient + diffuse + specular), 1.0f);
 }
