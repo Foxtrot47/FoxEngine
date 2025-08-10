@@ -23,7 +23,7 @@ float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexC
     float distanceToLight = length(vectorToLight);
     float3 directionToLight = (distanceToLight > 1e-6f) ? (vectorToLight / distanceToLight) : float3(0.0f, 0.0f, 0.0f);
     
-    float attenuation = 1.0f / (1.0f + 0.014f * distanceToLight + 0.0007f * (distanceToLight * distanceToLight));
+    float attenuation = 1.0f / (1.0f + 0.0014f * distanceToLight + 0.000007f * (distanceToLight * distanceToLight));
 
     float3 ambient = ambientLight * ambientStrength;
     
