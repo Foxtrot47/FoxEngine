@@ -17,5 +17,8 @@ protected:
 
 	SceneNode* parent;
 	std::vector<std::unique_ptr<SceneNode>> children;
+
+	mutable DirectX::XMMATRIX worldTransform = DirectX::XMMatrixIdentity();
+	mutable bool isTransformDirty = true;
 };
 

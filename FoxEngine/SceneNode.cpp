@@ -6,11 +6,14 @@ SceneNode::SceneNode(SceneNode* parent)
 	rotationQuat({ 0.0f, 0.0f, 0.0f, 1.0f }),
 	scale(1.0f, 1.0f, 1.0f),
 	parent(parent)
-{}
+{
+	isTransformDirty = true;
+}
 
 void SceneNode::AddChild(std::unique_ptr<SceneNode> child)
 {
 	child->parent = this;
+	child->isTransformDirty = true;
 	children.push_back(std::move(child));
 }
 DirectX::XMMATRIX SceneNode::GetLocalTransform() const
@@ -21,8 +24,13 @@ DirectX::XMMATRIX SceneNode::GetLocalTransform() const
 }
 DirectX::XMMATRIX SceneNode::GetWorldTransform() const
 {
-	return GetLocalTransform() *
-		(parent != nullptr ? parent->GetWorldTransform() : DirectX::XMMatrixIdentity());
+	if (isTransformDirty)
+	{
+		worldTransform = GetLocalTransform() *
+			(parent != nullptr ? parent->GetWorldTransform() : DirectX::XMMatrixIdentity());
+		isTransformDirty = false;
+	}
+	return worldTransform;
 }
 
 void SceneNode::Draw(Graphics& gfx)

@@ -107,6 +107,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
         childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, texturePath);
         AddChild(std::move(childNode));
     }
+    isTransformDirty = true;
 }
 
 void MeshNode::AddMesh(std::unique_ptr<Mesh> mesh)
