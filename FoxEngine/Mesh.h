@@ -3,8 +3,14 @@
 class Mesh : public DrawableBase<Mesh>
 {
 public:
-	Mesh(Graphics& gfx, std::wstring& modelPath, std::wstring& texturePath);
+	struct Vertex
+	{
+		DirectX::XMFLOAT3 position;
+		DirectX::XMFLOAT3 normal;
+		DirectX::XMFLOAT2 texCoord;
+	};
+
+	Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned short> indices, std::wstring texturePath);
 	void Update(float deltaTime) override;
-	DirectX::XMMATRIX GetTransformXM() const override;
 };
 

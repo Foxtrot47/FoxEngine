@@ -53,7 +53,10 @@ void PointLight::DrawSphere(Graphics& gfx) const
 	if (!sphere) return;
 
 	sphere->SetPosition(lightCbuff.lightPos);
-	sphere->Draw(gfx);
+	sphere->Draw(gfx, DirectX::XMMatrixTranslation(
+		lightCbuff.lightPos.x,
+		lightCbuff.lightPos.y,
+		lightCbuff.lightPos.z));
 }
 
 void PointLight::Bind(Graphics& gfx)

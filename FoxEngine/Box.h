@@ -11,7 +11,6 @@ public:
 		std::uniform_real_distribution<float>& radiusDistribution
 	);
 	void Update(float deltaTime) override;
-	DirectX::XMMATRIX GetTransformXM() const override;
 private:
 	float radius;
 	float roll = 0.0f;

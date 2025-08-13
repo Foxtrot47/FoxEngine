@@ -2,11 +2,7 @@
 //  
 
 #include "FoxEngine.h"
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
-#include "FileUtils.h"
-#include "Mesh.h"
+
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -22,10 +18,7 @@ int CALLBACK WinMain(
 	PointLight light(wnd.Gfx());
 
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 1000.0f));
-
-	auto modelPath = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01.FBX";
-	auto texturePath = GetExecutableDirectory() + L"\\Textures\\T_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01_D.EXR";
-	auto cone = std::make_unique<Mesh>(wnd.Gfx(),modelPath,texturePath);
+	SceneManager scene(wnd.Gfx());
 
 	// Enter main loop
 	MSG msg = { 0 };
@@ -55,8 +48,8 @@ int CALLBACK WinMain(
 		wnd.Gfx().SetCamera(droneCam.GetViewMatrix());
 		light.Bind(wnd.Gfx());
 		droneCam.Bind(wnd.Gfx());
-
-		cone->Draw(wnd.Gfx());
+		
+		scene.Draw(wnd.Gfx());
 
 		light.DrawSphere(wnd.Gfx());
 

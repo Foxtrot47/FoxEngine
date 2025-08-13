@@ -1,12 +1,20 @@
 #include "Drawable.h"
 #include <cassert>
 #include "IndexBuffer.h"
+#include "TransformConstantBuffer.h"
 
-void Drawable::Draw(Graphics& gfx) const
+void Drawable::Draw(Graphics& gfx, DirectX::XMMATRIX transform) const
 {
 	for (auto& bindable : bindables)
 	{
-		bindable->Bind(gfx);
+		if (auto* transformCB = dynamic_cast<TransformConstantBuffer*>(bindable.get()))
+		{
+			transformCB->Bind(gfx, transform);
+		}
+		else
+		{
+			bindable->Bind(gfx);
+		}
 	}
 	for (const auto& staticBindable : GetStaticBindables())
 	{

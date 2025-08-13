@@ -1,8 +1,6 @@
 #include "TransformConstantBuffer.h"
 
-TransformConstantBuffer::TransformConstantBuffer(Graphics& gfx, const Drawable& parent, UINT slot)
-	:
-	parent(parent)
+TransformConstantBuffer::TransformConstantBuffer(Graphics& gfx, UINT slot)
 {
 	if (!vertexConstantBuffer)
 	{
@@ -10,13 +8,12 @@ TransformConstantBuffer::TransformConstantBuffer(Graphics& gfx, const Drawable& 
 	}
 }
 
-void TransformConstantBuffer::Bind(Graphics& gfx)
+void TransformConstantBuffer::Bind(Graphics& gfx, DirectX::XMMATRIX transform)
 {
-	const auto modelMatrix = parent.GetTransformXM();
 	const Transforms transforms = {
-		DirectX::XMMatrixTranspose(modelMatrix),
+		DirectX::XMMatrixTranspose(transform),
 		DirectX::XMMatrixTranspose(
-			modelMatrix *
+			transform *
 			gfx.GetCamera() *
 			gfx.GetProjection()
 		)

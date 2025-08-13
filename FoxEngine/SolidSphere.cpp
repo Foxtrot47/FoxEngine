@@ -83,13 +83,7 @@ SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 		SetIndexBufferFromStatic();
 	}
 
-	AddBind(std::make_unique<TransformConstantBuffer>(gfx, *this));
-}
-
-DirectX::XMMATRIX SolidSphere::GetTransformXM() const
-{
-	return
-		DirectX::XMMatrixScaling(scale, scale, scale) * DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+	AddBind(std::make_unique<TransformConstantBuffer>(gfx));
 }
 
 void SolidSphere::Update(float deltaTime)

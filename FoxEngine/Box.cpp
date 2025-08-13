@@ -129,7 +129,7 @@ Box::Box(Graphics& gfx,
 		SetIndexBufferFromStatic();
 	}
 
-	AddBind(std::make_unique<TransformConstantBuffer>(gfx, *this));
+	AddBind(std::make_unique<TransformConstantBuffer>(gfx));
 }
 
 void Box::Update(float deltaTime)
@@ -140,11 +140,4 @@ void Box::Update(float deltaTime)
 	theta += deltaTheta * deltaTime;
 	phi += deltaPhi * deltaTime;
 	chi += deltaChi * deltaTime;
-}
-
-DirectX::XMMATRIX Box::GetTransformXM() const
-{
-	return DirectX::XMMatrixRotationRollPitchYaw(pitch, yaw, roll) *
-		DirectX::XMMatrixTranslation(radius, 0.0f, 0.0f) *
-		DirectX::XMMatrixRotationRollPitchYaw(theta, phi, chi);
 }

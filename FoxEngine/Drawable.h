@@ -12,12 +12,11 @@ public:
 	Drawable() = default;
 	Drawable(const Drawable&) = delete;
 
-	void Draw(Graphics& gfx) const;
+	void Draw(Graphics& gfx, DirectX::XMMATRIX transform) const;
 	void AddBind(std::unique_ptr<Bindable> bindable);
 	void AddIndexBuffer(std::unique_ptr<class IndexBuffer> indexBuffer);
 
 	virtual void Update(float deltaTime) = 0;
-	virtual DirectX::XMMATRIX GetTransformXM() const = 0;
 	virtual ~Drawable() = default;
 private:
 	virtual const std::vector<std::unique_ptr<Bindable>>& GetStaticBindables() const = 0;

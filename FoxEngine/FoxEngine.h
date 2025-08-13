@@ -13,3 +13,4 @@
 #include "imgui_impl_dx11.h"
 #include "Camera.h"
 #include "PointLight.h"
+#include "SceneManager.h"
