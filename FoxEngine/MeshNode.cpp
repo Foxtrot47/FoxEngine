@@ -85,14 +85,17 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
         }
 
         std::vector<unsigned short> indices;
-        indices.reserve(pMesh->mNumFaces * 3);
-        for (unsigned short i = 0; i < pMesh->mNumFaces; i++)
+        indices.resize(pMesh->mNumFaces * 3);
+
+        for (size_t i = 0; i < pMesh->mNumFaces; ++i)
         {
             const auto& face = pMesh->mFaces[i];
             assert(face.mNumIndices == 3);
-            indices.push_back(face.mIndices[0]);
-            indices.push_back(face.mIndices[1]);
-            indices.push_back(face.mIndices[2]);
+
+            size_t idx = i * 3;
+            indices[idx] = face.mIndices[0];
+            indices[idx + 1] = face.mIndices[1];
+            indices[idx + 2] = face.mIndices[2];
         }
         meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), texturePath));
     }
