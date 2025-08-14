@@ -4,6 +4,6 @@
 class TransformNode : public SceneNode
 {
 public:
-    TransformNode(SceneNode* parent);
+    TransformNode(SceneNode* parent, std::optional<std::string> name);
     void Draw(Graphics& gfx) override;
 };

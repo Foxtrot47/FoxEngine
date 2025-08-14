@@ -3,20 +3,26 @@
 
 #include <assimp/postprocess.h>
 
-MeshNode::MeshNode(Graphics& gfx, SceneNode* parent)
+MeshNode::MeshNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name)
     :
-    SceneNode(parent)
-{}
+    SceneNode(parent, name)
+{
+}
 
-MeshNode::MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std::wstring texturePath)
-    : SceneNode(parent)
+MeshNode::MeshNode(Graphics& gfx,
+                   SceneNode* parent,
+                   std::wstring modelPath,
+                   std::wstring texturePath,
+                   std::optional<std::string> name)
+    :
+    SceneNode(parent, name)
 {
     std::string modelPathStr(modelPath.begin(), modelPath.end());
     Assimp::Importer importer;
     const auto pScene = importer.ReadFile(modelPathStr,
-        aiProcess_Triangulate |
-        aiProcess_JoinIdenticalVertices |
-        aiProcess_FlipUVs
+                                          aiProcess_Triangulate |
+                                          aiProcess_JoinIdenticalVertices |
+                                          aiProcess_FlipUVs
     );
 
     assert(pScene && pScene->mRootNode && "Failed to load model file");
@@ -27,17 +33,23 @@ MeshNode::MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
                    const std::vector<Mesh::Vertex>& vertices,
                    const std::vector<unsigned short>& indices,
-                   std::wstring texturePath
-)
+                   std::wstring texturePath,
+                   std::optional<std::string>)
     :
-    SceneNode(parent)
+    SceneNode(parent, name)
 {
     meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, texturePath));
 }
 
 void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring& texturePath)
 {
-	const auto &aiTransform = node->mTransformation;
+    // don't use assimps root node naming
+    if (std::strcmp(node->mName.C_Str(),  "RootNode"))
+    {
+        name = node->mName.C_Str();
+    }
+
+    const auto& aiTransform = node->mTransformation;
     auto localTransform = DirectX::XMMatrixTranspose(DirectX::XMMATRIX(
         aiTransform.a1, aiTransform.a2, aiTransform.a3, aiTransform.a4,
         aiTransform.b1, aiTransform.b2, aiTransform.b3, aiTransform.b4,
@@ -103,7 +115,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
     // handle child nodes
     for (unsigned int i = 0; i < node->mNumChildren; ++i)
     {
-        auto childNode = std::make_unique<MeshNode>(gfx,parent);
+        auto childNode = std::make_unique<MeshNode>(gfx, parent, std::nullopt);
         childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, texturePath);
         AddChild(std::move(childNode));
     }

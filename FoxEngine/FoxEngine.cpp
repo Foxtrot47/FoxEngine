@@ -55,6 +55,7 @@ int CALLBACK WinMain(
 
 		droneCam.CreateControlWindow();
 		light.SpawnControlWindow();
+		scene.DrawSceneGraph(wnd.Gfx());
 
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}

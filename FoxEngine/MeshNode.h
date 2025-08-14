@@ -8,13 +8,14 @@
 class MeshNode : public SceneNode
 {
 public:
-    MeshNode(Graphics& gfx, SceneNode* parent);
-    MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std::wstring texturePath);
+    MeshNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name);
+    MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std::wstring texturePath, std::optional<std::string> name);
     MeshNode(Graphics& gfx,
              SceneNode* parent,
              const std::vector<Mesh::Vertex>& vertices,
              const std::vector<unsigned short>& indices,
-             std::wstring texturePath);
+             std::wstring texturePath,
+             std::optional<std::string>);
     void AddMesh(std::unique_ptr<Mesh> mesh);
     void Draw(Graphics& gfx);
 private:
