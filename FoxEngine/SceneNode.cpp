@@ -59,14 +59,14 @@ void SceneNode::MarkDirty() const
 	}
 }
 
-void SceneNode::DrawUI(SceneNode*& pSelectedNode)
+void SceneNode::DrawSceneNode(SceneNode*& pSelectedNode)
 {
 	// don't render for root node
 	if (name == "Root_Node")
 	{
 		for (auto& child : children)
 		{
-			child->DrawUI(pSelectedNode);
+			child->DrawSceneNode(pSelectedNode);
 		}
 		return;
 	}
@@ -88,46 +88,46 @@ void SceneNode::DrawUI(SceneNode*& pSelectedNode)
 
 	if (isNodeOpen)
 	{
-		if (pSelectedNode == this)
-		{
-			ImGui::Text("Transform");
-			if (ImGui::DragFloat3("Position", &position.x, 0.1f))
-			{
-				MarkDirty();
-			}
-			if (ImGui::DragFloat3("Scale", &scale.x, 0.1f))
-			{
-				MarkDirty();
-			}
-			// Store last Euler angles to stabilize UI updates
-			static DirectX::XMFLOAT3 lastEuler = {0.0f, 0.0f, 0.0f};
-
-			// Get current Euler angles
-			auto euler = ConvertQuaternionToEuler(rotationQuat);
-			if (lastEuler.x == 0.0f && lastEuler.y == 0.0f && lastEuler.z == 0.0f)
-			{
-				lastEuler = euler;
-			}
-			
-			if (ImGui::DragFloat3("Rotation", &lastEuler.x, 0.5f))
-			{
-				const auto newQuat = DirectX::XMQuaternionRotationRollPitchYaw(
-					lastEuler.x * DirectX::XM_PI / 180.0f,
-					lastEuler.y * DirectX::XM_PI / 180.0f,
-					lastEuler.z * DirectX::XM_PI / 180.0f
-				);
-				DirectX::XMStoreFloat4(&rotationQuat, DirectX::XMQuaternionNormalize(newQuat));
-				MarkDirty();
-			}
-		}
-
 		for (auto& child : children)
 		{
-			child->DrawUI(pSelectedNode);
+			child->DrawSceneNode(pSelectedNode);
 		}
 		ImGui::TreePop();
 	}
 
+}
+
+void SceneNode::DrawInspectorWindow()
+{
+	ImGui::Text("Transform");
+	if (ImGui::DragFloat3("Position", &position.x, 0.1f))
+	{
+		MarkDirty();
+	}
+	if (ImGui::DragFloat3("Scale", &scale.x, 0.1f))
+	{
+		MarkDirty();
+	}
+	// Store last Euler angles to stabilize UI updates
+	static DirectX::XMFLOAT3 lastEuler = { 0.0f, 0.0f, 0.0f };
+
+	// Get current Euler angles
+	auto euler = ConvertQuaternionToEuler(rotationQuat);
+	if (lastEuler.x == 0.0f && lastEuler.y == 0.0f && lastEuler.z == 0.0f)
+	{
+		lastEuler = euler;
+	}
+
+	if (ImGui::DragFloat3("Rotation", &lastEuler.x, 0.5f))
+	{
+		const auto newQuat = DirectX::XMQuaternionRotationRollPitchYaw(
+			lastEuler.x * DirectX::XM_PI / 180.0f,
+			lastEuler.y * DirectX::XM_PI / 180.0f,
+			lastEuler.z * DirectX::XM_PI / 180.0f
+		);
+		DirectX::XMStoreFloat4(&rotationQuat, DirectX::XMQuaternionNormalize(newQuat));
+		MarkDirty();
+	}
 }
 
 int SceneNode::count;

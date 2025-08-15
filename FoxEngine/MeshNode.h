@@ -18,7 +18,7 @@ public:
              std::optional<std::string>);
     void AddMesh(std::unique_ptr<Mesh> mesh);
     void Draw(Graphics& gfx);
-    void DrawUI(SceneNode*& pSelectedNode) override;
+    void DrawSceneNode(SceneNode*& pSelectedNode) override;
 private:
     void LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring& texturePath);
     std::vector<std::unique_ptr<Mesh>> meshes;

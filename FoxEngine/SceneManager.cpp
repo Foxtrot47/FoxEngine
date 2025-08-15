@@ -36,7 +36,16 @@ void SceneManager::DrawSceneGraph(Graphics& gfx)
 {
 	if (ImGui::Begin("Scene Graph"))
 	{
-		rootNode->DrawUI(pSelectedNode);
+		rootNode->DrawSceneNode(pSelectedNode);
+	}
+	ImGui::End();
+
+	if (ImGui::Begin("Inspector"))
+	{
+		if (pSelectedNode != nullptr)
+		{
+			pSelectedNode->DrawInspectorWindow();
+		}
 	}
 	ImGui::End();
 }

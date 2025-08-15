@@ -140,14 +140,14 @@ void MeshNode::Draw(Graphics& gfx)
     }
 }
 
-void MeshNode::DrawUI(SceneNode*& pSelectedNode)
+void MeshNode::DrawSceneNode(SceneNode*& pSelectedNode)
 {
     if (meshes.empty() && children.size() == 1)
     {
-        children[0]->DrawUI(pSelectedNode);
+        children[0]->DrawSceneNode(pSelectedNode);
         return;
 	}
     else {
-        SceneNode::DrawUI(pSelectedNode);
+        SceneNode::DrawSceneNode(pSelectedNode);
     }
 }
