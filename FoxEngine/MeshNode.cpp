@@ -139,3 +139,15 @@ void MeshNode::Draw(Graphics& gfx)
         child->Draw(gfx);
     }
 }
+
+void MeshNode::DrawUI(SceneNode*& pSelectedNode)
+{
+    if (meshes.empty() && children.size() == 1)
+    {
+        children[0]->DrawUI(pSelectedNode);
+        return;
+	}
+    else {
+        SceneNode::DrawUI(pSelectedNode);
+    }
+}

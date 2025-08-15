@@ -11,7 +11,7 @@ public:
 	DirectX::XMMATRIX GetWorldTransform() const;
 	virtual void Draw(Graphics& gfx);
 	virtual ~SceneNode() = default;
-	void DrawUI(SceneNode*& pSelectedNode);
+	virtual void DrawUI(SceneNode*& pSelectedNode);
 	const std::string& GetName() const;
 protected:
 	void MarkDirty() const;
