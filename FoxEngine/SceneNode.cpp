@@ -61,6 +61,16 @@ void SceneNode::MarkDirty() const
 
 void SceneNode::DrawUI(SceneNode*& pSelectedNode)
 {
+	// don't render for root node
+	if (name == "Root_Node")
+	{
+		for (auto& child : children)
+		{
+			child->DrawUI(pSelectedNode);
+		}
+		return;
+	}
+
 	const auto nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow
 		| ((pSelectedNode == this) ? ImGuiTreeNodeFlags_Selected : 0)
 		| (children.empty() ? ImGuiTreeNodeFlags_Leaf : 0);
