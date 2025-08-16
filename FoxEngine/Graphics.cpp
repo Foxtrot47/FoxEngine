@@ -5,7 +5,7 @@
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "D3DCompiler.lib")
 
-Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(nullptr)
+Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullptr), pSwapChain(nullptr), pContext(nullptr)
 {
 	// Create a struct to hold information about the swap chain
 	DXGI_SWAP_CHAIN_DESC scd;
@@ -14,8 +14,8 @@ Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(
 	// Fill the swap chain description struct
 	scd.BufferCount = 1;                                   // One back buffer
 	scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;    // Use 32-bit color
-	scd.BufferDesc.Width = 0;                              // Set the back buffer width
-	scd.BufferDesc.Height = 0;                             // Set the back buffer height
+	scd.BufferDesc.Width = windowWidth;                    // Set the back buffer width
+	scd.BufferDesc.Height = windowHeight;                  // Set the back buffer height
 	scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;     // How the swap chain is to be used
 	scd.OutputWindow = hWnd;                               // The window to be used
 	scd.SampleDesc.Count = 1;                              // No multisampling
@@ -62,8 +62,8 @@ Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> pDepthStencilTexture;
 	D3D11_TEXTURE2D_DESC descDepth;
 	ZeroMemory(&descDepth, sizeof(D3D11_TEXTURE2D_DESC));
-	descDepth.Width = 1920; // Set the width of the depth stencil buffer
-	descDepth.Height = 1080; // Set the height of the depth stencil buffer
+	descDepth.Width = windowWidth;   // Set the width of the depth stencil buffer
+	descDepth.Height = windowHeight; // Set the height of the depth stencil buffer
 	descDepth.MipLevels = 1u; // No mipmaps
 	descDepth.ArraySize = 1u; // Single texture
 	descDepth.Format = DXGI_FORMAT_D32_FLOAT; // 32-bit depth buffer
@@ -89,8 +89,8 @@ Graphics::Graphics(HWND hWnd) : pDevice(nullptr), pSwapChain(nullptr), pContext(
 
 	// configure viewport
 	D3D11_VIEWPORT vp = {};
-	vp.Width = 1920;							// Set viewport width
-	vp.Height = 1080;							// Set viewport height
+	vp.Width = windowWidth;						// Set viewport width
+	vp.Height = windowHeight;					// Set viewport height
 	vp.MinDepth = 0;							// Minimum depth
 	vp.MaxDepth = 1;							// Maximum depth
 	vp.TopLeftX = 0;							// Top-left X position

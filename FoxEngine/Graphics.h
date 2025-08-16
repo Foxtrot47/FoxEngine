@@ -12,7 +12,7 @@ class Graphics
 {
 	friend class Bindable;
 public:
-	Graphics(HWND hWnd);
+	Graphics(HWND hWnd, int windowWidth, int windowHeight);
 	Graphics() = delete;
 	Graphics(const Graphics&) = delete;
 	Graphics& operator=(const Graphics&) = delete;

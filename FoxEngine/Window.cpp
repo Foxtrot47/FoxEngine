@@ -50,7 +50,7 @@ Window::Window(int width, int height, const LPCWSTR name, int nCmdShow) : width(
 	hWnd = CreateWindow(
 		WindowClass::GetName(),							// Class name
 		name,											// Window title
-		WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU,		// Window style
+		WS_CAPTION | WS_MINIMIZEBOX | WS_SYSMENU | WS_OVERLAPPEDWINDOW,		// Window style
 		CW_USEDEFAULT,									// X-position
 		CW_USEDEFAULT,									// Y-position
 		wr.right - wr.left,								// Width
@@ -67,7 +67,7 @@ Window::Window(int width, int height, const LPCWSTR name, int nCmdShow) : width(
 	// Init ImGui Win32 Impl
 	ImGui_ImplWin32_Init(hWnd);
 
-	pGfx = std::make_unique<Graphics>(hWnd);
+	pGfx = std::make_unique<Graphics>(hWnd, width, height);
 }
 
 Window::~Window()
