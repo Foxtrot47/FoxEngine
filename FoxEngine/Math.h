@@ -2,7 +2,7 @@
 #include "DirectXMath.h"
 #include <algorithm>
 
-DirectX::XMFLOAT3 ConvertQuaternionToEuler(DirectX::XMFLOAT4 quat)
+inline DirectX::XMFLOAT3 ConvertQuaternionToEuler(DirectX::XMFLOAT4 quat)
 {
 	auto quatVec = DirectX::XMLoadFloat4(&quat);
 	quatVec = DirectX::XMQuaternionNormalize(quatVec);

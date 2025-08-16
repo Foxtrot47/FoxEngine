@@ -1,19 +1,19 @@
 #pragma once
-#include "Graphics.h"
+#include "SceneNode.h"
 #include "ConstantBuffer.h"
 #include <memory>
 #include "SolidSphere.h"
 
 class SolidSphere;
 
-class PointLight
+class PointLightNode : public SceneNode
 {
 public:
-	PointLight(Graphics& gfx);
+	PointLightNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name);
 	void Bind(Graphics& gfx);
-	void SpawnControlWindow();
+	void DrawInspectorWindow() override;
 
-	void DrawSphere(Graphics& gfx) const;
+	void Draw(Graphics& gfx) override;
 	void Reset();
 private:
 	struct LightCBuff

@@ -160,7 +160,7 @@
     <ClInclude Include="MeshNode.h" />
     <ClInclude Include="Mouse.h" />
     <ClInclude Include="PixelShader.h" />
-    <ClInclude Include="PointLight.h" />
+    <ClInclude Include="PointLightNode.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SceneManager.h" />
     <ClInclude Include="SceneNode.h" />
@@ -190,7 +190,7 @@
     <ClCompile Include="MeshNode.cpp" />
     <ClCompile Include="Mouse.cpp" />
     <ClCompile Include="PixelShader.cpp" />
-    <ClCompile Include="PointLight.cpp" />
+    <ClCompile Include="PointLightNode.cpp" />
     <ClCompile Include="SceneManager.cpp" />
     <ClCompile Include="SceneNode.cpp" />
     <ClCompile Include="SolidSphere.cpp" />
