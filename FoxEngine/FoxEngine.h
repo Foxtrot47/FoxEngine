@@ -10,5 +10,5 @@
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
-#include "Camera.h"
+#include "FPVCamera.h"
 #include "SceneManager.h"

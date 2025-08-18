@@ -111,10 +111,7 @@
     <ClInclude Include="VertexBuffer.h">
       <Filter>Header Files\Bindable</Filter>
     </ClInclude>
-    <ClInclude Include="Camera.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="PointLight.h">
+    <ClInclude Include="FPVCamera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SolidSphere.h">
@@ -136,6 +133,9 @@
       <Filter>Header Files\Nodes</Filter>
     </ClInclude>
     <ClInclude Include="Math.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PointLightNode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -194,10 +194,7 @@
     <ClCompile Include="VertexBuffer.cpp">
       <Filter>Source Files\Bindable</Filter>
     </ClCompile>
-    <ClCompile Include="Camera.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="PointLight.cpp">
+    <ClCompile Include="FPVCamera.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SolidSphere.cpp">
@@ -217,6 +214,9 @@
     </ClCompile>
     <ClCompile Include="MeshNode.cpp">
       <Filter>Source Files\Nodes</Filter>
+    </ClCompile>
+    <ClCompile Include="PointLightNode.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -29,6 +29,7 @@ public:
 	Window(const Window&) = delete;				// Remove copy constructor
 	Window& operator=(const Window&) = delete;	// Remove assignment operator
 	Graphics& Gfx();
+	HWND GetHandle();
 private:
 	static LRESULT CALLBACK HandleMsgSetup(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);	// Initial message setup
 	static LRESULT CALLBACK HandleMsgThunk(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);	// Thunk to call member function

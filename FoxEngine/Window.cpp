@@ -115,7 +115,7 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	// commented out in imgui_impl_win32 to avoid conflicts 
 	extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
-		return true; 
+		return true;
 
 	switch (msg)
 	{
@@ -246,3 +246,5 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
+
+HWND Window::GetHandle() { return hWnd; }

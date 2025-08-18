@@ -14,7 +14,7 @@ int CALLBACK WinMain(
 	Timer timer;
 	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
-	Camera droneCam(wnd.Gfx());
+	FPVCamera cam(wnd.GetHandle(), wnd.Gfx());
 
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 1000.0f));
 	SceneManager scene(wnd.Gfx());
@@ -34,6 +34,8 @@ int CALLBACK WinMain(
 		}
 		auto deltaTime = timer.Mark();
 
+		cam.HandleInput();
+
 		if (wnd.kbd.KeyIsPressed(VK_SPACE))
 		{
 			wnd.Gfx().DisableImGui();
@@ -44,12 +46,12 @@ int CALLBACK WinMain(
 		}
 
 		wnd.Gfx().BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
-		wnd.Gfx().SetCamera(droneCam.GetViewMatrix());
-		droneCam.Bind(wnd.Gfx());
+		wnd.Gfx().SetCamera(cam.GetViewMatrix());
+		cam.Update(deltaTime);
+		cam.Bind(wnd.Gfx());
 		
 		scene.Draw(wnd.Gfx());
 
-		droneCam.CreateControlWindow();
 		scene.DrawSceneGraph(wnd.Gfx());
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
