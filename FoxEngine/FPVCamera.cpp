@@ -1,8 +1,20 @@
 #include "FPVCamera.h"
 #include "imgui.h"
 
-FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx)
-	: hWnd(hWnd)
+FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd)
+	: position({-10.0f, 10.0f, -50.0f}),
+	  forward({0.0f, 0.0f, 1.0f}),
+	  right({0.0f, 0.0f, 0.0f}),
+	  up({0.0f, 1.0f, 0.0f}),
+	  pitch(0.0f),
+	  yaw(0.0f),
+	  fov(80.0f),
+	  nearPlane(0.5f),
+	  farPlane(1000.0f),
+	  cameraSpeed(10.0f),
+	  isCursorLocked(false),
+	  hWnd(hWnd),
+	  kbd(kbd)
 {
 	if (!cameraCBuff)
 	{
@@ -11,12 +23,12 @@ FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx)
 	UpdateViewMatrix();
 }
 
-DirectX::XMMATRIX FPVCamera::GetViewMatrix() const {return viewMatrix; }
+XMMATRIX FPVCamera::GetViewMatrix() const { return viewMatrix; }
 
-DirectX::XMMATRIX FPVCamera::GetProjectionMatrix() const
+XMMATRIX FPVCamera::GetProjectionMatrix() const
 {
-	return DirectX::XMMatrixPerspectiveFovLH(
-		fov * DirectX::XM_PI / 180.0f,
+	return XMMatrixPerspectiveFovLH(
+		fov * XM_PI / 180.0f,
 		16.0f / 9.0f,
 		nearPlane,
 		farPlane
@@ -43,23 +55,65 @@ void FPVCamera::Update(float dt)
 	yaw -= deltaX * dt;
 	pitch -= deltaY * dt;
 
-	pitch = std::clamp(pitch, -DirectX::XM_PI / 2.0f + 0.01f, DirectX::XM_PI / 2.0f - 0.01f);
+	pitch = std::clamp(pitch, -XM_PI / 2.0f + 0.01f, XM_PI / 2.0f - 0.01f);
 
 	forward = { cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw) };
-	const auto forwardVector = DirectX::XMVector3Normalize(XMLoadFloat3(&forward));
+	const auto forwardVector = XMVector3Normalize(XMLoadFloat3(&forward));
 	XMStoreFloat3(&forward, forwardVector);
 
-	const auto newRightVector = DirectX::XMVector3Cross(
-		DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),
+	const auto newRightVector = XMVector3Cross(
+		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),
 		forwardVector
 	);
 	XMStoreFloat3(&right, newRightVector);
 
-	const auto newUpVector = DirectX::XMVector3Cross(
+	const auto newUpVector = XMVector3Cross(
 		forwardVector,
 		newRightVector
 	);
 	XMStoreFloat3(&up, newUpVector);
+
+	float velocity = cameraSpeed * dt;
+	XMFLOAT3 moveTransform = { 0.0f, 0.0f, 0.0f };
+	if (kbd.KeyIsPressed('W'))
+	{
+		moveTransform.x += forward.x * velocity;
+		moveTransform.y += forward.y * velocity;
+		moveTransform.z += forward.z * velocity;
+	}
+	if (kbd.KeyIsPressed('S'))
+	{
+		moveTransform.x -= forward.x * velocity;
+		moveTransform.y -= forward.y * velocity;
+		moveTransform.z -= forward.z * velocity;
+	}
+	if (kbd.KeyIsPressed('D'))
+	{
+		moveTransform.x += right.x * velocity;
+		moveTransform.y += right.y * velocity;
+		moveTransform.z += right.z * velocity;
+	}
+	if (kbd.KeyIsPressed('A'))
+	{
+		moveTransform.x -= right.x * velocity;
+		moveTransform.y -= right.y * velocity;
+		moveTransform.z -= right.z * velocity;
+	}
+	if (kbd.KeyIsPressed(VK_SPACE))
+	{
+		moveTransform.x += up.x * velocity;
+		moveTransform.y += up.y * velocity;
+		moveTransform.z += up.z * velocity;
+	}
+	if (kbd.KeyIsPressed(VK_CONTROL))
+	{
+		moveTransform.x -= up.x * velocity;
+		moveTransform.y -= up.y * velocity;
+		moveTransform.z -= up.z * velocity;
+	}
+	position.x += moveTransform.x;
+	position.y += moveTransform.y;
+	position.z += moveTransform.z;
 
 	UpdateViewMatrix();
 }
@@ -73,7 +127,7 @@ void FPVCamera::HandleInput()
 		{
 			isCursorLocked = true;
 			ShowCursor(false);
-			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
+			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard;
 		}
 	}
 
@@ -84,12 +138,12 @@ void FPVCamera::HandleInput()
 		{
 			isCursorLocked = false;
 			ShowCursor(true);
-			ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+			ImGui::GetIO().ConfigFlags &= ~(ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard);
 		}
 	}
 }
 
-void FPVCamera::Bind(Graphics& gfx)
+void FPVCamera::Bind(Graphics& gfx) const
 {
 	const CamerCbuff buffer = { position, 0.0f };
 	cameraCBuff->Update(gfx, buffer);
@@ -99,9 +153,9 @@ void FPVCamera::Bind(Graphics& gfx)
 void FPVCamera::UpdateViewMatrix()
 {
 	const auto posVector = XMLoadFloat3(&position);
-	viewMatrix = DirectX::XMMatrixLookAtLH(
+	viewMatrix = XMMatrixLookAtLH(
 		XMLoadFloat3(&position),
-		DirectX::XMVectorAdd(posVector, XMLoadFloat3(&forward)),
+		XMVectorAdd(posVector, XMLoadFloat3(&forward)),
 		XMLoadFloat3(&up)
 	);
 }

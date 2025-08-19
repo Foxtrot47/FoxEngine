@@ -14,7 +14,7 @@ int CALLBACK WinMain(
 	Timer timer;
 	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
-	FPVCamera cam(wnd.GetHandle(), wnd.Gfx());
+	FPVCamera cam(wnd.GetHandle(), wnd.Gfx(), wnd.kbd);
 
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 1000.0f));
 	SceneManager scene(wnd.Gfx());
