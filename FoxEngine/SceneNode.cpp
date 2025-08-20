@@ -14,6 +14,24 @@ SceneNode::SceneNode(SceneNode* parent, std::optional<std::string> _name)
 	!_name.has_value() ? name = "Unnamed_Node_" + SceneNode::count : name = _name.value();
 }
 
+SceneNode::SceneNode(
+	SceneNode* parent,
+	std::optional<std::string> _name,
+	const DirectX::XMFLOAT3& initialPosition,
+	const DirectX::XMFLOAT4& initialRotationQuat,
+	const DirectX::XMFLOAT3& initialScale
+)
+	:
+	position(initialPosition),
+	rotationQuat(initialRotationQuat),
+	scale(initialScale),
+	parent(parent)
+{
+	isTransformDirty = true;
+	count++;
+	!_name.has_value() ? name = "Unnamed_Node_" + SceneNode::count : name = _name.value();
+}
+
 void SceneNode::AddChild(std::unique_ptr<SceneNode> child)
 {
 	child->parent = this;

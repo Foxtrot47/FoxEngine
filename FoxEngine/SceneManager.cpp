@@ -7,9 +7,13 @@
 
 SceneManager::SceneManager(Graphics& gfx)
 {
-	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node");
+	const DirectX::XMFLOAT3 defaultPos = { 0.0f, 0.0f, 0.0f };
+	const DirectX::XMFLOAT4 defaultRot = { 0.0f, 0.0f, 0.0f, 1.0f };
+	const DirectX::XMFLOAT3 defaultScaling = { 1.0f, 1.0f, 1.0f };
 
-	auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light");
+	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node", defaultPos, defaultRot, defaultScaling);
+
+	auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light", DirectX::XMFLOAT3(-5.0f, 40.0f, 0.0f));
 	rootNode->AddChild(std::move(pointLight));
 
 	auto modelPath = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01.FBX";
@@ -18,7 +22,11 @@ SceneManager::SceneManager(Graphics& gfx)
 		rootNode.get(),
 		modelPath,
 		texturePath,
-		"Traffic_Cone");
+		"Traffic_Cone",
+		defaultPos,
+		defaultRot,
+		defaultScaling
+	);
 	rootNode->AddChild(std::move(cone));
 
 	auto m1 = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Asphalt_01.FBX";
@@ -27,7 +35,11 @@ SceneManager::SceneManager(Graphics& gfx)
 		rootNode.get(),
 		m1,
 		m2,
-		"Alphalt_Road_01");
+		"Alphalt_Road_01",
+		defaultPos,
+		defaultRot,
+		defaultScaling
+	);
 	rootNode->AddChild(std::move(road));
 }
 

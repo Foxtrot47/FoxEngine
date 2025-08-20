@@ -9,6 +9,16 @@ class MeshNode : public SceneNode
 {
 public:
     MeshNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name);
+    MeshNode(
+        Graphics& gfx,
+        SceneNode* parent,
+        std::wstring modelPath,
+        std::wstring texturePath,
+        std::optional<std::string> name,
+        const DirectX::XMFLOAT3& initialPosition,
+        const DirectX::XMFLOAT4& initialRotationQuat,
+        const DirectX::XMFLOAT3& initialScale
+    );
     MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std::wstring texturePath, std::optional<std::string> name);
     MeshNode(Graphics& gfx,
              SceneNode* parent,

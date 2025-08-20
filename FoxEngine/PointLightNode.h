@@ -9,7 +9,12 @@ class SolidSphere;
 class PointLightNode : public SceneNode
 {
 public:
-	PointLightNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name);
+	PointLightNode(
+		Graphics& gfx,
+		SceneNode* parent,
+		std::optional<std::string> name,
+		const DirectX::XMFLOAT3& initialPosition
+	);
 	void Bind(Graphics& gfx);
 	void DrawInspectorWindow() override;
 
