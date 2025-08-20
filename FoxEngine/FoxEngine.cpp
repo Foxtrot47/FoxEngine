@@ -19,6 +19,7 @@ int CALLBACK WinMain(
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 1000.0f));
 	SceneManager scene(wnd.Gfx());
 
+	bool shouldExit = false;
 	// Enter main loop
 	MSG msg = { 0 };
 	while (true)
@@ -30,7 +31,14 @@ int CALLBACK WinMain(
 			DispatchMessage(&msg);
 
 			if (msg.message == WM_QUIT)
+			{
+				shouldExit = true;
 				break;
+			}
+		}
+		if (shouldExit)
+		{
+			break;
 		}
 		auto deltaTime = timer.Mark();
 
