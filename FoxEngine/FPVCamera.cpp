@@ -1,7 +1,7 @@
 #include "FPVCamera.h"
 #include "imgui.h"
 
-FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd)
+FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd, Mouse& mouse)
 	: position({-10.0f, 10.0f, -50.0f}),
 	  forward({0.0f, 0.0f, 1.0f}),
 	  right({0.0f, 0.0f, 0.0f}),
@@ -14,7 +14,8 @@ FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd)
 	  cameraSpeed(10.0f),
 	  isCursorLocked(false),
 	  hWnd(hWnd),
-	  kbd(kbd)
+	  kbd(kbd),
+	  mouse(mouse)
 {
 	if (!cameraCBuff)
 	{
@@ -39,22 +40,10 @@ void FPVCamera::Update(float dt)
 {
 	if (!isCursorLocked) return;
 
-	POINT currentMousePos;
-	GetCursorPos(&currentMousePos);
-	ScreenToClient(hWnd, &currentMousePos);
-
-	RECT clientRect;
-	GetClientRect(hWnd, &clientRect);
-	POINT center = { clientRect.right / 2, clientRect.bottom / 2 };
-	ClientToScreen(hWnd, &center);
-	SetCursorPos(center.x, center.y);
-
-	float deltaX = static_cast<float>(currentMousePos.x - clientRect.right / 2);
-	float deltaY = static_cast<float>(currentMousePos.y - clientRect.bottom / 2);
-
-	yaw -= deltaX * dt;
-	pitch -= deltaY * dt;
-
+    const float rotationSpeed = 0.01f;
+	auto delta = mouse.GetRawDelta();
+	yaw -= delta.x * rotationSpeed;
+	pitch -= delta.y * rotationSpeed;
 	pitch = std::clamp(pitch, -XM_PI / 2.0f + 0.01f, XM_PI / 2.0f - 0.01f);
 
 	forward = { cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw) };

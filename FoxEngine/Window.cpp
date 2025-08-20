@@ -67,6 +67,14 @@ Window::Window(int width, int height, const LPCWSTR name, int nCmdShow) : width(
 	// Init ImGui Win32 Impl
 	ImGui_ImplWin32_Init(hWnd);
 
+	// setup raw input
+	RAWINPUTDEVICE rid;
+	rid.usUsagePage = 0x01;          // Generic desktop page
+	rid.usUsage = 0x02;              // Mouse usage
+	rid.dwFlags = 0;                 // No special flags
+	rid.hwndTarget = hWnd;
+	RegisterRawInputDevices(&rid, 1, sizeof(rid));
+
 	pGfx = std::make_unique<Graphics>(hWnd, width, height);
 }
 
@@ -235,14 +243,32 @@ LRESULT Window::HandleMsg(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_MOUSEWHEEL:
-		if (ImGui::GetIO().WantCaptureMouse)
 		{
+			if (ImGui::GetIO().WantCaptureMouse)
+			{
+				break;
+			}
+			const POINTS ptWheel = MAKEPOINTS(lParam);
+			const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+			mouse.OnWheelDelta(ptWheel.x, ptWheel.y, delta);
 			break;
 		}
-		const POINTS ptWheel = MAKEPOINTS(lParam);
-		const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-		mouse.OnWheelDelta(ptWheel.x, ptWheel.y, delta);
-		break;
+	case WM_INPUT:
+		{
+			UINT size;
+			GetRawInputData((HRAWINPUT)lParam, RID_INPUT, nullptr, &size, sizeof(RAWINPUTHEADER));
+			BYTE* rawData = new BYTE[size];
+			if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, rawData, &size, sizeof(RAWINPUTHEADER)) == size) {
+				RAWINPUT* raw = (RAWINPUT*)rawData;
+				if (raw->header.dwType == RIM_TYPEMOUSE && (raw->data.mouse.lLastX != 0 || raw->data.mouse.lLastY != 0)) {
+					LONG dx = raw->data.mouse.lLastX;
+					LONG dy = raw->data.mouse.lLastY;
+					mouse.OnMouseRawDelta(dx, dy);
+				}
+			}
+			delete[] rawData;
+			break;
+		}
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }

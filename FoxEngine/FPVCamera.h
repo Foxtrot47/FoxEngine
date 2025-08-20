@@ -2,12 +2,13 @@
 #include "Graphics.h"
 #include "ConstantBuffer.h"
 #include "Keeyboard.h"
+#include "Mouse.h"
 
 using namespace DirectX;
 class FPVCamera
 {
 public:
-	FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd);
+	FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd, Mouse& mouse);
 	XMMATRIX GetViewMatrix() const;
 	XMMATRIX GetProjectionMatrix() const;
 	void HandleInput();
@@ -30,6 +31,7 @@ private:
 	float isCursorLocked;
 	HWND hWnd;
 	Keyboard& kbd;
+	Mouse& mouse;
 
 	struct CamerCbuff
 	{

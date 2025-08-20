@@ -16,6 +16,18 @@ int Mouse::GetPosY() const
 	return y;
 }
 
+Mouse::RawDelta Mouse::GetRawDelta()
+{
+    RawDelta total{0, 0};
+    while (!rawDeltaBuffer.empty()) {
+		auto& delta = rawDeltaBuffer.front();
+        rawDeltaBuffer.pop();
+        total.x += delta.x;
+        total.y += delta.y;
+    }
+    return total;
+}
+
 bool Mouse::IsInWindow() const
 {
 	return isInWindow;
@@ -56,6 +68,12 @@ void Mouse::OnMouseMove(int newx, int newy)
 	y = newy;
 
 	buffer.push(Mouse::Event(Mouse::Event::Type::Move, *this));
+	TrimBuffer();
+}
+
+void Mouse::OnMouseRawDelta(const int x, const int y)
+{
+	rawDeltaBuffer.push({ x, y });
 	TrimBuffer();
 }
 

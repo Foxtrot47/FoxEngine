@@ -74,6 +74,10 @@ public:
 			return rightButtonIsPressed;
 		}
 	};
+	struct RawDelta
+	{
+		int x,y;
+	};
 public:
 	Mouse() : x(0), y(0) {}
 	Mouse(const Mouse&) = delete;
@@ -81,6 +85,7 @@ public:
 	std::pair<int, int> GetPos() const;
 	int GetPosX() const;
 	int GetPosY() const;
+	RawDelta GetRawDelta();
 	bool IsInWindow() const;
 	bool LeftIsPressed() const;
 	bool RightIsPressed() const;
@@ -92,6 +97,7 @@ public:
 	void Flush();
 private:
 	void OnMouseMove(int x, int y);
+	void OnMouseRawDelta(int x, int y);
 	void OnMouseLeave();
 	void OnMouseEnter();
 	void OnLeftButtonPressed(int x, int y);
@@ -111,5 +117,6 @@ private:
 	bool isInWindow = false;
 	int wheelDeltaCarry = 0;
 	std::queue<Event> buffer;
+	std::queue<RawDelta> rawDeltaBuffer;
 };
 
