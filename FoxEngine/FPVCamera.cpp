@@ -11,7 +11,7 @@ FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd, Mouse& mouse)
 	  fov(80.0f),
 	  nearPlane(0.5f),
 	  farPlane(1000.0f),
-	  cameraSpeed(10.0f),
+	  cameraSpeed(30.0f),
 	  isCursorLocked(false),
 	  hWnd(hWnd),
 	  kbd(kbd),
@@ -39,13 +39,13 @@ XMMATRIX FPVCamera::GetProjectionMatrix() const
 void FPVCamera::Update(float dt)
 {
 	if (!isCursorLocked) return;
-
+    
     const float rotationSpeed = 0.01f;
 	auto delta = mouse.GetRawDelta();
 	yaw -= delta.x * rotationSpeed;
 	pitch -= delta.y * rotationSpeed;
 	pitch = std::clamp(pitch, -XM_PI / 2.0f + 0.01f, XM_PI / 2.0f - 0.01f);
-
+	
 	forward = { cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw) };
 	const auto forwardVector = XMVector3Normalize(XMLoadFloat3(&forward));
 	XMStoreFloat3(&forward, forwardVector);
@@ -54,13 +54,13 @@ void FPVCamera::Update(float dt)
 		XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f),
 		forwardVector
 	);
-	XMStoreFloat3(&right, newRightVector);
+	XMStoreFloat3(&right, XMVector3Normalize(newRightVector));
 
 	const auto newUpVector = XMVector3Cross(
 		forwardVector,
 		newRightVector
 	);
-	XMStoreFloat3(&up, newUpVector);
+	XMStoreFloat3(&up, XMVector3Normalize(newUpVector));
 
 	float velocity = cameraSpeed * dt;
 	XMFLOAT3 moveTransform = { 0.0f, 0.0f, 0.0f };
@@ -116,6 +116,11 @@ void FPVCamera::HandleInput()
 		{
 			isCursorLocked = true;
 			ShowCursor(false);
+			RECT rect;
+			GetClientRect(hWnd, &rect);
+			ClientToScreen(hWnd, reinterpret_cast<POINT*>(&rect.left));
+			ClientToScreen(hWnd, reinterpret_cast<POINT*>(&rect.right));
+			ClipCursor(&rect);
 			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard;
 		}
 	}
@@ -127,6 +132,7 @@ void FPVCamera::HandleInput()
 		{
 			isCursorLocked = false;
 			ShowCursor(true);
+			ClipCursor(nullptr);
 			ImGui::GetIO().ConfigFlags &= ~(ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard);
 		}
 	}
