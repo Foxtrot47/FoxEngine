@@ -24,7 +24,7 @@ int CALLBACK WinMain(
 	while (true)
 	{
 		// Check for messages
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
@@ -40,7 +40,7 @@ int CALLBACK WinMain(
 		wnd.Gfx().SetCamera(cam.GetViewMatrix());
 		cam.Update(deltaTime);
 		cam.Bind(wnd.Gfx());
-		
+
 		scene.Draw(wnd.Gfx());
 
 		scene.DrawSceneGraph(wnd.Gfx());
