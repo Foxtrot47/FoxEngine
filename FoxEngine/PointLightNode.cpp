@@ -39,10 +39,7 @@ void PointLightNode::DrawInspectorWindow()
 	if (ImGui::SliderFloat("Ambient Strength", &lightCbuff.ambientStrength, 0.0f, 1.0f))
 		valuesChanged = true;
 
-	if (ImGui::SliderFloat("Specular Intensity", &lightCbuff.specularIntensity, 0.0f, 1.0f))
-		valuesChanged = true;
-
-	if (ImGui::SliderFloat("Specular Power", &lightCbuff.specularPower, 1.0f, 128.0f))
+	if (ImGui::SliderFloat("Global Specular Intensity", &lightCbuff.globalSpecularIntensity, 0.0f, 1.0f))
 		valuesChanged = true;
 
 	if (ImGui::Button("Reset"))
@@ -89,8 +86,7 @@ void PointLightNode::Reset()
 		0.1f,
 		{1.0f, 1.0f, 1.0f},
 		1.0f,
-		10.0f,
-		{0.0f, 0.0f, 0.0f}
+		{0.0f, 0.0f, 0.0f, 0.0f}
 	};
 	lightCbuff = buff;
 	valuesChanged = true;

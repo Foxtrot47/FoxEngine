@@ -72,9 +72,6 @@
     <ClInclude Include="IndexBuffer.h">
       <Filter>Header Files\Bindable</Filter>
     </ClInclude>
-    <ClInclude Include="InputLayout.h">
-      <Filter>Header Files\Bindable</Filter>
-    </ClInclude>
     <ClInclude Include="ConstantBuffer.h">
       <Filter>Header Files\Bindable</Filter>
     </ClInclude>
@@ -87,12 +84,6 @@
     <ClInclude Include="FileUtils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="PixelShader.h">
-      <Filter>Header Files\Bindable</Filter>
-    </ClInclude>
-    <ClInclude Include="VertexShader.h">
-      <Filter>Header Files\Bindable</Filter>
-    </ClInclude>
     <ClInclude Include="TransformConstantBuffer.h">
       <Filter>Header Files\Drawable</Filter>
     </ClInclude>
@@ -100,9 +91,6 @@
       <Filter>Header Files\Drawable</Filter>
     </ClInclude>
     <ClInclude Include="BindableBase.h">
-      <Filter>Header Files\Bindable</Filter>
-    </ClInclude>
-    <ClInclude Include="Texture.h">
       <Filter>Header Files\Bindable</Filter>
     </ClInclude>
     <ClInclude Include="ImGuiManager.h">
@@ -138,6 +126,9 @@
     <ClInclude Include="PointLightNode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Material.h">
+      <Filter>Header Files\Bindable</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Window.cpp">
@@ -167,19 +158,7 @@
     <ClCompile Include="IndexBuffer.cpp">
       <Filter>Source Files\Bindable</Filter>
     </ClCompile>
-    <ClCompile Include="InputLayout.cpp">
-      <Filter>Source Files\Bindable</Filter>
-    </ClCompile>
     <ClCompile Include="Topology.cpp">
-      <Filter>Source Files\Bindable</Filter>
-    </ClCompile>
-    <ClCompile Include="Box.cpp">
-      <Filter>Source Files\Drawable</Filter>
-    </ClCompile>
-    <ClCompile Include="VertexShader.cpp">
-      <Filter>Source Files\Bindable</Filter>
-    </ClCompile>
-    <ClCompile Include="PixelShader.cpp">
       <Filter>Source Files\Bindable</Filter>
     </ClCompile>
     <ClCompile Include="ImGuiManager.cpp">
@@ -187,9 +166,6 @@
     </ClCompile>
     <ClCompile Include="TransformConstantBuffer.cpp">
       <Filter>Source Files\Drawable</Filter>
-    </ClCompile>
-    <ClCompile Include="Texture.cpp">
-      <Filter>Source Files\Bindable</Filter>
     </ClCompile>
     <ClCompile Include="VertexBuffer.cpp">
       <Filter>Source Files\Bindable</Filter>
@@ -218,6 +194,9 @@
     <ClCompile Include="PointLightNode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Material.cpp">
+      <Filter>Source Files\Bindable</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="FoxEngine.rc">
@@ -233,28 +212,10 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="VertexShader.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="PixelShader.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TexturedVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="TexturedPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="PhongPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="PhongVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="SolidSphereVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="SolidSpherePS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

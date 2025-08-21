@@ -41,6 +41,19 @@ SceneManager::SceneManager(Graphics& gfx)
 		defaultScaling
 	);
 	rootNode->AddChild(std::move(road));
+
+	auto m3 = GetExecutableDirectory() + L"\\Models\\survival_character.fbx";
+	auto m4 = GetExecutableDirectory() + L"\\Textures\\Std_Skin_Body_Diffuse.jpg";
+	 auto car = std::make_unique<MeshNode>(gfx,
+	 	rootNode.get(),
+	 	m3,
+	 	m4,
+	 	"MP-4",
+	 	defaultPos,
+	 	defaultRot,
+	 	defaultScaling
+	 );
+	 rootNode->AddChild(std::move(car));
 }
 
 void SceneManager::Draw(Graphics& gfx) const

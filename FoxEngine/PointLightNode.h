@@ -28,9 +28,8 @@ private:
 		DirectX::XMFLOAT3 lightColor;
 		float ambientStrength;
 		DirectX::XMFLOAT3 ambientLight;
-		float specularIntensity;
-		float specularPower;
-		float padding2[3];
+		float globalSpecularIntensity;
+		float padding2[4];
 	};
 	LightCBuff lightCbuff;
 	std::unique_ptr<PixelConstantBuffer<LightCBuff>> plightPSCbuff;

@@ -1,6 +1,7 @@
 #include "MeshNode.h"
 #include "Mesh.h"
-
+#include "Material.h"
+#include "FileUtils.h"
 #include <assimp/postprocess.h>
 
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name)
@@ -42,10 +43,11 @@ MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 	:
 	SceneNode(parent, name)
 {
-	meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, texturePath));
+	auto pMaterial = std::make_unique<Material>(gfx);
+	meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
 }
 
-void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring& texturePath)
+void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring& texturePathOverride)
 {
 	// don't use assimps root node naming
     if (std::strcmp(node->mName.C_Str(),  "RootNode"))
@@ -113,14 +115,42 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			indices[idx + 1] = face.mIndices[1];
 			indices[idx + 2] = face.mIndices[2];
 		}
-		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), texturePath));
+
+		aiMaterial* material = scene->mMaterials[pMesh->mMaterialIndex];
+
+		std::wstring texturePath;
+
+		for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
+		{
+			aiString texPath;
+			if (material->GetTexture(aiTextureType_DIFFUSE, texIndex, &texPath) == AI_SUCCESS)
+			{
+				std::filesystem::path p(texPath.C_Str());
+				texturePath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+			}
+		}
+
+		std::unique_ptr<Material> pMaterial;
+		if (texturePath.empty())
+		{
+			pMaterial = std::make_unique<Material>(gfx);
+		}
+		else if (!texturePathOverride.empty())
+		{
+			pMaterial = std::make_unique<Material>(gfx, texturePathOverride);
+		}
+		else
+		{
+			pMaterial = std::make_unique<Material>(gfx, texturePath);
+		}
+		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 	}
 
 	// handle child nodes
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
 		auto childNode = std::make_unique<MeshNode>(gfx, parent, std::nullopt);
-		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, texturePath);
+		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, texturePathOverride);
 		AddChild(std::move(childNode));
 	}
 	isTransformDirty = true;

@@ -1,5 +1,8 @@
 #pragma once
 #include "DrawableBase.h"
+
+class Material;
+
 class Mesh : public DrawableBase<Mesh>
 {
 public:
@@ -10,7 +13,7 @@ public:
 		DirectX::XMFLOAT2 texCoord;
 	};
 
-	Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned short> indices, std::wstring texturePath);
+	Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned short> indices, std::unique_ptr<Material> material);
 	void Update(float deltaTime) override;
 };
 

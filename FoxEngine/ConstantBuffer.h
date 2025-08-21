@@ -41,6 +41,7 @@ public:
 	void Update(Graphics& gfx, const C& consts)
 	{
 		D3D11_MAPPED_SUBRESOURCE msr;
+		const auto shit = pConstantBuffer.Get();
 		GetContext(gfx)->Map(
 			pConstantBuffer.Get(),
 			0u,
