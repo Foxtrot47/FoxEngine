@@ -1,4 +1,4 @@
-name: MSBuild
+name: MSBuild with vcpkg manifest
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 env:
   SOLUTION_FILE_PATH: .
   BUILD_CONFIGURATION: Release
-  VCPKG_DEFAULT_TRIPLET: x64-windows
 
 permissions:
   contents: read
@@ -19,23 +18,39 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          runVcpkgInstall: true
+    - name: Checkout source
+      uses: actions/checkout@v4
 
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v1.0.2
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
 
-      - name: Restore NuGet packages
-        working-directory: ${{env.GITHUB_WORKSPACE}}
-        run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+    # Cache vcpkg artifacts (downloads, buildtrees, installed packages)
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.workspace }}/vcpkg/downloads
+          ${{ runner.workspace }}/vcpkg/buildtrees
+          ${{ runner.workspace }}/vcpkg/installed
+        key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vcpkg-
 
-      - name: Build with MSBuild
-        working-directory: ${{env.GITHUB_WORKSPACE}}
-        run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} `
-          /p:VcpkgTriplet=${{env.VCPKG_DEFAULT_TRIPLET}} `
-          ${{env.SOLUTION_FILE_PATH}}
-        shell: powershell
+    # Setup vcpkg in manifest mode
+    - name: Setup vcpkg (manifest mode)
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'latest'
+        vcpkgDirectory: '${{ runner.workspace }}/vcpkg'
+        runVcpkgInstall: true
+
+    - name: Build solution
+      working-directory: ${{ env.GITHUB_WORKSPACE }}
+      run: msbuild /m `
+                   /p:Configuration=${{ env.BUILD_CONFIGURATION }} `
+                   /p:VcpkgEnableManifest=true `
+                   /p:VcpkgManifestRoot=${{ env.GITHUB_WORKSPACE }} `
+                   /p:VcpkgRoot="${{ runner.workspace }}/vcpkg" `
+                   /p:VcpkgTriplet=x64-windows `
+                   ${{ env.SOLUTION_FILE_PATH }}
+
