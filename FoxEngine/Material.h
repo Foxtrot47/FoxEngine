@@ -19,6 +19,8 @@ public:
 		Graphics& gfx
 	);
 	void InitializeBindings(Graphics& gfx, const std::wstring* texturePath);
+	void SetSpecularIntensity(float specularIntensity);
+	void SetSpecularPower(float specularPower);
 	void Bind(Graphics& gfx) override;
 private:
 	Microsoft::WRL::ComPtr<ID3DBlob> pVSByteCodeBlob;

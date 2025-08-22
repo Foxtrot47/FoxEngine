@@ -143,6 +143,25 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		{
 			pMaterial = std::make_unique<Material>(gfx);
 		}
+				
+		aiColor3D specColor;
+		float specularIntensity;
+		if (material->Get(AI_MATKEY_SHININESS_STRENGTH, specularIntensity) == AI_SUCCESS)
+		{
+		}
+		else if (material->Get(AI_MATKEY_COLOR_SPECULAR, specColor) == AI_SUCCESS)
+		{
+			specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
+		}
+		else specularIntensity = 1.0f;
+
+		pMaterial->SetSpecularPower(specularIntensity);
+		float shininess;
+		if (material->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
+		{
+			// scale Assimp’s 0–1000 to 1–128
+			pMaterial->SetSpecularPower(shininess / 7.8125f);
+		}
 		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 	}
 

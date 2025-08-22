@@ -9,8 +9,8 @@ cbuffer LightCBuffer : register(b0) // global light properties
 
 cbuffer MaterialCBuffer : register(b1)  // Material properties
 {
-    float specularPower;
     float materialSpecularMask;
+    float specularPower;
 }
 
 cbuffer CamerCbuffer : register(b11)
@@ -37,7 +37,8 @@ float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexC
     float3 reflectionDirection = reflect(-directionToLight, N);
     float3 vectorToCamera = normalize(camPos - worldPos);
     float spec = pow(max(0.0f, dot(reflectionDirection, vectorToCamera)), specularPower);
-    float3 specular = lightColor * globalSpecularIntensity * spec * attenuation;
+    float finalSpecularIntensity = globalSpecularIntensity * materialSpecularMask;
+    float3 specular = lightColor * finalSpecularIntensity * spec * attenuation;
 
     return tex.Sample(splr, tc) * float4(saturate(ambient + diffuse + specular), 1.0f);
 }

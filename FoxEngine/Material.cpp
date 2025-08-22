@@ -105,6 +105,16 @@ void Material::InitializeBindings(Graphics& gfx, const std::wstring* texturePath
 	}
 }
 
+void Material::SetSpecularIntensity(float _specularIntensity)
+{
+	specularIntensity = _specularIntensity;
+}
+
+void Material::SetSpecularPower(float _specularPower)
+{
+	specularPower = _specularPower;
+}
+
 void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 {
 	// Try to load DDS version first
