@@ -187,9 +187,14 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 		}
 	}
 
+	// Handle missing texture
 	if (FAILED(hr))
 	{
-		throw std::runtime_error("Failed to load texture: " + stringPath);
+		useDiffuse = false;
+		OutputDebugStringA(("Texture missing: " + stringPath + ", using diffuseColor\n").c_str());
+		pTextureView = nullptr;
+		pSamplerState = nullptr;
+		return;
 	}
 
 	// Create texture and shader resource view
@@ -203,7 +208,11 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 
 	if (FAILED(hr))
 	{
-		throw std::runtime_error("Failed to create texture view for: " + stringPath);
+		useDiffuse = false;
+		OutputDebugStringA(("Failed to create texture view: " + stringPath + ", using diffuseColor\n").c_str());
+		pTextureView = nullptr;
+		pSamplerState = nullptr;
+		return;
 	}
 
 	D3D11_SAMPLER_DESC samplerDesc = {
@@ -216,8 +225,13 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 	hr = GetDevice(gfx)->CreateSamplerState(&samplerDesc, &pSamplerState);
 	if (FAILED(hr))
 	{
-		throw std::runtime_error("Failed to create texture view for: " + stringPath);
+		useDiffuse = false;
+		OutputDebugStringA(("Failed to create sampler state: " + stringPath + ", using diffuseColor\n").c_str());
+		pTextureView = nullptr;
+		pSamplerState = nullptr;
+		return;
 	}
+	useDiffuse = true;
 }
 
 void Material::Bind(Graphics& gfx)
