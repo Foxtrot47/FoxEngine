@@ -5,18 +5,37 @@
 
 Material::Material(
 	Graphics& gfx,
-	const std::wstring& texturePath
+	const std::wstring* texturePath
 )
 	:useDiffuse(true)
 {
-	if (!materialCBuff)
-	{
-		materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
-	}
-	
-	LoadTexture(gfx, texturePath);
+	InitializeBindings(gfx, texturePath);
+}
 
-	const auto vsPath = GetExecutableDirectory() + L"\\PhongVS.cso";
+Material::Material(Graphics& gfx)
+	:useDiffuse(false)
+{
+	InitializeBindings(gfx, nullptr);
+}
+
+void Material::InitializeBindings(Graphics& gfx, const std::wstring* texturePath)
+{
+	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
+
+	std::wstring vsPath;
+	if (useDiffuse)
+	{
+		if (texturePath == nullptr)
+		{
+			OutputDebugStringA("Bruh");
+		}
+		LoadTexture(gfx, *texturePath);
+		vsPath = GetExecutableDirectory() + L"\\PhongVS.cso";
+	}
+	else
+	{
+		vsPath = GetExecutableDirectory() + L"\\SolidSphereVS.cso";
+	}
 	if (!std::filesystem::exists(vsPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(vsPath.begin(), vsPath.end()));
 	}
@@ -38,7 +57,16 @@ Material::Material(
 		throw std::runtime_error("Failed to create vertex shader: " + std::string(vsPath.begin(), vsPath.end()));
 	}
 
-	const auto psPath = GetExecutableDirectory() + L"\\PhongPS.cso";
+	std::wstring psPath;
+	if (useDiffuse)
+	{
+		psPath = GetExecutableDirectory() + L"\\PhongPS.cso";
+	}
+	else
+	{
+		psPath = GetExecutableDirectory() + L"\\SolidSpherePS.cso";
+	}
+
 	if (!std::filesystem::exists(psPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(psPath.begin(), psPath.end()));
 	}
@@ -73,75 +101,7 @@ Material::Material(
 		&pInputLayout
 	);
 	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create input layout:" );
-	}
-}
-
-Material::Material(Graphics& gfx)
-	:useDiffuse(false)
-{
-	if (!materialCBuff)
-	{
-		materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
-	}
-	
-	
-	const auto vsPath = GetExecutableDirectory() + L"\\SolidSphereVS.cso";
-	if (!std::filesystem::exists(vsPath)) {
-		throw std::runtime_error("Shader file not found: " + std::string(vsPath.begin(), vsPath.end()));
-	}
-
-	HRESULT hr = E_FAIL;
-	hr = D3DReadFileToBlob(vsPath.c_str(), &pVSByteCodeBlob);
-
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to read vertex shader file: " + std::string(vsPath.begin(), vsPath.end()));
-	}
-
-	hr = GetDevice(gfx)->CreateVertexShader(
-		pVSByteCodeBlob->GetBufferPointer(),
-		pVSByteCodeBlob->GetBufferSize(),
-		nullptr,
-		&pVertexShader
-	);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create vertex shader: " + std::string(vsPath.begin(), vsPath.end()));
-	}
-
-	const auto psPath = GetExecutableDirectory() + L"\\SolidSpherePS.cso";
-	if (!std::filesystem::exists(psPath)) {
-		throw std::runtime_error("Shader file not found: " + std::string(psPath.begin(), psPath.end()));
-	}
-
-	hr = D3DReadFileToBlob(psPath.c_str(), &pPSByteCodeBlob);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to read pixel shader file: " + std::string(psPath.begin(), psPath.end()));
-	}
-
-	hr = GetDevice(gfx)->CreatePixelShader(
-		pPSByteCodeBlob->GetBufferPointer(),
-		pPSByteCodeBlob->GetBufferSize(),
-		nullptr,
-		&pPixelShader
-	);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create pixel shader: " + std::string(psPath.begin(), psPath.end()));
-	}
-
-	topologyDesc =
-	{
-		{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 }
-	};
-
-	hr = GetDevice(gfx)->CreateInputLayout(
-		topologyDesc.data(),
-		(UINT)topologyDesc.size(),
-		pVSByteCodeBlob->GetBufferPointer(),
-		pVSByteCodeBlob->GetBufferSize(),
-		&pInputLayout
-	);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create input layout:" );
+		throw std::runtime_error("Failed to create input layout:");
 	}
 }
 
@@ -243,7 +203,7 @@ void Material::Bind(Graphics& gfx)
 		GetContext(gfx)->PSSetShaderResources(0u, 1u, pTextureView.GetAddressOf());
 		GetContext(gfx)->PSSetSamplers(0u, 1u, pSamplerState.GetAddressOf());
 	}
-	
+
 	GetContext(gfx)->PSSetShader(pPixelShader.Get(), nullptr, 0u);
 	GetContext(gfx)->IASetInputLayout(pInputLayout.Get());
 

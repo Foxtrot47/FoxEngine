@@ -6,14 +6,14 @@
 
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> name)
 	:
-    SceneNode(parent, name)
+	SceneNode(parent, name)
 {
 }
 
 MeshNode::MeshNode(Graphics& gfx,
 	SceneNode* parent,
 	std::wstring modelPath,
-	std::wstring texturePath,
+	const std::wstring* texturePath,
 	std::optional<std::string> name,
 	const DirectX::XMFLOAT3& initialPosition,
 	const DirectX::XMFLOAT4& initialRotationQuat,
@@ -38,19 +38,19 @@ MeshNode::MeshNode(Graphics& gfx,
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 	const std::vector<Mesh::Vertex>& vertices,
 	const std::vector<unsigned short>& indices,
-	std::wstring texturePath,
+	const std::wstring* texturePath,
 	std::optional<std::string>)
 	:
 	SceneNode(parent, name)
 {
-	auto pMaterial = std::make_unique<Material>(gfx);
+	auto pMaterial = std::make_unique<Material>(gfx, texturePath);
 	meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
 }
 
-void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring& texturePathOverride)
+void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring* texturePathOverride)
 {
 	// don't use assimps root node naming
-    if (std::strcmp(node->mName.C_Str(),  "RootNode"))
+	if (std::strcmp(node->mName.C_Str(), "RootNode"))
 	{
 		name = node->mName.C_Str();
 	}
@@ -82,22 +82,22 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		for (unsigned int i = 0; i < pMesh->mNumVertices; i++)
 		{
 			Mesh::Vertex vertex = {};
-            vertex.position = {pMesh->mVertices[i].x, pMesh->mVertices[i].y, pMesh->mVertices[i].z};
+			vertex.position = { pMesh->mVertices[i].x, pMesh->mVertices[i].y, pMesh->mVertices[i].z };
 			if (pMesh->HasNormals())
 			{
 				vertex.normal = *reinterpret_cast<DirectX::XMFLOAT3*>(&pMesh->mNormals[i]);
 			}
 			else
 			{
-                vertex.normal = {0.0f, 0.0f, 0.0f};
+				vertex.normal = { 0.0f, 0.0f, 0.0f };
 			}
 			if (pMesh->mTextureCoords[0])
 			{
-                vertex.texCoord = {pMesh->mTextureCoords[0][i].x, pMesh->mTextureCoords[0][i].y};
+				vertex.texCoord = { pMesh->mTextureCoords[0][i].x, pMesh->mTextureCoords[0][i].y };
 			}
 			else
 			{
-                vertex.texCoord = {0.0f, 0.0f};
+				vertex.texCoord = { 0.0f, 0.0f };
 			}
 			vertices.push_back(vertex);
 		}
@@ -131,17 +131,17 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		}
 
 		std::unique_ptr<Material> pMaterial;
-		if (texturePath.empty())
-		{
-			pMaterial = std::make_unique<Material>(gfx);
-		}
-		else if (!texturePathOverride.empty())
+		if (texturePathOverride != nullptr)
 		{
 			pMaterial = std::make_unique<Material>(gfx, texturePathOverride);
 		}
+		else if (!texturePath.empty())
+		{
+			pMaterial = std::make_unique<Material>(gfx, &texturePath);
+		}
 		else
 		{
-			pMaterial = std::make_unique<Material>(gfx, texturePath);
+			pMaterial = std::make_unique<Material>(gfx);
 		}
 		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 	}

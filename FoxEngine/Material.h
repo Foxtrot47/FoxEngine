@@ -13,12 +13,12 @@ public:
 	};
 	Material(
 		Graphics& gfx,
-		const std::wstring& texturePath
+		const std::wstring* texturePath
 	);
 	Material(
 		Graphics& gfx
 	);
-	
+	void InitializeBindings(Graphics& gfx, const std::wstring* texturePath);
 	void Bind(Graphics& gfx) override;
 private:
 	Microsoft::WRL::ComPtr<ID3DBlob> pVSByteCodeBlob;

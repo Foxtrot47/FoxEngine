@@ -21,7 +21,7 @@ SceneManager::SceneManager(Graphics& gfx)
 	auto cone = std::make_unique<MeshNode>(gfx,
 		rootNode.get(),
 		modelPath,
-		texturePath,
+		&texturePath,
 		"Traffic_Cone",
 		defaultPos,
 		defaultRot,
@@ -34,7 +34,7 @@ SceneManager::SceneManager(Graphics& gfx)
 	auto road = std::make_unique<MeshNode>(gfx,
 		rootNode.get(),
 		m1,
-		m2,
+		&m2,
 		"Alphalt_Road_01",
 		defaultPos,
 		defaultRot,
@@ -43,15 +43,14 @@ SceneManager::SceneManager(Graphics& gfx)
 	rootNode->AddChild(std::move(road));
 
 	auto m3 = GetExecutableDirectory() + L"\\Models\\survival_character.fbx";
-	auto m4 = GetExecutableDirectory() + L"\\Textures\\Std_Skin_Body_Diffuse.jpg";
 	 auto car = std::make_unique<MeshNode>(gfx,
 	 	rootNode.get(),
 	 	m3,
-	 	m4,
+	 	nullptr,
 	 	"MP-4",
 	 	defaultPos,
 	 	defaultRot,
-	 	defaultScaling
+	 	DirectX::XMFLOAT3({ 0.1f, 0.1f, 0.1f })
 	 );
 	 rootNode->AddChild(std::move(car));
 }

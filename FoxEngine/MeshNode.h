@@ -13,23 +13,23 @@ public:
         Graphics& gfx,
         SceneNode* parent,
         std::wstring modelPath,
-        std::wstring texturePath,
+        const std::wstring* texturePath,
         std::optional<std::string> name,
         const DirectX::XMFLOAT3& initialPosition,
         const DirectX::XMFLOAT4& initialRotationQuat,
         const DirectX::XMFLOAT3& initialScale
     );
-    MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std::wstring texturePath, std::optional<std::string> name);
+    MeshNode(Graphics& gfx, SceneNode* parent, std::wstring modelPath, std::wstring* texturePath, std::optional<std::string> name);
     MeshNode(Graphics& gfx,
              SceneNode* parent,
              const std::vector<Mesh::Vertex>& vertices,
              const std::vector<unsigned short>& indices,
-             std::wstring texturePath,
+             const std::wstring* texturePath,
              std::optional<std::string>);
     void AddMesh(std::unique_ptr<Mesh> mesh);
     void Draw(Graphics& gfx);
     void DrawSceneNode(SceneNode*& pSelectedNode) override;
 private:
-    void LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring& texturePath);
+    void LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring* texturePath);
     std::vector<std::unique_ptr<Mesh>> meshes;
 };
