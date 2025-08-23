@@ -17,7 +17,8 @@ public:
 	{
 		float specularIntensity;
 		float specularPower;
-		float padding[2];
+		float hasSpecularMap;
+		float padding;
 	};
 	struct MaterialDesc
 	{

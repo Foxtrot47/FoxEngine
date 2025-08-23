@@ -233,7 +233,8 @@ void Material::Bind(Graphics& gfx)
 	const MaterialCbuff buff = {
 		specularIntensity,
 		specularPower,
-		{ 0.0f, 0.0f }
+		textures.contains(TextureType::Specular) ? 1.0f : 0.0f,
+		 0.0f
 	};
 	materialCBuff->Update(gfx, buff);
 	materialCBuff->Bind(gfx);
