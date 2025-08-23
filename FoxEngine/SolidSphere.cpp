@@ -63,7 +63,8 @@ SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 
 		AddStaticIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
 
-		AddBind(std::make_unique<Material>(gfx));
+		const Material::MaterialDesc desc = {};
+		AddBind(std::make_unique<Material>(gfx, desc));
 
 		AddStaticBindable(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
 	}

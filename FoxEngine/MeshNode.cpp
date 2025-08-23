@@ -38,16 +38,22 @@ MeshNode::MeshNode(Graphics& gfx,
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 	const std::vector<Mesh::Vertex>& vertices,
 	const std::vector<unsigned short>& indices,
-	const std::wstring* texturePath,
+	const std::wstring* diffTexOverride,
 	std::optional<std::string>)
 	:
 	SceneNode(parent, name)
 {
-	auto pMaterial = std::make_unique<Material>(gfx, texturePath);
+	Material::MaterialDesc mDesc = {};
+
+	if (diffTexOverride != nullptr)
+	{
+		mDesc.diffusePath = std::make_optional(*diffTexOverride);
+	}
+	auto pMaterial = std::make_unique<Material>(gfx, mDesc);
 	meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
 }
 
-void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring* texturePathOverride)
+void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring* diffTexOverride)
 {
 	// don't use assimps root node naming
 	if (std::strcmp(node->mName.C_Str(), "RootNode"))
@@ -117,33 +123,35 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		}
 
 		aiMaterial* material = scene->mMaterials[pMesh->mMaterialIndex];
+		Material::MaterialDesc mDesc = {};
 
-		std::wstring texturePath;
-
-		for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
+		if (diffTexOverride != nullptr)
 		{
-			aiString texPath;
-			if (material->GetTexture(aiTextureType_DIFFUSE, texIndex, &texPath) == AI_SUCCESS)
-			{
-				std::filesystem::path p(texPath.C_Str());
-				texturePath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
-			}
-		}
-
-		std::unique_ptr<Material> pMaterial;
-		if (texturePathOverride != nullptr)
-		{
-			pMaterial = std::make_unique<Material>(gfx, texturePathOverride);
-		}
-		else if (!texturePath.empty())
-		{
-			pMaterial = std::make_unique<Material>(gfx, &texturePath);
+			mDesc.diffusePath = std::make_optional(*diffTexOverride);
 		}
 		else
 		{
-			pMaterial = std::make_unique<Material>(gfx);
+			for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
+			{
+				aiString texPath;
+				if (material->GetTexture(aiTextureType_DIFFUSE, texIndex, &texPath) == AI_SUCCESS)
+				{
+					std::filesystem::path p(texPath.C_Str());
+					mDesc.diffusePath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				}
+			}
 		}
-				
+
+		for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_SPECULAR); texIndex++)
+		{
+			aiString texPath;
+			if (material->GetTexture(aiTextureType_SPECULAR, texIndex, &texPath) == AI_SUCCESS)
+			{
+				std::filesystem::path p(texPath.C_Str());
+				mDesc.specularPath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+			}
+		}
+
 		aiColor3D specColor;
 		float specularIntensity;
 		if (material->Get(AI_MATKEY_SHININESS_STRENGTH, specularIntensity) == AI_SUCCESS)
@@ -151,17 +159,19 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		}
 		else if (material->Get(AI_MATKEY_COLOR_SPECULAR, specColor) == AI_SUCCESS)
 		{
-			specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
+			mDesc.specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
 		}
-		else specularIntensity = 1.0f;
+		else mDesc.specularIntensity = 1.0f;
 
-		pMaterial->SetSpecularPower(specularIntensity);
 		float shininess;
 		if (material->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
 		{
 			// scale Assimp’s 0–1000 to 1–128
-			pMaterial->SetSpecularPower(shininess / 7.8125f);
+			mDesc.specularPower = shininess / 7.8125f;
 		}
+
+		std::unique_ptr<Material> pMaterial;
+		pMaterial = std::make_unique<Material>(gfx, mDesc);
 		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 	}
 
@@ -169,7 +179,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
 		auto childNode = std::make_unique<MeshNode>(gfx, parent, std::nullopt);
-		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, texturePathOverride);
+		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, diffTexOverride);
 		AddChild(std::move(childNode));
 	}
 	isTransformDirty = true;

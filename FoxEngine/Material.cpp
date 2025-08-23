@@ -6,37 +6,22 @@
 
 Material::Material(
 	Graphics& gfx,
-	const std::wstring* texturePath
+	const MaterialDesc& desc
 )
-	:useDiffuse(true)
+	: specularIntensity(desc.specularIntensity),
+	specularPower(desc.specularPower)
 {
-	InitializeBindings(gfx, texturePath);
+	InitializeTextures(gfx, desc);
+	InitializeBindings(gfx, desc);
 }
 
-Material::Material(Graphics& gfx)
-	:useDiffuse(false)
-{
-	InitializeBindings(gfx, nullptr);
-}
-
-void Material::InitializeBindings(Graphics& gfx, const std::wstring* texturePath)
+void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 {
 	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
 
-	std::wstring vsPath;
-	if (useDiffuse)
-	{
-		if (texturePath == nullptr)
-		{
-			OutputDebugStringA("Bruh");
-		}
-		LoadTexture(gfx, *texturePath);
-		vsPath = GetExecutableDirectory() + L"\\PhongVS.cso";
-	}
-	else
-	{
-		vsPath = GetExecutableDirectory() + L"\\SolidSphereVS.cso";
-	}
+	std::wstring vsPath = GetExecutableDirectory() + (textures.contains(TextureType::Diffuse) ? L"\\PhongVS.cso" : L"\\SolidSphereVS.cso");
+	std::wstring psPath = GetExecutableDirectory() + (textures.contains(TextureType::Diffuse) ? L"\\PhongPS.cso" : L"\\SolidSpherePS.cso");
+
 	if (!std::filesystem::exists(vsPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(vsPath.begin(), vsPath.end()));
 	}
@@ -56,16 +41,6 @@ void Material::InitializeBindings(Graphics& gfx, const std::wstring* texturePath
 	);
 	if (FAILED(hr)) {
 		throw std::runtime_error("Failed to create vertex shader: " + std::string(vsPath.begin(), vsPath.end()));
-	}
-
-	std::wstring psPath;
-	if (useDiffuse)
-	{
-		psPath = GetExecutableDirectory() + L"\\PhongPS.cso";
-	}
-	else
-	{
-		psPath = GetExecutableDirectory() + L"\\SolidSpherePS.cso";
 	}
 
 	if (!std::filesystem::exists(psPath)) {
@@ -106,6 +81,26 @@ void Material::InitializeBindings(Graphics& gfx, const std::wstring* texturePath
 	}
 }
 
+void Material::InitializeTextures(Graphics& gfx, const MaterialDesc& desc)
+{
+	if (desc.diffusePath)
+	{
+		TextureData diffuseTexture;
+		if (LoadTexture(gfx, *desc.diffusePath, diffuseTexture))
+		{
+			textures[TextureType::Diffuse] = std::move(diffuseTexture);
+		}
+	}
+	if (desc.specularPath)
+	{
+		TextureData specTexture;
+		if (LoadTexture(gfx, *desc.specularPath, specTexture))
+		{
+			textures[TextureType::Specular] = std::move(specTexture);
+		}
+	}
+}
+
 void Material::SetSpecularIntensity(float _specularIntensity)
 {
 	specularIntensity = _specularIntensity;
@@ -116,7 +111,7 @@ void Material::SetSpecularPower(float _specularPower)
 	specularPower = _specularPower;
 }
 
-void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
+bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture)
 {
 	// Try to load DDS version first
 	std::filesystem::path originalPath(path);
@@ -181,11 +176,8 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 	// Handle missing texture
 	if (FAILED(hr))
 	{
-		useDiffuse = false;
-		OutputDebugStringA(("Texture missing: " + stringPath + ", using diffuseColor\n").c_str());
-		pTextureView = nullptr;
-		pSamplerState = nullptr;
-		return;
+		OutputDebugStringA(("Texture missing: " + stringPath).c_str());
+		return false;
 	}
 
 	// Create texture and shader resource view
@@ -194,16 +186,13 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 		scratchImage.GetImages(),
 		scratchImage.GetImageCount(),
 		metadata,
-		&pTextureView
+		&outTexture.textureView
 	);
 
 	if (FAILED(hr))
 	{
-		useDiffuse = false;
-		OutputDebugStringA(("Failed to create texture view: " + stringPath + ", using diffuseColor\n").c_str());
-		pTextureView = nullptr;
-		pSamplerState = nullptr;
-		return;
+		OutputDebugStringA(("Failed to create texture view: " + stringPath).c_str());
+		return false;
 	}
 
 	D3D11_SAMPLER_DESC samplerDesc = {
@@ -213,26 +202,29 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 		.AddressW = D3D11_TEXTURE_ADDRESS_WRAP,
 	};
 
-	hr = GetDevice(gfx)->CreateSamplerState(&samplerDesc, &pSamplerState);
+	hr = GetDevice(gfx)->CreateSamplerState(&samplerDesc, &outTexture.samplerState);
 	if (FAILED(hr))
 	{
-		useDiffuse = false;
-		OutputDebugStringA(("Failed to create sampler state: " + stringPath + ", using diffuseColor\n").c_str());
-		pTextureView = nullptr;
-		pSamplerState = nullptr;
-		return;
+		OutputDebugStringA(("Failed to create sampler state: " + stringPath).c_str());
+		return false;
 	}
-	useDiffuse = true;
+	return true;
 }
 
 void Material::Bind(Graphics& gfx)
 {
 	GetContext(gfx)->VSSetShader(pVertexShader.Get(), nullptr, 0u);
 
-	if (useDiffuse)
+	if (textures.contains(TextureType::Diffuse))
 	{
-		GetContext(gfx)->PSSetShaderResources(0u, 1u, pTextureView.GetAddressOf());
-		GetContext(gfx)->PSSetSamplers(0u, 1u, pSamplerState.GetAddressOf());
+		GetContext(gfx)->PSSetShaderResources(0u, 1u, textures[TextureType::Diffuse].textureView.GetAddressOf());
+		GetContext(gfx)->PSSetSamplers(0u, 1u, textures[TextureType::Diffuse].samplerState.GetAddressOf());
+	}
+
+	if (textures.contains(TextureType::Specular))
+	{
+		GetContext(gfx)->PSSetShaderResources(1u, 1u, textures[TextureType::Specular].textureView.GetAddressOf());
+		GetContext(gfx)->PSSetSamplers(1u, 1u, textures[TextureType::Specular].samplerState.GetAddressOf());
 	}
 
 	GetContext(gfx)->PSSetShader(pPixelShader.Get(), nullptr, 0u);
