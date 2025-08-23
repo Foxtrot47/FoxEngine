@@ -39,5 +39,6 @@ private:
 	std::unique_ptr<PixelConstantBuffer<MaterialCbuff>> materialCBuff;
 
 	void LoadTexture(Graphics& gfx, const std::wstring& path);
+	std::vector<std::wstring> ExpandUDIM(const std::string& udimPath);
 };
 

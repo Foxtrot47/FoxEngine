@@ -2,6 +2,7 @@
 #include "DirectXTex.h"
 #include "FileUtils.h"
 #include <filesystem>
+#include <regex>
 
 Material::Material(
 	Graphics& gfx,
@@ -129,6 +130,26 @@ void Material::LoadTexture(Graphics& gfx, const std::wstring& path)
 	DirectX::ScratchImage scratchImage;
 	HRESULT hr = E_FAIL;
 
+	// check if this is UDIM texture
+	if (stringPath.find("<UDIM>") != std::string::npos)
+	{
+		auto udimTextures = ExpandUDIM(stringPath);
+		// load first texture only for now
+		if (!udimTextures.empty())
+		{
+			std::filesystem::path udimTexturePath = udimTextures.front();
+			udimTexturePath.replace_extension(L".dds");
+
+			std::wstring wDdsPath = udimTexturePath.wstring();
+			hr = DirectX::LoadFromDDSFile(
+				wDdsPath.c_str(),
+				DirectX::DDS_FLAGS_NONE,
+				&metadata,
+				scratchImage
+			);
+		}
+	}
+
 	// Try DDS first (faster loading, compressed)
 	if (std::filesystem::exists(ddsPath))
 	{
@@ -226,4 +247,38 @@ void Material::Bind(Graphics& gfx)
 	materialCBuff->Bind(gfx);
 }
 
+std::vector<std::wstring> Material::ExpandUDIM(const std::string& udimPath)
+{
+	std::filesystem::path fullPath(udimPath);
+	auto dir = fullPath.parent_path();
 
+	// Base pattern: replace <UDIM> with 4 digits
+	std::string baseName = fullPath.filename().string(); // e.g. Body_BaseColor.<UDIM>.png
+	std::string regexPattern = std::regex_replace(baseName, std::regex("<UDIM>"), "([0-9]{4})");
+
+	// ⚡ Relax extension checking: allow any extension
+	// Strip extension from regexPattern
+	size_t dotPos = regexPattern.find_last_of('.');
+	if (dotPos != std::string::npos)
+		regexPattern = regexPattern.substr(0, dotPos);
+
+	regexPattern += "\\..*"; // allow any extension after a dot
+
+	std::regex matcher(regexPattern, std::regex_constants::icase);
+
+	std::vector<std::wstring> udimFiles;
+
+	for (auto& entry : std::filesystem::directory_iterator(dir))
+	{
+		if (!entry.is_regular_file())
+			continue;
+
+		std::string filename = entry.path().filename().string();
+		if (std::regex_match(filename, matcher))
+		{
+			udimFiles.push_back(entry.path().wstring());
+		}
+	}
+
+	return udimFiles;
+}
