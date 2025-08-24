@@ -148,7 +148,6 @@
     <ClInclude Include="FPVCamera.h" />
     <ClInclude Include="ConstantBuffer.h" />
     <ClInclude Include="Drawable.h" />
-    <ClInclude Include="DrawableBase.h" />
     <ClInclude Include="FileUtils.h" />
     <ClInclude Include="FoxEngine.h" />
     <ClInclude Include="framework.h" />

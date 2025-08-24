@@ -1,6 +1,8 @@
 #pragma once
-#include "DrawableBase.h"
-class Box : public DrawableBase<Box>
+#include "Drawable.h"
+#include "IndexBuffer.h"
+
+class Box : public Drawable
 {
 public:
 	Box(Graphics& gfx,

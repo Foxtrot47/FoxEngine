@@ -19,8 +19,6 @@ public:
 	virtual void Update(float deltaTime) = 0;
 	virtual ~Drawable() = default;
 private:
-	virtual const std::vector<std::unique_ptr<Bindable>>& GetStaticBindables() const = 0;
-private:
 	const class IndexBuffer* pIndexBuffer = nullptr;
 	std::vector<std::unique_ptr<Bindable>> bindables;
 };

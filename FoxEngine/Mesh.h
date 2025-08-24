@@ -1,9 +1,10 @@
 #pragma once
-#include "DrawableBase.h"
+#include "Drawable.h"
+#include "IndexBuffer.h"
 
 class Material;
 
-class Mesh : public DrawableBase<Mesh>
+class Mesh : public Drawable
 {
 public:
 	struct Vertex

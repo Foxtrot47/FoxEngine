@@ -16,10 +16,6 @@ void Drawable::Draw(Graphics& gfx, DirectX::XMMATRIX transform) const
 			bindable->Bind(gfx);
 		}
 	}
-	for (const auto& staticBindable : GetStaticBindables())
-	{
-		staticBindable->Bind(gfx);
-	}
 	gfx.DrawIndexed(pIndexBuffer->GetCount());
 }
 

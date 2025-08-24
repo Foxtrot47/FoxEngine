@@ -1,7 +1,8 @@
 #pragma once
-#include "DrawableBase.h"
+#include "Drawable.h"
+#include "IndexBuffer.h"
 
-class SolidSphere : public DrawableBase<SolidSphere>
+class SolidSphere : public Drawable
 {
 public:
 	SolidSphere(Graphics& gfx, float radius = 0.3f, int segU = 20, int segV = 20);

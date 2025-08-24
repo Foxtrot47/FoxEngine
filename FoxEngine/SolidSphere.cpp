@@ -52,25 +52,19 @@ static void MakeUvSphere(float radius, int segU, int segV,
 
 SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 {
-	if (!IsStaticInitialized())
-	{
-		std::vector<Vertex> vertices;
-		std::vector<unsigned short> indices;
+	std::vector<Vertex> vertices;
+	std::vector<unsigned short> indices;
 
-		MakeUvSphere(radius, segU, segV, vertices, indices);
+	MakeUvSphere(radius, segU, segV, vertices, indices);
 
-		AddStaticBindable(std::make_unique<VertexBuffer>(gfx, vertices));
+	AddBind(std::make_unique<VertexBuffer>(gfx, vertices));
 
-		AddStaticIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
+	AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
 
-		const Material::MaterialDesc desc = {};
-		AddBind(std::make_unique<Material>(gfx, desc));
+	const Material::MaterialDesc desc = {};
+	AddBind(std::make_unique<Material>(gfx, desc));
 
-		AddStaticBindable(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
-	}
-	else {
-		SetIndexBufferFromStatic();
-	}
+	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
 
 	AddBind(std::make_unique<TransformConstantBuffer>(gfx));
 }
