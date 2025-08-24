@@ -7,7 +7,8 @@
 enum class TextureType
 {
 	Diffuse,
-	Specular
+	Specular,
+	Normal
 };
 
 class Material : public Bindable
@@ -18,12 +19,13 @@ public:
 		float specularIntensity;
 		float specularPower;
 		float hasSpecularMap;
-		float padding;
+		float hasNormalMap;
 	};
 	struct MaterialDesc
 	{
 		std::optional<std::wstring> diffusePath;
 		std::optional<std::wstring> specularPath;
+		std::optional<std::wstring> normalPath;
 		float specularIntensity = 1.0f;
 		float specularPower = 32.0f;
 	};

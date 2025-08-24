@@ -27,7 +27,9 @@ MeshNode::MeshNode(Graphics& gfx,
 	const auto pScene = importer.ReadFile(modelPathStr,
 		aiProcess_Triangulate |
 		aiProcess_JoinIdenticalVertices |
-		aiProcess_FlipUVs
+		aiProcess_FlipUVs |
+		aiProcess_GenSmoothNormals |
+		aiProcess_CalcTangentSpace
 	);
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
@@ -92,6 +94,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			if (pMesh->HasNormals())
 			{
 				vertex.normal = *reinterpret_cast<DirectX::XMFLOAT3*>(&pMesh->mNormals[i]);
+
 			}
 			else
 			{
@@ -104,6 +107,11 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			else
 			{
 				vertex.texCoord = { 0.0f, 0.0f };
+			}
+			if (pMesh->HasTangentsAndBitangents())
+			{
+				vertex.tangent = *reinterpret_cast<DirectX::XMFLOAT3*>(&pMesh->mTangents[i]);
+				vertex.bitangent = *reinterpret_cast<DirectX::XMFLOAT3*>(&pMesh->mBitangents[i]);
 			}
 			vertices.push_back(vertex);
 		}
@@ -149,6 +157,16 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			{
 				std::filesystem::path p(texPath.C_Str());
 				mDesc.specularPath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+			}
+		}
+
+		for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_NORMALS); texIndex++)
+		{
+			aiString texPath;
+			if (material->GetTexture(aiTextureType_NORMALS, texIndex, &texPath) == AI_SUCCESS)
+			{
+				std::filesystem::path p(texPath.C_Str());
+				mDesc.normalPath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
 			}
 		}
 

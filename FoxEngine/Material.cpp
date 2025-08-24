@@ -19,8 +19,8 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 {
 	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
 
-	std::wstring vsPath = GetExecutableDirectory() + (textures.contains(TextureType::Diffuse) ? L"\\PhongVS.cso" : L"\\SolidSphereVS.cso");
-	std::wstring psPath = GetExecutableDirectory() + (textures.contains(TextureType::Diffuse) ? L"\\PhongPS.cso" : L"\\SolidSpherePS.cso");
+	std::wstring vsPath = GetExecutableDirectory() + (textures.contains(TextureType::Normal) ? L"\\PhongNormalVS.cso" : L"\\PhongVS.cso");
+	std::wstring psPath = GetExecutableDirectory() + (textures.contains(TextureType::Normal) ? L"\\PhongNormalPS.cso" : L"\\PhongPS.cso");
 
 	if (!std::filesystem::exists(vsPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(vsPath.begin(), vsPath.end()));
@@ -66,7 +66,9 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 	{
 		{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "Normal", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "Tangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "BiTangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	hr = GetDevice(gfx)->CreateInputLayout(
@@ -97,6 +99,14 @@ void Material::InitializeTextures(Graphics& gfx, const MaterialDesc& desc)
 		if (LoadTexture(gfx, *desc.specularPath, specTexture))
 		{
 			textures[TextureType::Specular] = std::move(specTexture);
+		}
+	}
+	if (desc.normalPath)
+	{
+		TextureData normalTex;
+		if (LoadTexture(gfx, *desc.normalPath, normalTex))
+		{
+			textures[TextureType::Normal] = std::move(normalTex);
 		}
 	}
 }
@@ -225,6 +235,12 @@ void Material::Bind(Graphics& gfx)
 	{
 		GetContext(gfx)->PSSetShaderResources(1u, 1u, textures[TextureType::Specular].textureView.GetAddressOf());
 		GetContext(gfx)->PSSetSamplers(1u, 1u, textures[TextureType::Specular].samplerState.GetAddressOf());
+	}
+
+	if (textures.contains(TextureType::Normal))
+	{
+		GetContext(gfx)->PSSetShaderResources(2u, 1u, textures[TextureType::Normal].textureView.GetAddressOf());
+		GetContext(gfx)->PSSetSamplers(2u, 1u, textures[TextureType::Normal].samplerState.GetAddressOf());
 	}
 
 	GetContext(gfx)->PSSetShader(pPixelShader.Get(), nullptr, 0u);
