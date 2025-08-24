@@ -235,7 +235,5 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
-  <!-- Import texture conversion targets -->
-  <Import Project="TextureConversion.targets" />
   <Import Project="$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets" Condition="Exists('$(VcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets')" />
 </Project>

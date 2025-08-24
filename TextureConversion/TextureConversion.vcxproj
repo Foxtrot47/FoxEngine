@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{bf84381d-2ec0-42ed-913d-8b466767a990}</ProjectGuid>
+    <RootNamespace>TextureConversion</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared" >
+  </ImportGroup>
+    <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    </ImportGroup>
+    <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    </ImportGroup>
+    <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    </ImportGroup>
+    <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    </ImportGroup>
+
+  <PropertyGroup Label="UserMacros" />
+
+
+<PropertyGroup>
+    <DirectXTexToolsPath Condition="'$(DirectXTexToolsPath)' == ''">$(MSBuildStartupDirectory)\tools\</DirectXTexToolsPath>
+    <TextureTool>$(DirectXTexToolsPath)texconv.exe</TextureTool>
+    <TextureSourceDir>$(MSBuildStartupDirectory)\FoxEngine\Textures\</TextureSourceDir>
+    <TextureOutputDir>$(OutDir)\Textures\</TextureOutputDir>
+  </PropertyGroup>
+  <ItemGroup>
+	  <AlbedoTextures    Include="$(TextureSourceDir)**\*albedo*.*;$(TextureSourceDir)**\*diffuse*.*" />
+	  <NormalTextures    Include="$(TextureSourceDir)**\*normal*.*;$(TextureSourceDir)**\*nrm*.*" />
+	  <RoughnessTextures Include="$(TextureSourceDir)**\*roughness*.*" />
+	  <MetallicTextures  Include="$(TextureSourceDir)**\*metal*.*" />
+	  <OpacityTextures   Include="$(TextureSourceDir)**\*opacity*.*;$(TextureSourceDir)**\*alpha*.*" />
+	  <SpecularTextures  Include="$(TextureSourceDir)**\*specular*.*;$(TextureSourceDir)**\*spec*.*" />
+	  <HDRTextures       Include="$(TextureSourceDir)**\*.exr" />
+  </ItemGroup>
+  <Target Name="ConvertTextures" BeforeTargets="Build">
+  	<MakeDir Directories="$(TextureOutputDir)%(TextureFiles.RecursiveDir)" />
+    <Message Text="Converting textures to DDS format..." Importance="high" />
+    <Exec Command="$(TextureTool) %(AlbedoTextures.FullPath) -f BC3_UNORM -m 1 -o $(TextureOutputDir)%(AlbedoTextures.RecursiveDir) -y"
+		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
+          ContinueOnError="false" />
+
+	<Message Text="Converting Normals (BC5_UNORM)..." Importance="high"/>
+    <Exec Command="$(TextureTool) %(NormalTextures.FullPath) -f BC5_UNORM -m 1 -o $(TextureOutputDir)%(NormalTextures.RecursiveDir) -y"
+          Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
+          ContinueOnError="false" />
+
+	<Message Text="Converting Opacity (BC4_UNORM)..." Importance="high"/>
+	<Exec Command="$(TextureTool) %(OpacityTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(OpacityTextures.RecursiveDir)"
+		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
+          ContinueOnError="false" />
+
+	<Message Text="Converting Specular (BC4_UNORM)..." Importance="high"/>
+	<Exec Command="$(TextureTool) %(SpecularTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(SpecularTextures.RecursiveDir)"
+  		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
+          ContinueOnError="false" />
+		  
+	<Message Text="Converting Roughness (BC4_UNORM)..." Importance="high"/>
+	<Exec Command="$(TextureTool) %(RoughnessTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(RoughnessTextures.RecursiveDir)"
+  		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
+          ContinueOnError="false" />
+
+	<Message Text="Converting Metallic (BC4_UNORM)..." Importance="high"/>
+	<Exec Command="$(TextureTool) %(MetallicTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(MetallicTextures.RecursiveDir)"
+  		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
+          ContinueOnError="false" />
+		  
+    <Message Text="Converting HDR (BC6H_UF16)..." Importance="high"/>
+    <Exec Command="$(TextureTool) %(HDRTextures.FullPath) -f BC6H_UF16 -m 1 -o $(TextureOutputDir)%(HDRTextures.RecursiveDir) -y"
+          Condition="Exists('$(TextureTool)')" />
+  </Target>
+  <Target Name="CleanTextures" BeforeTargets="Clean">
+    <Message Text="Cleaning converted DDS textures..." Importance="high" />
+    <RemoveDir Directories="$(TextureOutputDir)" Condition="Exists('$(TextureOutputDir)')" />
+  </Target>
+
+  <ItemGroup></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
