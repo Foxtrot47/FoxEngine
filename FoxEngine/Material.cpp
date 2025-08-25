@@ -9,7 +9,8 @@ Material::Material(
 	const MaterialDesc& desc
 )
 	: specularIntensity(desc.specularIntensity),
-	specularPower(desc.specularPower)
+	specularPower(desc.specularPower),
+	isCubeMap(desc.isCubeMap)
 {
 	InitializeTextures(gfx, desc);
 	InitializeBindings(gfx, desc);
@@ -19,8 +20,15 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 {
 	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
 
-	std::wstring vsPath = GetExecutableDirectory() + (textures.contains(TextureType::Normal) ? L"\\PhongNormalVS.cso" : L"\\PhongVS.cso");
-	std::wstring psPath = GetExecutableDirectory() + (textures.contains(TextureType::Normal) ? L"\\PhongNormalPS.cso" : L"\\PhongPS.cso");
+	std::wstring vsPath = GetExecutableDirectory() + (
+		isCubeMap ? L"\\SkyboxVS.cso"
+		: textures.contains(TextureType::Normal) ? L"\\PhongNormalVS.cso" : L"\\PhongVS.cso"
+		);
+
+	std::wstring psPath = GetExecutableDirectory() + (
+		isCubeMap ? L"\\SkyboxPS.cso"
+		: textures.contains(TextureType::Normal) ? L"\\PhongNormalPS.cso" : L"\\PhongPS.cso"
+		);
 
 	if (!std::filesystem::exists(vsPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(vsPath.begin(), vsPath.end()));
@@ -62,33 +70,69 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 		throw std::runtime_error("Failed to create pixel shader: " + std::string(psPath.begin(), psPath.end()));
 	}
 
-	topologyDesc =
+	if (isCubeMap)
 	{
-		{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "Normal", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "Tangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "BiTangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	};
+		topologyDesc =
+		{
+			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
+		hr = GetDevice(gfx)->CreateInputLayout(
+			topologyDesc.data(),
+			(UINT)topologyDesc.size(),
+			pVSByteCodeBlob->GetBufferPointer(),
+			pVSByteCodeBlob->GetBufferSize(),
+			&pInputLayout
+		);
+	}
+	else {
+		topologyDesc =
+		{
+			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "Normal", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "Tangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			{ "BiTangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
 
-	hr = GetDevice(gfx)->CreateInputLayout(
-		topologyDesc.data(),
-		(UINT)topologyDesc.size(),
-		pVSByteCodeBlob->GetBufferPointer(),
-		pVSByteCodeBlob->GetBufferSize(),
-		&pInputLayout
-	);
+		hr = GetDevice(gfx)->CreateInputLayout(
+			topologyDesc.data(),
+			(UINT)topologyDesc.size(),
+			pVSByteCodeBlob->GetBufferPointer(),
+			pVSByteCodeBlob->GetBufferSize(),
+			&pInputLayout
+		);
+	}
+
+	if (isCubeMap) {
+		D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+		dsDesc.DepthEnable = TRUE;
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		dsDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+		GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
+	}
+	
 	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create input layout:");
+		throw std::runtime_error("Failed to create depth stencil state:");
 	}
 }
 
 void Material::InitializeTextures(Graphics& gfx, const MaterialDesc& desc)
 {
-	if (desc.diffusePath)
+	// just load as diffuse but with clamping
+	if (isCubeMap)
+	{
+		assert("Attemping to load cubemap without diffuse texture set" && desc.diffusePath);
+		TextureData cubeMapTex;
+		if (LoadTexture(gfx, *desc.diffusePath, cubeMapTex, D3D11_TEXTURE_ADDRESS_CLAMP))
+		{
+			textures[TextureType::Diffuse] = std::move(cubeMapTex);
+		}
+	}
+	else if (desc.diffusePath)
 	{
 		TextureData diffuseTexture;
-		if (LoadTexture(gfx, *desc.diffusePath, diffuseTexture))
+		if (LoadTexture(gfx, *desc.diffusePath, diffuseTexture, D3D11_TEXTURE_ADDRESS_WRAP))
 		{
 			textures[TextureType::Diffuse] = std::move(diffuseTexture);
 		}
@@ -96,7 +140,7 @@ void Material::InitializeTextures(Graphics& gfx, const MaterialDesc& desc)
 	if (desc.specularPath)
 	{
 		TextureData specTexture;
-		if (LoadTexture(gfx, *desc.specularPath, specTexture))
+		if (LoadTexture(gfx, *desc.specularPath, specTexture, D3D11_TEXTURE_ADDRESS_WRAP))
 		{
 			textures[TextureType::Specular] = std::move(specTexture);
 		}
@@ -104,7 +148,7 @@ void Material::InitializeTextures(Graphics& gfx, const MaterialDesc& desc)
 	if (desc.normalPath)
 	{
 		TextureData normalTex;
-		if (LoadTexture(gfx, *desc.normalPath, normalTex))
+		if (LoadTexture(gfx, *desc.normalPath, normalTex, D3D11_TEXTURE_ADDRESS_WRAP))
 		{
 			textures[TextureType::Normal] = std::move(normalTex);
 		}
@@ -121,7 +165,7 @@ void Material::SetSpecularPower(float _specularPower)
 	specularPower = _specularPower;
 }
 
-bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture)
+bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture, D3D11_TEXTURE_ADDRESS_MODE textureAddressMode)
 {
 	// Try to load DDS version first
 	std::filesystem::path originalPath(path);
@@ -207,9 +251,9 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 
 	D3D11_SAMPLER_DESC samplerDesc = {
 		.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
-		.AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
-		.AddressV = D3D11_TEXTURE_ADDRESS_WRAP,
-		.AddressW = D3D11_TEXTURE_ADDRESS_WRAP,
+		.AddressU = textureAddressMode,
+		.AddressV = textureAddressMode,
+		.AddressW = textureAddressMode,
 	};
 
 	hr = GetDevice(gfx)->CreateSamplerState(&samplerDesc, &outTexture.samplerState);
@@ -224,6 +268,7 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 void Material::Bind(Graphics& gfx)
 {
 	GetContext(gfx)->VSSetShader(pVertexShader.Get(), nullptr, 0u);
+	GetContext(gfx)->OMSetDepthStencilState(pDepthState.Get(), 0);
 
 	if (textures.contains(TextureType::Diffuse))
 	{

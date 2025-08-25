@@ -14,7 +14,7 @@ public:
 		const DirectX::XMFLOAT3& initialScale
 	);
 	void AddChild(std::unique_ptr<SceneNode> child);
-	DirectX::XMMATRIX GetLocalTransform() const;
+	virtual DirectX::XMMATRIX GetLocalTransform() const;
 	DirectX::XMMATRIX GetWorldTransform() const;
 	virtual void Draw(Graphics& gfx);
 	virtual ~SceneNode() = default;

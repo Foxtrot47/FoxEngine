@@ -28,6 +28,7 @@ public:
 		std::optional<std::wstring> normalPath;
 		float specularIntensity = 1.0f;
 		float specularPower = 32.0f;
+		bool isCubeMap = false;
 	};
 	Material(
 		Graphics& gfx,
@@ -47,17 +48,20 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11VertexShader> pVertexShader;
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> pPixelShader;
 	Microsoft::WRL::ComPtr<ID3D11InputLayout> pInputLayout;
+	Microsoft::WRL::ComPtr<ID3D11DepthStencilState> pDepthState;
+	Microsoft::WRL::ComPtr<ID3D11RasterizerState> pRasterizerState;
 	std::vector<D3D11_INPUT_ELEMENT_DESC> topologyDesc = {};
 
 	std::unordered_map<TextureType, TextureData> textures;
-	
+
 	float specularIntensity = 1.0f;
 	float specularPower = 32.0f;
+	bool isCubeMap = false;
 
 	std::unique_ptr<PixelConstantBuffer<MaterialCbuff>> materialCBuff;
 
 	void InitializeBindings(Graphics& gfx, const MaterialDesc& desc);
 	void InitializeTextures(Graphics& gfx, const MaterialDesc& desc);
-	bool LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture);
+	bool LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture, D3D11_TEXTURE_ADDRESS_MODE textureAddressMode);
 	std::vector<std::wstring> ExpandUDIM(const std::string& udimPath);
 };

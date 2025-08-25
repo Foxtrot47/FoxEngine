@@ -36,6 +36,12 @@ XMMATRIX FPVCamera::GetProjectionMatrix() const
 	);
 }
 
+XMFLOAT3 FPVCamera::GetPosition() const
+{
+	return position;
+}
+
+
 void FPVCamera::Update(float dt)
 {
 	if (!isCursorLocked) return;

@@ -4,8 +4,10 @@
 #include "MeshNode.h"
 #include "PointLightNode.h"
 #include "TransformNode.h"
+#include "SkyboxNode.h"
+#include "SkyboxNode.h"
 
-SceneManager::SceneManager(Graphics& gfx)
+SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 {
 	const DirectX::XMFLOAT3 defaultPos = { 0.0f, 0.0f, 0.0f };
 	const DirectX::XMFLOAT4 defaultRot = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -53,6 +55,14 @@ SceneManager::SceneManager(Graphics& gfx)
 	 	DirectX::XMFLOAT3({ 0.1f, 0.1f, 0.1f })
 	 );
 	 rootNode->AddChild(std::move(car));
+
+	auto cumeMap = GetExecutableDirectory() + L"\\Textures\\citrus_orchard_road_puresky_2k.hdr";
+	auto skybox = std::make_unique<SkyboxNode>(gfx,
+		rootNode.get(),
+		cumeMap,
+		&cam
+	);
+	rootNode->AddChild(std::move(skybox));
 }
 
 void SceneManager::Draw(Graphics& gfx) const

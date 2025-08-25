@@ -11,6 +11,7 @@ public:
 	FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd, Mouse& mouse);
 	XMMATRIX GetViewMatrix() const;
 	XMMATRIX GetProjectionMatrix() const;
+	XMFLOAT3 GetPosition() const;
 	void HandleInput();
 	void Bind(Graphics& gfx) const;
 	void Update(float dt);

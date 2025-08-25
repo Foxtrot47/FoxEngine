@@ -88,7 +88,7 @@
 	  <MetallicTextures  Include="$(TextureSourceDir)**\*metal*.*" />
 	  <OpacityTextures   Include="$(TextureSourceDir)**\*opacity*.*;$(TextureSourceDir)**\*alpha*.*" />
 	  <SpecularTextures  Include="$(TextureSourceDir)**\*specular*.*;$(TextureSourceDir)**\*spec*.*" />
-	  <HDRTextures       Include="$(TextureSourceDir)**\*.exr" />
+	  <HDRTextures       Include="$(TextureSourceDir)**\*.exr;$(TextureSourceDir)**\*.hdr" />
   </ItemGroup>
   <Target Name="ConvertTextures" BeforeTargets="Build">
   	<MakeDir Directories="$(TextureOutputDir)%(TextureFiles.RecursiveDir)" />

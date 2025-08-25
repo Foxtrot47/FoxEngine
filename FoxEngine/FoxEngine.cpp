@@ -17,7 +17,7 @@ int CALLBACK WinMain(
 	FPVCamera cam(wnd.GetHandle(), wnd.Gfx(), wnd.kbd, wnd.mouse);
 
 	wnd.Gfx().SetProjection(DirectX::XMMatrixPerspectiveLH(1.0f, 9.0f / 16.0f, 0.5f, 1000.0f));
-	SceneManager scene(wnd.Gfx());
+	SceneManager scene(wnd.Gfx(), cam);
 
 	bool shouldExit = false;
 	// Enter main loop
