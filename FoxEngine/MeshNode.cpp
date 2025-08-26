@@ -45,13 +45,15 @@ MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 	:
 	SceneNode(parent, name)
 {
-	Material::MaterialDesc mDesc = {};
-
+	Material::MaterialInstanceData mData = {};
+	mData.vsPath = GetShaderPath(L"PhongVS.cso");
+	mData.psPath = GetShaderPath( L"PhongPS.cso");
+	mData.texturePaths = std::unordered_map<int, std::wstring> {};
 	if (diffTexOverride != nullptr)
 	{
-		mDesc.diffusePath = std::make_optional(*diffTexOverride);
+		mData.texturePaths[0] = *diffTexOverride;
 	}
-	auto pMaterial = std::make_unique<Material>(gfx, mDesc);
+	auto pMaterial = std::make_unique<Material>(gfx, mData);
 	meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
 }
 
@@ -131,11 +133,14 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		}
 
 		aiMaterial* material = scene->mMaterials[pMesh->mMaterialIndex];
-		Material::MaterialDesc mDesc = {};
-
+		Material::MaterialInstanceData mData = {};
+		mData.vsPath = GetShaderPath(L"PhongVS.cso");;
+		mData.psPath = GetShaderPath(L"PhongPS.cso");
+		mData.texturePaths = std::unordered_map<int, std::wstring> {};
+		
 		if (diffTexOverride != nullptr)
 		{
-			mDesc.diffusePath = std::make_optional(*diffTexOverride);
+			mData.texturePaths[0] = *diffTexOverride;
 		}
 		else
 		{
@@ -145,7 +150,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 				if (material->GetTexture(aiTextureType_DIFFUSE, texIndex, &texPath) == AI_SUCCESS)
 				{
 					std::filesystem::path p(texPath.C_Str());
-					mDesc.diffusePath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+					mData.texturePaths[0] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
 				}
 			}
 		}
@@ -156,7 +161,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			if (material->GetTexture(aiTextureType_SPECULAR, texIndex, &texPath) == AI_SUCCESS)
 			{
 				std::filesystem::path p(texPath.C_Str());
-				mDesc.specularPath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				mData.texturePaths[1] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
 			}
 		}
 
@@ -166,7 +171,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			if (material->GetTexture(aiTextureType_NORMALS, texIndex, &texPath) == AI_SUCCESS)
 			{
 				std::filesystem::path p(texPath.C_Str());
-				mDesc.normalPath = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				mData.texturePaths[2] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
 			}
 		}
 
@@ -177,25 +182,27 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		}
 		else if (material->Get(AI_MATKEY_COLOR_SPECULAR, specColor) == AI_SUCCESS)
 		{
-			mDesc.specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
+			mData.specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
 		}
-		else mDesc.specularIntensity = 1.0f;
+		else mData.specularIntensity = 1.0f;
 
 		float shininess;
 		if (material->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
 		{
 			// scale Assimp’s 0–1000 to 1–128
-			mDesc.specularPower = shininess / 7.8125f;
+			mData.specularPower = shininess / 7.8125f;
 		}
-
-		std::unique_ptr<Material> pMaterial;
-		pMaterial = std::make_unique<Material>(gfx, mDesc);
+		auto pMaterial= std::make_unique<Material>(gfx, mData);
 		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 	}
 
 	// handle child nodes
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
+		Material::MaterialInstanceData mData = {};
+		mData.vsPath = GetShaderPath(L"PhongVS.cso");
+		mData.psPath = GetShaderPath(L"PhongPS.cso");
+		mData.texturePaths = std::unordered_map<int, std::wstring> {};
 		auto childNode = std::make_unique<MeshNode>(gfx, parent, std::nullopt);
 		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, diffTexOverride);
 		AddChild(std::move(childNode));

@@ -15,46 +15,33 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 
 	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node", defaultPos, defaultRot, defaultScaling);
 
-	auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light", DirectX::XMFLOAT3(-5.0f, 40.0f, 0.0f));
-	rootNode->AddChild(std::move(pointLight));
-
-	auto modelPath = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01.FBX";
-	auto texturePath = GetExecutableDirectory() + L"\\Textures\\T_Urb_Roa_Equipment_TrafficCone_Plastic_Red_01_D.EXR";
-	auto cone = std::make_unique<MeshNode>(gfx,
-		rootNode.get(),
-		modelPath,
-		&texturePath,
-		"Traffic_Cone",
-		defaultPos,
-		defaultRot,
-		defaultScaling
-	);
-	rootNode->AddChild(std::move(cone));
-
-	auto m1 = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Asphalt_01.FBX";
-	auto m2 = GetExecutableDirectory() + L"\\Textures\\T_Ground_Asphalt_Coarse_01_D.EXR";
-	auto road = std::make_unique<MeshNode>(gfx,
-		rootNode.get(),
-		m1,
-		&m2,
-		"Alphalt_Road_01",
-		defaultPos,
-		defaultRot,
-		defaultScaling
-	);
-	rootNode->AddChild(std::move(road));
-
-	auto m3 = GetExecutableDirectory() + L"\\Models\\survival_character.fbx";
-	 auto car = std::make_unique<MeshNode>(gfx,
+	 auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light", DirectX::XMFLOAT3(-5.0f, 40.0f, 0.0f));
+	 rootNode->AddChild(std::move(pointLight));
+	
+	 auto m1 = GetExecutableDirectory() + L"\\Models\\SM_Urb_Roa_Asphalt_01.FBX";
+	 auto m2 = GetExecutableDirectory() + L"\\Textures\\T_Ground_Asphalt_Coarse_01_D.EXR";
+	 auto road = std::make_unique<MeshNode>(gfx,
 	 	rootNode.get(),
-	 	m3,
-	 	nullptr,
-	 	"MP-4",
+	 	m1,
+	 	&m2,
+	 	"Alphalt_Road_01",
 	 	defaultPos,
 	 	defaultRot,
-	 	DirectX::XMFLOAT3({ 0.1f, 0.1f, 0.1f })
+	 	defaultScaling
 	 );
-	 rootNode->AddChild(std::move(car));
+	 rootNode->AddChild(std::move(road));
+	
+	 auto m3 = GetExecutableDirectory() + L"\\Models\\Business girl.fbx";
+	  auto car = std::make_unique<MeshNode>(gfx,
+	  	rootNode.get(),
+	  	m3,
+	  	nullptr,
+	  	"MP-4",
+	  	defaultPos,
+	  	defaultRot,
+	  	DirectX::XMFLOAT3({ 0.1f, 0.1f, 0.1f })
+	  );
+	  rootNode->AddChild(std::move(car));
 
 	auto cumeMap = GetExecutableDirectory() + L"\\Textures\\citrus_orchard_road_puresky_2k.hdr";
 	auto skybox = std::make_unique<SkyboxNode>(gfx,

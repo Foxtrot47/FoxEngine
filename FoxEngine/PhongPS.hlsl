@@ -22,7 +22,6 @@ cbuffer CamerCbuffer : register(b11)
 Texture2D tex : register(t0);
 Texture2D specularTex : register(t1);
 SamplerState splr : register(s0);
-SamplerState specularSampler : register(s1);
 
 float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexCoord) : SV_Target
 {
@@ -45,11 +44,11 @@ float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexC
     float3 specularColor;
     if (hasSpecularMap > 0.0f)
     {
-        specularColor = specularTex.Sample(specularSampler, tc).rgb * materialSpecularMask;
+        specularColor = specularTex.Sample(splr, tc).rgb * finalSpecularIntensity;
     }
     else
     {
-        specularColor = float3(materialSpecularMask, materialSpecularMask, materialSpecularMask);
+        specularColor = float3(finalSpecularIntensity, finalSpecularIntensity, finalSpecularIntensity);
     }
     
     float3 specular = lightColor * globalSpecularIntensity * specularColor * spec * attenuation;

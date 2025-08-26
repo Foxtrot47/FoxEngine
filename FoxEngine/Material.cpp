@@ -1,44 +1,28 @@
 #include "Material.h"
 #include "DirectXTex.h"
-#include "FileUtils.h"
 #include <filesystem>
 #include <regex>
 
-Material::Material(
-	Graphics& gfx,
-	const MaterialDesc& desc
-)
-	: specularIntensity(desc.specularIntensity),
-	specularPower(desc.specularPower),
-	isCubeMap(desc.isCubeMap)
+Material::Material(Graphics& gfx, const MaterialInstanceData& data)
+	: instanceData(data)
 {
-	InitializeTextures(gfx, desc);
-	InitializeBindings(gfx, desc);
+	InitializeTextures(gfx);
+	InitializeBindings(gfx);
 }
 
-void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
+void Material::InitializeBindings(Graphics& gfx)
 {
 	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
 
-	std::wstring vsPath = GetExecutableDirectory() + (
-		isCubeMap ? L"\\SkyboxVS.cso"
-		: textures.contains(TextureType::Normal) ? L"\\PhongNormalVS.cso" : L"\\PhongVS.cso"
-		);
-
-	std::wstring psPath = GetExecutableDirectory() + (
-		isCubeMap ? L"\\SkyboxPS.cso"
-		: textures.contains(TextureType::Normal) ? L"\\PhongNormalPS.cso" : L"\\PhongPS.cso"
-		);
-
-	if (!std::filesystem::exists(vsPath)) {
-		throw std::runtime_error("Shader file not found: " + std::string(vsPath.begin(), vsPath.end()));
+	if (!std::filesystem::exists(instanceData.vsPath)) {
+		throw std::runtime_error("Shader file not found: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));
 	}
 
 	HRESULT hr = E_FAIL;
-	hr = D3DReadFileToBlob(vsPath.c_str(), &pVSByteCodeBlob);
+	hr = D3DReadFileToBlob(instanceData.vsPath.c_str(), &pVSByteCodeBlob);
 
 	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to read vertex shader file: " + std::string(vsPath.begin(), vsPath.end()));
+		throw std::runtime_error("Failed to read vertex shader file: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));
 	}
 
 	hr = GetDevice(gfx)->CreateVertexShader(
@@ -48,16 +32,16 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 		&pVertexShader
 	);
 	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create vertex shader: " + std::string(vsPath.begin(), vsPath.end()));
+		throw std::runtime_error("Failed to create vertex shader: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));
 	}
 
-	if (!std::filesystem::exists(psPath)) {
-		throw std::runtime_error("Shader file not found: " + std::string(psPath.begin(), psPath.end()));
+	if (!std::filesystem::exists(instanceData.psPath)) {
+		throw std::runtime_error("Shader file not found: " + std::string(instanceData.psPath.begin(), instanceData.psPath.end()));
 	}
 
-	hr = D3DReadFileToBlob(psPath.c_str(), &pPSByteCodeBlob);
+	hr = D3DReadFileToBlob(instanceData.psPath.c_str(), &pPSByteCodeBlob);
 	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to read pixel shader file: " + std::string(psPath.begin(), psPath.end()));
+		throw std::runtime_error("Failed to read pixel shader file: " + std::string(instanceData.psPath.begin(), instanceData.psPath.end()));
 	}
 
 	hr = GetDevice(gfx)->CreatePixelShader(
@@ -67,10 +51,10 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 		&pPixelShader
 	);
 	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create pixel shader: " + std::string(psPath.begin(), psPath.end()));
+		throw std::runtime_error("Failed to create pixel shader: " + std::string(instanceData.psPath.begin(), instanceData.psPath.end()));
 	}
 
-	if (isCubeMap)
+	if (instanceData.hasDepthState)
 	{
 		topologyDesc =
 		{
@@ -84,6 +68,16 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 			pVSByteCodeBlob->GetBufferSize(),
 			&pInputLayout
 		);
+
+		D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+		dsDesc.DepthEnable = TRUE;
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		dsDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+		GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
+	
+		if (FAILED(hr)) {
+			throw std::runtime_error("Failed to create depth stencil state:");
+		}
 	}
 	else {
 		topologyDesc =
@@ -103,69 +97,47 @@ void Material::InitializeBindings(Graphics& gfx, const MaterialDesc& desc)
 			&pInputLayout
 		);
 	}
-
-	if (isCubeMap) {
-		D3D11_DEPTH_STENCIL_DESC dsDesc = {};
-		dsDesc.DepthEnable = TRUE;
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-		dsDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-		GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
+	if (FAILED(hr))
+	{
+		throw std::runtime_error("Failed to create input layout");
 	}
 	
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create depth stencil state:");
-	}
 }
 
-void Material::InitializeTextures(Graphics& gfx, const MaterialDesc& desc)
+void Material::InitializeTextures(Graphics& gfx)
 {
-	// just load as diffuse but with clamping
-	if (isCubeMap)
+	D3D11_SAMPLER_DESC samplerDesc = {
+		.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+		.AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
+		.AddressV = D3D11_TEXTURE_ADDRESS_WRAP,
+		.AddressW = D3D11_TEXTURE_ADDRESS_WRAP,
+	};
+
+	HRESULT hr = E_FAIL;
+	hr = GetDevice(gfx)->CreateSamplerState(&samplerDesc, &defaultSamplerState);
+	if (FAILED(hr))
 	{
-		assert("Attemping to load cubemap without diffuse texture set" && desc.diffusePath);
-		TextureData cubeMapTex;
-		if (LoadTexture(gfx, *desc.diffusePath, cubeMapTex, D3D11_TEXTURE_ADDRESS_CLAMP))
-		{
-			textures[TextureType::Diffuse] = std::move(cubeMapTex);
-		}
+		throw std::runtime_error("Failed to create default sampler state");
 	}
-	else if (desc.diffusePath)
-	{
-		TextureData diffuseTexture;
-		if (LoadTexture(gfx, *desc.diffusePath, diffuseTexture, D3D11_TEXTURE_ADDRESS_WRAP))
-		{
-			textures[TextureType::Diffuse] = std::move(diffuseTexture);
-		}
-	}
-	if (desc.specularPath)
-	{
-		TextureData specTexture;
-		if (LoadTexture(gfx, *desc.specularPath, specTexture, D3D11_TEXTURE_ADDRESS_WRAP))
-		{
-			textures[TextureType::Specular] = std::move(specTexture);
-		}
-	}
-	if (desc.normalPath)
-	{
-		TextureData normalTex;
-		if (LoadTexture(gfx, *desc.normalPath, normalTex, D3D11_TEXTURE_ADDRESS_WRAP))
-		{
-			textures[TextureType::Normal] = std::move(normalTex);
+	for (const auto& [slotName, texturePath] : instanceData.texturePaths) {
+		TextureData textureData;
+		if (LoadTexture(gfx, texturePath, textureData)) {
+			loadedTextures[slotName] = std::move(textureData);
 		}
 	}
 }
 
 void Material::SetSpecularIntensity(float _specularIntensity)
 {
-	specularIntensity = _specularIntensity;
+	instanceData.specularIntensity = _specularIntensity;
 }
 
 void Material::SetSpecularPower(float _specularPower)
 {
-	specularPower = _specularPower;
+	instanceData.specularPower = _specularPower;
 }
 
-bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture, D3D11_TEXTURE_ADDRESS_MODE textureAddressMode)
+bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture)
 {
 	// Try to load DDS version first
 	std::filesystem::path originalPath(path);
@@ -248,20 +220,6 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 		OutputDebugStringA(("Failed to create texture view: " + stringPath).c_str());
 		return false;
 	}
-
-	D3D11_SAMPLER_DESC samplerDesc = {
-		.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
-		.AddressU = textureAddressMode,
-		.AddressV = textureAddressMode,
-		.AddressW = textureAddressMode,
-	};
-
-	hr = GetDevice(gfx)->CreateSamplerState(&samplerDesc, &outTexture.samplerState);
-	if (FAILED(hr))
-	{
-		OutputDebugStringA(("Failed to create sampler state: " + stringPath).c_str());
-		return false;
-	}
 	return true;
 }
 
@@ -270,31 +228,19 @@ void Material::Bind(Graphics& gfx)
 	GetContext(gfx)->VSSetShader(pVertexShader.Get(), nullptr, 0u);
 	GetContext(gfx)->OMSetDepthStencilState(pDepthState.Get(), 0);
 
-	if (textures.contains(TextureType::Diffuse))
-	{
-		GetContext(gfx)->PSSetShaderResources(0u, 1u, textures[TextureType::Diffuse].textureView.GetAddressOf());
-		GetContext(gfx)->PSSetSamplers(0u, 1u, textures[TextureType::Diffuse].samplerState.GetAddressOf());
-	}
-
-	if (textures.contains(TextureType::Specular))
-	{
-		GetContext(gfx)->PSSetShaderResources(1u, 1u, textures[TextureType::Specular].textureView.GetAddressOf());
-		GetContext(gfx)->PSSetSamplers(1u, 1u, textures[TextureType::Specular].samplerState.GetAddressOf());
-	}
-
-	if (textures.contains(TextureType::Normal))
-	{
-		GetContext(gfx)->PSSetShaderResources(2u, 1u, textures[TextureType::Normal].textureView.GetAddressOf());
-		GetContext(gfx)->PSSetSamplers(2u, 1u, textures[TextureType::Normal].samplerState.GetAddressOf());
+	GetContext(gfx)->PSSetSamplers(0, 1u, defaultSamplerState.GetAddressOf());
+	
+	for (const auto& [slotName, textureData] : loadedTextures) {
+		GetContext(gfx)->PSSetShaderResources(slotName, 1u, textureData.textureView.GetAddressOf());
 	}
 
 	GetContext(gfx)->PSSetShader(pPixelShader.Get(), nullptr, 0u);
 	GetContext(gfx)->IASetInputLayout(pInputLayout.Get());
 
 	const MaterialCbuff buff = {
-		specularIntensity,
-		specularPower,
-		textures.contains(TextureType::Specular) ? 1.0f : 0.0f,
+		instanceData.specularIntensity,
+		instanceData.specularPower,
+		0.0f,
 		 0.0f
 	};
 	materialCBuff->Update(gfx, buff);

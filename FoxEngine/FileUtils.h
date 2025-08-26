@@ -10,3 +10,8 @@ inline std::wstring GetExecutableDirectory()
 	std::filesystem::path exePath(path);
 	return exePath.parent_path().wstring(); // Strip the exe filename
 }
+
+inline std::wstring GetShaderPath(const std::wstring& shaderName)
+{
+	return GetExecutableDirectory() + L"\\" + shaderName;
+}

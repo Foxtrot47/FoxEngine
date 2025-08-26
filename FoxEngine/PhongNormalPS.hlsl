@@ -23,8 +23,6 @@ Texture2D tex : register(t0);
 Texture2D specularTex : register(t1);
 Texture2D normalTex : register(t2);
 SamplerState splr : register(s0);
-SamplerState specularSampler : register(s1);
-SamplerState normalSampler : register(s2);
 
 struct PSIn
 {
@@ -44,7 +42,7 @@ float4 main(PSIn input) : SV_Target
     
     float3x3 TBN = float3x3(T, B, N);
     
-    float3 normalMapSample = normalTex.Sample(normalSampler, input.tex).rgb;
+    float3 normalMapSample = normalTex.Sample(splr, input.tex).rgb;
         
     // Convert from [0,1] color range to [-1,1] direction range
     float3 tangentSpaceNormal = normalMapSample * 2.0f - 1.0f;
@@ -67,7 +65,7 @@ float4 main(PSIn input) : SV_Target
     float3 specularColor;
     if (hasSpecularMap > 0.0f)
     {
-        specularColor = specularTex.Sample(specularSampler, input.tex).rgb * materialSpecularMask;
+        specularColor = specularTex.Sample(splr, input.tex).rgb * materialSpecularMask;
     }
     else
     {

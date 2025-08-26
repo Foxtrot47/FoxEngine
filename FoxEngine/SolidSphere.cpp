@@ -61,8 +61,11 @@ SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 
 	AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
 
-	const Material::MaterialDesc desc = {};
-	AddBind(std::make_unique<Material>(gfx, desc));
+	Material::MaterialInstanceData sphereMat = {};
+	sphereMat.name = "M_Sphere";
+	sphereMat.vsPath = GetShaderPath(L"PhongVS.cso");
+	sphereMat.psPath = GetShaderPath(L"PhongPS.cso");
+	AddBind(std::make_unique<Material>(gfx, sphereMat));
 
 	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
 

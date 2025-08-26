@@ -1,4 +1,6 @@
 #include "Skybox.h"
+
+#include "FileUtils.h"
 #include "Material.h"
 
 Skybox::Skybox(Graphics& gfx, float size, std::wstring cubemapPath)
@@ -9,10 +11,15 @@ Skybox::Skybox(Graphics& gfx, float size, std::wstring cubemapPath)
     std::vector<unsigned short> indices;
     MakeUvSphere(size, 20, 20, vertices, indices);
 
-    Material::MaterialDesc desc;
-    desc.diffusePath = cubemapPath;
-    desc.isCubeMap = true;
-    std::unique_ptr<Material> material = std::make_unique<Material>(gfx, desc);
+    Material::MaterialInstanceData mData = {};
+    mData.name = "M_Skybox";
+    mData.vsPath = GetShaderPath(L"SkyboxVS.cso");
+    mData.psPath = GetShaderPath(L"SkyboxPS.cso");
+    mData.texturePaths = std::unordered_map<int, std::wstring> {
+      { 0, cubemapPath }
+    };
+    mData.hasDepthState = true;
+    auto material = std::make_unique<Material>(gfx, mData);
 
     AddBind(std::make_unique<VertexBuffer>(gfx, vertices));
 
