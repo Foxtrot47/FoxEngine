@@ -15,3 +15,13 @@ inline std::wstring GetShaderPath(const std::wstring& shaderName)
 {
 	return GetExecutableDirectory() + L"\\" + shaderName;
 }
+
+inline std::wstring GetTexturePath(const std::wstring& textureName)
+{
+	return GetExecutableDirectory() + L"\\Textures\\" + textureName;
+}
+
+inline std::wstring GetModelPath(const std::wstring& modelName)
+{
+	return GetExecutableDirectory() + L"\\Models\\" + modelName;
+}

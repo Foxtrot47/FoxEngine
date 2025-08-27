@@ -13,13 +13,13 @@ public:
 	Drawable(const Drawable&) = delete;
 
 	void Draw(Graphics& gfx, DirectX::XMMATRIX transform) const;
-	void AddBind(std::unique_ptr<Bindable> bindable);
-	void AddIndexBuffer(std::unique_ptr<class IndexBuffer> indexBuffer);
+	void AddBind(std::shared_ptr<Bindable> bindable);
+	void AddIndexBuffer(std::shared_ptr<class IndexBuffer> indexBuffer);
 
 	virtual void Update(float deltaTime) = 0;
 	virtual ~Drawable() = default;
 private:
 	const class IndexBuffer* pIndexBuffer = nullptr;
-	std::vector<std::unique_ptr<Bindable>> bindables;
+	std::vector<std::shared_ptr<Bindable>> bindables;
 };
 

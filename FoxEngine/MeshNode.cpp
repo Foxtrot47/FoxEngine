@@ -13,7 +13,7 @@ MeshNode::MeshNode(Graphics& gfx, SceneNode* parent, std::optional<std::string> 
 MeshNode::MeshNode(Graphics& gfx,
 	SceneNode* parent,
 	std::wstring modelPath,
-	const std::wstring* texturePath,
+	std::shared_ptr<Material> material,
 	std::optional<std::string> name,
 	const DirectX::XMFLOAT3& initialPosition,
 	const DirectX::XMFLOAT4& initialRotationQuat,
@@ -34,30 +34,38 @@ MeshNode::MeshNode(Graphics& gfx,
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
 
-	LoadAssimpNode(gfx, pScene->mRootNode, pScene, texturePath);
+	if (material) {
+		LoadAssimpNode(gfx, pScene->mRootNode, pScene, material);
+	}
+	else {
+		// create materials from model data
+		LoadAssimpNode(gfx, pScene->mRootNode, pScene, nullptr);
+	}
 }
 
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 	const std::vector<Mesh::Vertex>& vertices,
 	const std::vector<unsigned short>& indices,
-	const std::wstring* diffTexOverride,
+	std::shared_ptr<Material> material,
 	std::optional<std::string>)
 	:
 	SceneNode(parent, name)
 {
-	Material::MaterialInstanceData mData = {};
-	mData.vsPath = GetShaderPath(L"PhongVS.cso");
-	mData.psPath = GetShaderPath( L"PhongPS.cso");
-	mData.texturePaths = std::unordered_map<int, std::wstring> {};
-	if (diffTexOverride != nullptr)
-	{
-		mData.texturePaths[0] = *diffTexOverride;
+	if (material) {
+		meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, material));
 	}
-	auto pMaterial = std::make_unique<Material>(gfx, mData);
-	meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
+	else {
+		// Create a default material if none provided
+		Material::MaterialInstanceData mData = {};
+		mData.vsPath = GetShaderPath(L"PhongVS.cso");
+		mData.psPath = GetShaderPath(L"PhongPS.cso");
+		mData.texturePaths = std::unordered_map<int, std::wstring> {};
+		auto pMaterial = std::make_unique<Material>(gfx, mData);
+		meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
+	}
 }
 
-void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::wstring* diffTexOverride)
+void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, std::shared_ptr<Material> material)
 {
 	// don't use assimps root node naming
 	if (std::strcmp(node->mName.C_Str(), "RootNode"))
@@ -132,79 +140,74 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			indices[idx + 2] = face.mIndices[2];
 		}
 
-		aiMaterial* material = scene->mMaterials[pMesh->mMaterialIndex];
+		aiMaterial* aiMat = scene->mMaterials[pMesh->mMaterialIndex];
 		Material::MaterialInstanceData mData = {};
 		mData.vsPath = GetShaderPath(L"PhongVS.cso");;
 		mData.psPath = GetShaderPath(L"PhongPS.cso");
-		mData.texturePaths = std::unordered_map<int, std::wstring> {};
-		
-		if (diffTexOverride != nullptr)
-		{
-			mData.texturePaths[0] = *diffTexOverride;
+		mData.texturePaths = std::unordered_map<int, std::wstring>{};
+
+		if (material) {
+			meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), material));
 		}
-		else
-		{
-			for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
+		else {
+
+			for (unsigned int texIndex = 0; texIndex < aiMat->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
 			{
 				aiString texPath;
-				if (material->GetTexture(aiTextureType_DIFFUSE, texIndex, &texPath) == AI_SUCCESS)
+				if (aiMat->GetTexture(aiTextureType_DIFFUSE, texIndex, &texPath) == AI_SUCCESS)
 				{
 					std::filesystem::path p(texPath.C_Str());
 					mData.texturePaths[0] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
 				}
 			}
-		}
 
-		for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_SPECULAR); texIndex++)
-		{
-			aiString texPath;
-			if (material->GetTexture(aiTextureType_SPECULAR, texIndex, &texPath) == AI_SUCCESS)
+			for (unsigned int texIndex = 0; texIndex < aiMat->GetTextureCount(aiTextureType_SPECULAR); texIndex++)
 			{
-				std::filesystem::path p(texPath.C_Str());
-				mData.texturePaths[1] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				aiString texPath;
+				if (aiMat->GetTexture(aiTextureType_SPECULAR, texIndex, &texPath) == AI_SUCCESS)
+				{
+					std::filesystem::path p(texPath.C_Str());
+					mData.texturePaths[1] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				}
 			}
-		}
 
-		for (unsigned int texIndex = 0; texIndex < material->GetTextureCount(aiTextureType_NORMALS); texIndex++)
-		{
-			aiString texPath;
-			if (material->GetTexture(aiTextureType_NORMALS, texIndex, &texPath) == AI_SUCCESS)
+			for (unsigned int texIndex = 0; texIndex < aiMat->GetTextureCount(aiTextureType_NORMALS); texIndex++)
 			{
-				std::filesystem::path p(texPath.C_Str());
-				mData.texturePaths[2] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				aiString texPath;
+				if (aiMat->GetTexture(aiTextureType_NORMALS, texIndex, &texPath) == AI_SUCCESS)
+				{
+					std::filesystem::path p(texPath.C_Str());
+					mData.texturePaths[2] = GetExecutableDirectory() + L"\\Textures\\" + p.filename().wstring();
+				}
 			}
-		}
 
-		aiColor3D specColor;
-		float specularIntensity;
-		if (material->Get(AI_MATKEY_SHININESS_STRENGTH, specularIntensity) == AI_SUCCESS)
-		{
-		}
-		else if (material->Get(AI_MATKEY_COLOR_SPECULAR, specColor) == AI_SUCCESS)
-		{
-			mData.specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
-		}
-		else mData.specularIntensity = 1.0f;
+			aiColor3D specColor;
+			float specularIntensity;
+			if (aiMat->Get(AI_MATKEY_SHININESS_STRENGTH, specularIntensity) == AI_SUCCESS)
+			{
+			}
+			else if (aiMat->Get(AI_MATKEY_COLOR_SPECULAR, specColor) == AI_SUCCESS)
+			{
+				mData.specularIntensity = (specColor.r + specColor.g + specColor.b) / 3.0f;
+			}
+			else mData.specularIntensity = 1.0f;
 
-		float shininess;
-		if (material->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
-		{
-			// scale Assimp’s 0–1000 to 1–128
-			mData.specularPower = shininess / 7.8125f;
+			float shininess;
+			if (aiMat->Get(AI_MATKEY_SHININESS, shininess) == AI_SUCCESS)
+			{
+				// scale Assimp’s 0–1000 to 1–128
+				mData.specularPower = shininess / 7.8125f;
+			}
+			auto pMaterial = std::make_unique<Material>(gfx, mData);
+			meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 		}
-		auto pMaterial= std::make_unique<Material>(gfx, mData);
-		meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), std::move(pMaterial)));
 	}
 
 	// handle child nodes
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
-		Material::MaterialInstanceData mData = {};
-		mData.vsPath = GetShaderPath(L"PhongVS.cso");
-		mData.psPath = GetShaderPath(L"PhongPS.cso");
-		mData.texturePaths = std::unordered_map<int, std::wstring> {};
-		auto childNode = std::make_unique<MeshNode>(gfx, parent, std::nullopt);
-		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, diffTexOverride);
+		auto childNode = std::make_unique<MeshNode>(gfx, this, std::nullopt);
+		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, material);
 		AddChild(std::move(childNode));
 	}
 	isTransformDirty = true;
