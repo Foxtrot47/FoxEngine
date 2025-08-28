@@ -61,23 +61,6 @@ void Material::InitializeBindings(Graphics& gfx)
 			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 			{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
-		hr = GetDevice(gfx)->CreateInputLayout(
-			topologyDesc.data(),
-			(UINT)topologyDesc.size(),
-			pVSByteCodeBlob->GetBufferPointer(),
-			pVSByteCodeBlob->GetBufferSize(),
-			&pInputLayout
-		);
-
-		D3D11_DEPTH_STENCIL_DESC dsDesc = {};
-		dsDesc.DepthEnable = TRUE;
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-		dsDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-		GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
-	
-		if (FAILED(hr)) {
-			throw std::runtime_error("Failed to create depth stencil state:");
-		}
 	}
 	else {
 		topologyDesc =
@@ -88,6 +71,7 @@ void Material::InitializeBindings(Graphics& gfx)
 			{ "Tangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 			{ "BiTangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		};
+	}
 
 		hr = GetDevice(gfx)->CreateInputLayout(
 			topologyDesc.data(),
@@ -96,12 +80,29 @@ void Material::InitializeBindings(Graphics& gfx)
 			pVSByteCodeBlob->GetBufferSize(),
 			&pInputLayout
 		);
-	}
 	if (FAILED(hr))
 	{
 		throw std::runtime_error("Failed to create input layout");
 	}
 	
+	D3D11_DEPTH_STENCIL_DESC dsDesc = {};
+	dsDesc.DepthEnable = TRUE;
+	dsDesc.StencilEnable = FALSE;
+	if (instanceData.hasDepthState)
+	{
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		dsDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+	}
+	else
+	{
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
+}
+
+	hr = GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
+	if (FAILED(hr)) {
+		throw std::runtime_error("Failed to create depth stencil state");
+	}
 }
 
 void Material::InitializeTextures(Graphics& gfx)
