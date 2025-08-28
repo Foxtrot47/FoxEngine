@@ -73,23 +73,28 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		name = node->mName.C_Str();
 	}
 
-	const auto& aiTransform = node->mTransformation;
-	auto localTransform = DirectX::XMMatrixTranspose(DirectX::XMMATRIX(
-		aiTransform.a1, aiTransform.a2, aiTransform.a3, aiTransform.a4,
-		aiTransform.b1, aiTransform.b2, aiTransform.b3, aiTransform.b4,
-		aiTransform.c1, aiTransform.c2, aiTransform.c3, aiTransform.c4,
-		aiTransform.d1, aiTransform.d2, aiTransform.d3, aiTransform.d4
-	));
+	bool isRootNode = (std::strcmp(node->mName.C_Str(), "RootNode"));
 
-	DirectX::XMVECTOR scaleVec;
-	DirectX::XMVECTOR rotQuat;
-	DirectX::XMVECTOR posVec;
-
-	if (DirectX::XMMatrixDecompose(&scaleVec, &rotQuat, &posVec, localTransform))
+	if (isRootNode)
 	{
-		DirectX::XMStoreFloat3(&scale, scaleVec);
-		DirectX::XMStoreFloat3(&position, posVec);
-		DirectX::XMStoreFloat4(&rotationQuat, rotQuat);
+		const auto& aiTransform = node->mTransformation;
+		auto localTransform = DirectX::XMMatrixTranspose(DirectX::XMMATRIX(
+			aiTransform.a1, aiTransform.a2, aiTransform.a3, aiTransform.a4,
+			aiTransform.b1, aiTransform.b2, aiTransform.b3, aiTransform.b4,
+			aiTransform.c1, aiTransform.c2, aiTransform.c3, aiTransform.c4,
+			aiTransform.d1, aiTransform.d2, aiTransform.d3, aiTransform.d4
+		));
+
+		DirectX::XMVECTOR scaleVec;
+		DirectX::XMVECTOR rotQuat;
+		DirectX::XMVECTOR posVec;
+
+		if (DirectX::XMMatrixDecompose(&scaleVec, &rotQuat, &posVec, localTransform))
+		{
+			DirectX::XMStoreFloat3(&scale, scaleVec);
+			DirectX::XMStoreFloat3(&position, posVec);
+			DirectX::XMStoreFloat4(&rotationQuat, rotQuat);
+		}
 	}
 
 	for (unsigned int i = 0; i < node->mNumMeshes; ++i)
