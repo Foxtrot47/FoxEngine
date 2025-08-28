@@ -135,21 +135,22 @@ std::unique_ptr<MeshNode> SceneManager::ParseMesh(Graphics& gfx, const nlohmann:
 	Transform transform;
 	if (objectJson.contains("transform"))
 	{
-		transform = ParseTransform(objectJson);
+		transform = ParseTransform(objectJson["transform"]);
 	}
 	try {
-			const auto& pMaterial = materials.at(materialName);
-			auto node = std::make_unique<MeshNode>(
-				gfx,
-				rootNode.get(),
-				GetModelPath(Utility::convertToUTF16(modelPath)),
-				pMaterial,
-				std::make_optional(name),
-				transform.position,
-				transform.rotation,
-				transform.scale);
-			return node;
-		}
+		const auto& pMaterial = materials.at(materialName);
+		const auto quat = transform.GetRotationQuaternion();
+		auto node = std::make_unique<MeshNode>(
+			gfx,
+			rootNode.get(),
+			GetModelPath(Utility::convertToUTF16(modelPath)),
+			pMaterial,
+			std::make_optional(name),
+			transform.position,
+			quat,
+			transform.scale);
+		return node;
+	}
 	catch (const std::exception& e)
 	{
 		throw std::runtime_error("Failed to load resources for " + name + ": " + e.what());
@@ -168,13 +169,12 @@ SceneManager::Transform SceneManager::ParseTransform(const nlohmann::json& trans
 		};
 	}
 
-	// Parse rotation (quaternion)
-	if (transformJson.contains("rotation") && transformJson["rotation"].is_array() && transformJson["rotation"].size() == 4) {
-		transform.rotation = {
-			transformJson["rotation"][0].get<float>(), // x
-			transformJson["rotation"][1].get<float>(), // y
-			transformJson["rotation"][2].get<float>(), // z
-			transformJson["rotation"][3].get<float>()  // w
+	// Parse rotation (Euler angles)
+	if (transformJson.contains("rotation") && transformJson["rotation"].is_array() && transformJson["rotation"].size() == 3) {
+		transform.rotationEuler = {
+			transformJson["rotation"][0].get<float>(), // pitch
+			transformJson["rotation"][1].get<float>(), // yaw
+			transformJson["rotation"][2].get<float>()  // roll
 		};
 	}
 
@@ -195,4 +195,16 @@ SceneManager::Transform SceneManager::ParseTransform(const nlohmann::json& trans
 	}
 
 	return transform;
+}
+
+DirectX::XMFLOAT4 SceneManager::Transform::GetRotationQuaternion() const
+{
+	const auto quat = DirectX::XMQuaternionRotationRollPitchYaw(
+		rotationEuler.x * DirectX::XM_PI / 180.0f,
+		rotationEuler.y * DirectX::XM_PI / 180.0f,
+		rotationEuler.z * DirectX::XM_PI / 180.0f
+	);
+	DirectX::XMFLOAT4 result;
+	DirectX::XMStoreFloat4(&result, DirectX::XMQuaternionNormalize(quat));
+	return result;
 }
