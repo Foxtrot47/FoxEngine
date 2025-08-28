@@ -87,6 +87,19 @@ Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullp
 
 	pContext->OMSetRenderTargets(1u, pTarget.GetAddressOf(), pDepthStencilView.Get()); // Set the render target and depth stencil view
 
+	D3D11_RASTERIZER_DESC rsDesc = {};
+	rsDesc.FillMode = D3D11_FILL_SOLID;          // solid rendering (wireframe = D3D11_FILL_WIREFRAME)
+	rsDesc.CullMode = D3D11_CULL_BACK;           // cull backfaces
+	rsDesc.FrontCounterClockwise = FALSE;        // DX default = clockwise is front
+	rsDesc.DepthClipEnable = TRUE;               // clip primitives outside near/far planes
+
+	Microsoft::WRL::ComPtr<ID3D11RasterizerState> rasterizerState;
+	hr = pDevice->CreateRasterizerState(&rsDesc, &rasterizerState);
+	if (SUCCEEDED(hr))
+	{
+		pContext->RSSetState(rasterizerState.Get());
+	}
+
 	// configure viewport
 	D3D11_VIEWPORT vp = {};
 	vp.Width = windowWidth;						// Set viewport width
