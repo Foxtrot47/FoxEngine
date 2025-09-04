@@ -1,0 +1,1909 @@
+{
+  "materials": {
+    "UnrealMaterial.048": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_bush_BaseColor.png",
+        "1": "MI_Foliage_bush_Normal.png"
+      }
+    },
+    "UnrealMaterial.003": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 1.0
+      },
+      "textures": {
+        "0": "MI_Mountains_BaseColor.png",
+        "1": "MI_Mountains_Normal.png"
+      }
+    },
+    "UnrealMaterial.004": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bench_Wood_A_BaseColor.png",
+        "1": "MI_Bench_Wood_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.005": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bench_Wood_B_BaseColor.png",
+        "1": "MI_Bench_Wood_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.007": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Props_A_BaseColor.png",
+        "1": "MI_Bricks_Props_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.008": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Trim_A_BaseColor.png",
+        "1": "MI_Bricks_Trim_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.082": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Painted_Metal_Trim_A_Weak_BaseColor.png",
+        "1": "MI_Painted_Metal_Trim_A_Weak_Normal.png"
+      }
+    },
+    "UnrealMaterial.081": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Wood_Brick_Trim_C_Darker_BaseColor.png",
+        "1": "MI_Building_Wood_Brick_Trim_C_Darker_Normal.png"
+      }
+    },
+    "UnrealMaterial.080": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Sand_Ground_A_BaseColor.png",
+        "1": "MI_Sand_Ground_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.010": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Bricks_B_BaseColor.png",
+        "1": "MI_Building_Bricks_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.011": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Props_B_BaseColor.png",
+        "1": "MI_Bricks_Props_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.013": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_B_Door_BaseColor.png",
+        "1": "MI_Building_B_Door_Normal.png"
+      }
+    },
+    "UnrealMaterial.012": {
+      "properties": {
+        "diffuseColor": [
+          0.06480326503515244,
+          0.07618538290262222,
+          0.08865558356046677
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {}
+    },
+    "UnrealMaterial.014": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_A_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.015": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_B_Pillars_A_BaseColor.png",
+        "1": "MI_Building_B_Pillars_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.016": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_B_Pillars_B_BaseColor.png",
+        "1": "MI_Building_B_Pillars_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.017": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_A_Stairs_BaseColor.png",
+        "1": "MI_Building_A_Stairs_Normal.png"
+      }
+    },
+    "UnrealMaterial.018": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Green_Trim_A_BaseColor.png",
+        "1": "MI_Building_Green_Trim_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.019": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_C_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_C_Normal.png"
+      }
+    },
+    "UnrealMaterial.020": {
+      "properties": {
+        "diffuseColor": [
+          0.05780543014407158,
+          0.0666259378194809,
+          0.07818742096424103
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 1.0
+      },
+      "textures": {}
+    },
+    "UnrealMaterial.030": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_B_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.033": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Wood_Trim_BaseColor.png",
+        "1": "MI_Building_Wood_Trim_Normal.png"
+      }
+    },
+    "UnrealMaterial.034": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Stucco_BaseColor.png",
+        "1": "MI_Building_Stucco_Normal.png"
+      }
+    },
+    "UnrealMaterial.032": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Bricks_A_red_BaseColor.png",
+        "1": "MI_Building_Bricks_A_red_Normal.png"
+      }
+    },
+    "UnrealMaterial.028": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Bricks_A_BaseColor.png",
+        "1": "MI_Building_Bricks_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.040": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Wood_Trim_Grey_BaseColor.png",
+        "1": "MI_Building_Wood_Trim_Grey_Normal.png"
+      }
+    },
+    "UnrealMaterial.021": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Trim_B_BaseColor.png",
+        "1": "MI_Building_Trim_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.022": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_Dark_A_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_Dark_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.035": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Sandstone_BaseColor.png",
+        "1": "MI_Building_Sandstone_Normal.png"
+      }
+    },
+    "UnrealMaterial.037": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_F_Bricks_A_BaseColor.png",
+        "1": "MI_Building_F_Bricks_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.036": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Wood_Brick_Trim_BaseColor.png",
+        "1": "MI_Building_Wood_Brick_Trim_Normal.png"
+      }
+    },
+    "UnrealMaterial.023": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Ornaments_A_BaseColor.png",
+        "1": "MI_Building_Ornaments_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.024": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_Dark_B_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_Dark_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.031": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_Blue_A_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_Blue_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.025": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Green_Trim_B_BaseColor.png",
+        "1": "MI_Building_Green_Trim_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.026": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_A_Door_BaseColor.png",
+        "1": "MI_Building_A_Door_Normal.png"
+      }
+    },
+    "UnrealMaterial.027": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_A_Door_Glass_BaseColor.png",
+        "1": "MI_Building_A_Door_Glass_Normal.png"
+      }
+    },
+    "UnrealMaterial.029": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Trim_A_BaseColor.png",
+        "1": "MI_Building_Trim_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.109": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_store_signs_BaseColor.png",
+        "1": "MI_prop_store_signs_Normal.png"
+      }
+    },
+    "UnrealMaterial.038": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 128.0
+      },
+      "textures": {
+        "0": "MI_Dirt_Pots_BaseColor.png"
+      }
+    },
+    "UnrealMaterial.009": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Ground_A_BaseColor.png",
+        "1": "MI_Bricks_Ground_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.039": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Props_C_BaseColor.png",
+        "1": "MI_Bricks_Props_C_Normal.png"
+      }
+    },
+    "UnrealMaterial.042": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_building_a_awning_trim_BaseColor.png",
+        "1": "MI_building_a_awning_trim_Normal.png"
+      }
+    },
+    "UnrealMaterial.041": {
+      "properties": {
+        "diffuseColor": [
+          0.2462013214826584,
+          0.2541520893573761,
+          0.26635560393333435
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 128.0
+      },
+      "textures": {
+        "1": "MI_Glass_Translucent_Normal.png"
+      }
+    },
+    "UnrealMaterial.044": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_building_awning_ab_cloth_BaseColor.png",
+        "1": "MI_building_awning_ab_cloth_Normal.png"
+      }
+    },
+    "UnrealMaterial.043": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_building_awning_a_b_BaseColor.png",
+        "1": "MI_building_awning_a_b_Normal.png"
+      }
+    },
+    "UnrealMaterial.045": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_building_awning_c_cloth_BaseColor.png",
+        "1": "MI_building_awning_c_cloth_Normal.png"
+      }
+    },
+    "UnrealMaterial.046": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_building_awning_c_BaseColor.png",
+        "1": "MI_building_awning_c_Normal.png"
+      }
+    },
+    "UnrealMaterial.047": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_statue_bunny_BaseColor.png",
+        "1": "MI_prop_statue_bunny_Normal.png"
+      }
+    },
+    "UnrealMaterial.001": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "DefaultMaterial_BaseColor.png",
+        "1": "DefaultMaterial_Normal.png"
+      }
+    },
+    "UnrealMaterial": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "WorldGridMaterial_BaseColor.png",
+        "1": "WorldGridMaterial_Normal.png"
+      }
+    },
+    "UnrealMaterial.077": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_drinking_signage_BaseColor.png",
+        "1": "MI_drinking_signage_Normal.png"
+      }
+    },
+    "UnrealMaterial.006": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_drinks_condiments_cart_BaseColor.png",
+        "1": "MI_drinks_condiments_cart_Normal.png"
+      }
+    },
+    "UnrealMaterial.049": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_Shrub_Evergreen_BaseColor.png",
+        "1": "MI_Foliage_Shrub_Evergreen_Normal.png"
+      }
+    },
+    "UnrealMaterial.050": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_flowers_2_BaseColor.png",
+        "1": "MI_Foliage_flowers_2_Normal.png"
+      }
+    },
+    "UnrealMaterial.051": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_flowers_4_BaseColor.png",
+        "1": "MI_Foliage_flowers_4_Normal.png"
+      }
+    },
+    "UnrealMaterial.099": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fire_Hydrant_BaseColor.png",
+        "1": "MI_Fire_Hydrant_Normal.png"
+      }
+    },
+    "UnrealMaterial.054": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_hotdog_cart_BaseColor.png",
+        "1": "MI_hotdog_cart_Normal.png"
+      }
+    },
+    "UnrealMaterial.053": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_hotdog_umbr_signs_BaseColor.png",
+        "1": "MI_hotdog_umbr_signs_Normal.png"
+      }
+    },
+    "UnrealMaterial.052": {
+      "properties": {
+        "diffuseColor": [
+          0.4677838087081909,
+          0.48514994978904724,
+          0.5028864741325378
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "1": "MI_GlassPlastic_Translucent1_Normal.png"
+      }
+    },
+    "UnrealMaterial.095": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Shell_Bottom_BaseColor.png",
+        "1": "MI_Fount_Shell_Bottom_Normal.png"
+      }
+    },
+    "UnrealMaterial.090": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Shell_Top_BaseColor.png",
+        "1": "MI_Fount_Shell_Top_Normal.png"
+      }
+    },
+    "UnrealMaterial.093": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Platform_Bottom_BaseColor.png",
+        "1": "MI_Fount_Platform_Bottom_Normal.png"
+      }
+    },
+    "UnrealMaterial.098": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Platform_Pillar_BaseColor.png",
+        "1": "MI_Fount_Platform_Pillar_Normal.png"
+      }
+    },
+    "UnrealMaterial.094": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Dolphin2_BaseColor.png",
+        "1": "MI_Fount_Dolphin2_Normal.png"
+      }
+    },
+    "UnrealMaterial.097": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Dolphin_BaseColor.png",
+        "1": "MI_Fount_Dolphin_Normal.png"
+      }
+    },
+    "UnrealMaterial.089": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_Statue_BaseColor.png",
+        "1": "MI_Fount_Statue_Normal.png"
+      }
+    },
+    "UnrealMaterial.092": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_WaterBasin_A_BaseColor.png",
+        "1": "MI_Fount_WaterBasin_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.088": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_WaterBasin_B_BaseColor.png",
+        "1": "MI_Fount_WaterBasin_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.096": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_WaterBasin_Bottom_BaseColor.png",
+        "1": "MI_Fount_WaterBasin_Bottom_Normal.png"
+      }
+    },
+    "UnrealMaterial.091": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Fount_WaterBasin_Plaq_BaseColor.png",
+        "1": "MI_Fount_WaterBasin_Plaq_Normal.png"
+      }
+    },
+    "UnrealMaterial.057": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Ground_Tiles_A_Dark_BaseColor.png",
+        "1": "MI_Concrete_Ground_Tiles_A_Dark_Normal.png"
+      }
+    },
+    "UnrealMaterial.056": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Ground_Tiles_A_DarkRed_BaseColor.png",
+        "1": "MI_Concrete_Ground_Tiles_A_DarkRed_Normal.png"
+      }
+    },
+    "UnrealMaterial.058": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 128.0
+      },
+      "textures": {
+        "0": "MI_Dirt_Gardens_A_BaseColor.png"
+      }
+    },
+    "UnrealMaterial.059": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Ground_A_Straight_BaseColor.png",
+        "1": "MI_Bricks_Ground_A_Straight_Normal.png"
+      }
+    },
+    "UnrealMaterial.060": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Bricks_Ground_A_Herringbone_BaseColor.png",
+        "1": "MI_Bricks_Ground_A_Herringbone_Normal.png"
+      }
+    },
+    "UnrealMaterial.061": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Curb_B_BaseColor.png",
+        "1": "MI_Concrete_Curb_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.062": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Ground_Tiles_A_BaseColor.png",
+        "1": "MI_Concrete_Ground_Tiles_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.063": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Curb_A_BaseColor.png",
+        "1": "MI_Concrete_Curb_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.064": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Stamped_A_1x_BaseColor.png",
+        "1": "MI_Concrete_Stamped_A_1x_Normal.png"
+      }
+    },
+    "UnrealMaterial.066": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_Off_shiny_BaseColor.png",
+        "1": "MI_Light_Off_shiny_Normal.png"
+      }
+    },
+    "UnrealMaterial.067": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_Shrub_Leaves_Pile_AB_BaseColor.png",
+        "1": "MI_Foliage_Shrub_Leaves_Pile_AB_Normal.png"
+      }
+    },
+    "UnrealMaterial.065": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_Shrub_Leaves_Pile_A_BaseColor.png",
+        "1": "MI_Foliage_Shrub_Leaves_Pile_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.068": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 1.0
+      },
+      "textures": {
+        "0": "MI_Foliage_Shrub_Leaves_Pile_C_BaseColor.png",
+        "1": "MI_Foliage_Shrub_Leaves_Pile_C_Normal.png"
+      }
+    },
+    "UnrealMaterial.069": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_Post_BaseColor_0.png",
+        "1": "MI_Light_Post_Normal_0.png"
+      }
+    },
+    "UnrealMaterial.070": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Streetlight_Trim_BaseColor.png",
+        "1": "MI_Streetlight_Trim_Normal.png"
+      }
+    },
+    "UnrealMaterial.076": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_post_glass_banner_pot_BaseColor.png",
+        "1": "MI_Light_post_glass_banner_pot_Normal.png"
+      }
+    },
+    "UnrealMaterial.071": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_post_BaseColor.png",
+        "1": "MI_Light_post_Normal.png"
+      }
+    },
+    "UnrealMaterial.075": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_Off_BaseColor.png",
+        "1": "MI_Light_Off_Normal.png"
+      }
+    },
+    "UnrealMaterial.074": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_post_glass_banner_pot_color_b_BaseColor.png",
+        "1": "MI_Light_post_glass_banner_pot_color_b_Normal.png"
+      }
+    },
+    "UnrealMaterial.072": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_On_BaseColor.png",
+        "1": "MI_Light_On_Normal.png"
+      }
+    },
+    "UnrealMaterial.073": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Light_post_glass_banner_pot_color_a_BaseColor.png",
+        "1": "MI_Light_post_glass_banner_pot_color_a_Normal.png"
+      }
+    },
+    "UnrealMaterial.078": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Trim_Wood_Metal_Dark_A_Noise_BaseColor.png",
+        "1": "MI_Trim_Wood_Metal_Dark_A_Noise_Normal.png"
+      }
+    },
+    "UnrealMaterial.084": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Prop_Pots_A_BaseColor.png",
+        "1": "MI_Prop_Pots_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.085": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Painted_Metal_Trim_A_BaseColor.png",
+        "1": "MI_Painted_Metal_Trim_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.086": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_table_a_BaseColor.png",
+        "1": "MI_prop_table_a_Normal.png"
+      }
+    },
+    "UnrealMaterial.087": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_umbrella_blue_BaseColor.png",
+        "1": "MI_prop_umbrella_blue_Normal.png"
+      }
+    },
+    "UnrealMaterial.100": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Concrete_Tiles_A_BaseColor.png",
+        "1": "MI_Concrete_Tiles_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.101": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Painted_Metal_Trim_A_Weak_Tiled_BaseColor.png",
+        "1": "MI_Painted_Metal_Trim_A_Weak_Tiled_Normal.png"
+      }
+    },
+    "UnrealMaterial.102": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Painted_Metal_Trim_A_Tilex2_BaseColor.png",
+        "1": "MI_Painted_Metal_Trim_A_Tilex2_Normal.png"
+      }
+    },
+    "UnrealMaterial.103": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Poster_Stand_BaseColor.png",
+        "1": "MI_Poster_Stand_Normal.png"
+      }
+    },
+    "UnrealMaterial.083": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Poster_Posters_BaseColor.png"
+      }
+    },
+    "UnrealMaterial.104": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_SandstoneRed_beige_BaseColor.png",
+        "1": "MI_Building_SandstoneRed_beige_Normal.png"
+      }
+    },
+    "UnrealMaterial.105": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_bin_BaseColor.png",
+        "1": "MI_prop_bin_Normal.png"
+      }
+    },
+    "UnrealMaterial.10587": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_statue_eagle_BaseColor.png",
+        "1": "MI_statue_eagle_Normal.png"
+      }
+    },
+    "UnrealMaterial.107": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Rock_Large_A_BaseColor.png",
+        "1": "MI_Rock_Large_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.10589": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Rock_Medium_A_BaseColor.png",
+        "1": "MI_Rock_Medium_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.108": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Rock_Medium_B_BaseColor.png",
+        "1": "MI_Rock_Medium_B_Normal.png"
+      }
+    },
+    "UnrealMaterial.10592": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_sewer_caps_BaseColor.png",
+        "1": "MI_sewer_caps_Normal.png"
+      }
+    },
+    "UnrealMaterial.10598": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_store_signs_2_BaseColor.png",
+        "1": "MI_prop_store_signs_2_Normal.png"
+      }
+    },
+    "UnrealMaterial.110": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Wood_Brick_Trim_C_BaseColor.png",
+        "1": "MI_Building_Wood_Brick_Trim_C_Normal.png"
+      }
+    },
+    "UnrealMaterial.10605": {
+      "properties": {
+        "diffuseColor": [
+          1.0,
+          0.8468732237815857,
+          0.15292614698410034
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "1": "MI_prop_store_signs_color1_Normal.png"
+      }
+    },
+    "UnrealMaterial.111": {
+      "properties": {
+        "diffuseColor": [
+          0.5149176716804504,
+          0.6444796919822693,
+          0.8148465752601624
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "1": "MI_prop_store_signs_color5_Normal.png"
+      }
+    },
+    "UnrealMaterial.10610": {
+      "properties": {
+        "diffuseColor": [
+          0.05612849071621895,
+          0.05612849071621895,
+          0.052860647439956665
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "1": "MI_prop_store_signs_color4_Normal.png"
+      }
+    },
+    "UnrealMaterial.112": {
+      "properties": {
+        "diffuseColor": [
+          0.5840784311294556,
+          0.5840784311294556,
+          0.5520113706588745
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "1": "MI_prop_store_signs_color3_Normal.png"
+      }
+    },
+    "UnrealMaterial.10613": {
+      "properties": {
+        "diffuseColor": [
+          0.6307571530342102,
+          0.06301001459360123,
+          0.06847816705703735
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "1": "MI_prop_store_signs_color2_Normal.png"
+      }
+    },
+    "UnrealMaterial.10618": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Painted_Metal_Trim_A_White_BaseColor.png",
+        "1": "MI_Painted_Metal_Trim_A_White_Normal.png"
+      }
+    },
+    "UnrealMaterial.106": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_statue_deer_BaseColor.png",
+        "1": "MI_statue_deer_Normal.png"
+      }
+    },
+    "UnrealMaterial.10638": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_TreeLeaves_BaseColor.png",
+        "1": "MI_Foliage_TreeLeaves_Normal.png"
+      }
+    },
+    "UnrealMaterial.118": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_TreeTwigs_BaseColor.png",
+        "1": "MI_Foliage_TreeTwigs_Normal.png"
+      }
+    },
+    "UnrealMaterial.113": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Tarp_BaseColor.png",
+        "1": "MI_Tarp_Normal.png"
+      }
+    },
+    "UnrealMaterial.114": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_prop_statue_tortoise_BaseColor.png",
+        "1": "MI_prop_statue_tortoise_Normal.png"
+      }
+    },
+    "UnrealMaterial.115": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Tree_Narrowleaf_Leaf_A_BaseColor.png",
+        "1": "MI_Tree_Narrowleaf_Leaf_A_Normal.png"
+      }
+    },
+    "UnrealMaterial.10627": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_TreeNarrowleaf_BaseColor.png",
+        "1": "MI_Foliage_TreeNarrowleaf_Normal.png"
+      }
+    },
+    "UnrealMaterial.116": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_Tree_Pine_Knots_BaseColor.png",
+        "1": "MI_Foliage_Tree_Pine_Knots_Normal.png"
+      }
+    },
+    "UnrealMaterial.10630": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_Tree_Pine_BaseColor.png",
+        "1": "MI_Foliage_Tree_Pine_Normal.png"
+      }
+    },
+    "UnrealMaterial.10632": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Foliage_TreePine_Leaves_BaseColor.png",
+        "1": "MI_Foliage_TreePine_Leaves_Normal.png"
+      }
+    },
+    "UnrealMaterial.117": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "MI_Building_Wood_Brick_Trim_C_Darker1_BaseColor.png",
+        "1": "MI_Building_Wood_Brick_Trim_C_Darker1_Normal.png"
+      }
+    }
+  },
+  "objects": []
+}

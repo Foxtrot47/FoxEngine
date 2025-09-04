@@ -15,12 +15,7 @@ public:
 	void DrawSceneGraph(Graphics& gfx);
 	void LoadScene(Graphics& gfx, const std::string& jsonPath);
 
-    struct Transform {
-        DirectX::XMFLOAT3 position = { 0.0f, 0.0f, 0.0f };
-        DirectX::XMFLOAT3 rotationEuler = { 0.0f, 0.0f, 0.0f };
-        DirectX::XMFLOAT3 scale = { 1.0f, 1.0f, 1.0f };
-        DirectX::XMFLOAT4 GetRotationQuaternion() const;
-    };
+	std::shared_ptr<Material> GetMaterial(const std::string& name) const;
 
 private:
 	std::unique_ptr<TransformNode> rootNode;
@@ -28,7 +23,5 @@ private:
 
 	SceneNode* pSelectedNode = nullptr;
 	Material::MaterialInstanceData ParseBaseMaterial(const nlohmann::json& materialJson);
-	std::unique_ptr<MeshNode> ParseMesh(Graphics& gfx, const nlohmann::json& objectJson);
-    Transform ParseTransform(const nlohmann::json& transformJson);
 };
 

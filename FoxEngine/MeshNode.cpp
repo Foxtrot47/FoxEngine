@@ -24,28 +24,42 @@ MeshNode::MeshNode(Graphics& gfx,
 {
 	std::string modelPathStr(modelPath.begin(), modelPath.end());
 	Assimp::Importer importer;
-	const auto pScene = importer.ReadFile(modelPathStr,
-		aiProcess_Triangulate |
-		aiProcess_JoinIdenticalVertices |
-		aiProcess_FlipUVs |
-		aiProcess_GenSmoothNormals |
-		aiProcess_CalcTangentSpace
-	);
+	const auto pScene = importer.ReadFile(modelPathStr, aiProcessPreset_TargetRealtime_Fast);
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
 
 	if (material) {
-		LoadAssimpNode(gfx, pScene->mRootNode, pScene, material);
+		LoadAssimpNode(gfx, pScene->mRootNode, pScene, std::unordered_map<std::string, std::shared_ptr<Material>>{ {"default", material} });
 	}
 	else {
 		// create materials from model data
-		LoadAssimpNode(gfx, pScene->mRootNode, pScene, nullptr);
+		LoadAssimpNode(gfx, pScene->mRootNode, pScene, std::unordered_map<std::string, std::shared_ptr<Material>>{});
 	}
+}
+
+MeshNode::MeshNode(Graphics& gfx,
+	SceneNode* parent,
+	std::wstring modelPath,
+	const std::unordered_map<std::string, std::shared_ptr<Material>>& materials,
+	std::optional<std::string> name,
+	const DirectX::XMFLOAT3& initialPosition,
+	const DirectX::XMFLOAT4& initialRotationQuat,
+	const DirectX::XMFLOAT3& initialScale
+)
+	:
+	SceneNode(parent, name, initialPosition, initialRotationQuat, initialScale)
+{
+	std::string modelPathStr(modelPath.begin(), modelPath.end());
+	Assimp::Importer importer;
+	const auto pScene = importer.ReadFile(modelPathStr, aiProcessPreset_TargetRealtime_Fast);
+
+	assert(pScene && pScene->mRootNode && "Failed to load model file");
+	LoadAssimpNode(gfx, pScene->mRootNode, pScene, materials);
 }
 
 MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 	const std::vector<Mesh::Vertex>& vertices,
-	const std::vector<unsigned short>& indices,
+	const std::vector<unsigned int>& indices,
 	std::shared_ptr<Material> material,
 	std::optional<std::string>)
 	:
@@ -59,21 +73,21 @@ MeshNode::MeshNode(Graphics& gfx, SceneNode* parent,
 		Material::MaterialInstanceData mData = {};
 		mData.vsPath = GetShaderPath(L"PhongVS.cso");
 		mData.psPath = GetShaderPath(L"PhongPS.cso");
-		mData.texturePaths = std::unordered_map<int, std::wstring> {};
+		mData.texturePaths = std::unordered_map<int, std::wstring>{};
 		auto pMaterial = std::make_unique<Material>(gfx, mData);
 		meshes.push_back(std::make_unique<Mesh>(gfx, vertices, indices, std::move(pMaterial)));
 	}
 }
 
-void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, std::shared_ptr<Material> material)
+void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::unordered_map<std::string, std::shared_ptr<Material>>& materials)
 {
 	// don't use assimps root node naming
-	if (std::strcmp(node->mName.C_Str(), "RootNode"))
+	if (std::strcmp(node->mName.C_Str(), "ROOT"))
 	{
 		name = node->mName.C_Str();
 	}
 
-	bool isRootNode = (std::strcmp(node->mName.C_Str(), "RootNode"));
+	bool isRootNode = (std::strcmp(node->mName.C_Str(), "ROOT"));
 
 	if (isRootNode)
 	{
@@ -146,15 +160,25 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		}
 
 		aiMaterial* aiMat = scene->mMaterials[pMesh->mMaterialIndex];
-		Material::MaterialInstanceData mData = {};
-		mData.vsPath = GetShaderPath(L"PhongVS.cso");;
-		mData.psPath = GetShaderPath(L"PhongPS.cso");
-		mData.texturePaths = std::unordered_map<int, std::wstring>{};
+		aiString matName;
+		aiMat->Get(AI_MATKEY_NAME, matName);
+
+		// Try to find material by name in the provided materials map
+		std::shared_ptr<Material> material = nullptr;
+		std::string materialName = matName.C_Str();
+		auto it = materials.find(materialName);
+		if (it != materials.end()) {
+			material = it->second;
+		}
 
 		if (material) {
 			meshes.push_back(std::make_unique<Mesh>(gfx, std::move(vertices), std::move(indices), material));
 		}
 		else {
+			Material::MaterialInstanceData mData = {};
+			mData.vsPath = GetShaderPath(L"PhongNormalVS.cso");;
+			mData.psPath = GetShaderPath(L"PhongNormalPS.cso");
+			mData.texturePaths = std::unordered_map<int, std::wstring>{};
 
 			for (unsigned int texIndex = 0; texIndex < aiMat->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
 			{
@@ -212,7 +236,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 	for (unsigned int i = 0; i < node->mNumChildren; ++i)
 	{
 		auto childNode = std::make_unique<MeshNode>(gfx, this, std::nullopt);
-		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, material);
+		childNode->LoadAssimpNode(gfx, node->mChildren[i], scene, materials);
 		AddChild(std::move(childNode));
 	}
 	isTransformDirty = true;
