@@ -239,6 +239,7 @@ void Material::Bind(Graphics& gfx)
 	GetContext(gfx)->IASetInputLayout(pInputLayout.Get());
 
 	const MaterialCbuff buff = {
+		{ instanceData.diffuseColor.x, instanceData.diffuseColor.y , instanceData.diffuseColor.z },
 		instanceData.specularIntensity,
 		instanceData.specularPower,
 		0.0f,

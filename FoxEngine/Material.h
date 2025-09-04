@@ -15,10 +15,13 @@ class Material : public Bindable
 public:
 	struct MaterialCbuff
 	{
+		float albedoColor[3];
 		float specularIntensity;
+
 		float specularPower;
 		float hasSpecularMap;
 		float hasNormalMap;
+		float padding;
 	};
 	struct MaterialInstanceData {
 		std::string name;
