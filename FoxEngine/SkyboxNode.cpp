@@ -4,7 +4,7 @@ SkyboxNode::SkyboxNode(Graphics& gfx, SceneNode* parent, std::wstring& cubemapPa
 :SceneNode(nullptr, "Skybox"),
 camera(camera)
 {
-    skyboxDrawable = std::make_unique<Skybox>(gfx, 10000.0f, cubemapPath);
+    skyboxDrawable = std::make_unique<Skybox>(gfx, 1000000.0f, cubemapPath);
     isTransformDirty = true;
 }
 
