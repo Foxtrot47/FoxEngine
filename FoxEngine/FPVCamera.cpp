@@ -2,10 +2,10 @@
 #include "imgui.h"
 
 FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd, Mouse& mouse)
-	: position({-10.0f, 10.0f, -50.0f}),
-	  forward({0.0f, 0.0f, 1.0f}),
-	  right({0.0f, 0.0f, 0.0f}),
-	  up({0.0f, 1.0f, 0.0f}),
+	: position({-109.0f, 3.0f, 5.0f}),
+	  forward({0.97f, 0.08f, -0.21f}),
+	  right({-0.21f, 0.0f, -0.98f}),
+	  up({-0.08f, 1.0f, 0.02f}),
 	  pitch(0.0f),
 	  yaw(0.0f),
 	  fov(80.0f),

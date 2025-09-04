@@ -14,7 +14,7 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 
 	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node", defaultPos, defaultRot, defaultScaling);
 
-	 auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light", DirectX::XMFLOAT3(-5.0f, 40.0f, 0.0f));
+	 auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light", DirectX::XMFLOAT3(-71.0f, 40.0f, 0.0f));
 	 rootNode->AddChild(std::move(pointLight));
 
 	 LoadScene(gfx, "F:\\Software\\Projects\\FoxEngine\\FoxEngine\\scene_downtown.json");
