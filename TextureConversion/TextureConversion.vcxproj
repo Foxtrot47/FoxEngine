@@ -82,7 +82,7 @@
     <TextureOutputDir>$(OutDir)\Textures\</TextureOutputDir>
   </PropertyGroup>
   <ItemGroup>
-	  <AlbedoTextures    Include="$(TextureSourceDir)**\*albedo*.*;$(TextureSourceDir)**\*diffuse*.*" />
+	  <AlbedoTextures    Include="$(TextureSourceDir)**\*BaseColor*.*" />
 	  <NormalTextures    Include="$(TextureSourceDir)**\*normal*.*;$(TextureSourceDir)**\*nrm*.*" />
 	  <RoughnessTextures Include="$(TextureSourceDir)**\*roughness*.*" />
 	  <MetallicTextures  Include="$(TextureSourceDir)**\*metal*.*" />
@@ -103,22 +103,22 @@
           ContinueOnError="false" />
 
 	<Message Text="Converting Opacity (BC4_UNORM)..." Importance="high"/>
-	<Exec Command="$(TextureTool) %(OpacityTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(OpacityTextures.RecursiveDir)"
+	<Exec Command="$(TextureTool) %(OpacityTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(OpacityTextures.RecursiveDir) -y"
 		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
           ContinueOnError="false" />
 
 	<Message Text="Converting Specular (BC4_UNORM)..." Importance="high"/>
-	<Exec Command="$(TextureTool) %(SpecularTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(SpecularTextures.RecursiveDir)"
+	<Exec Command="$(TextureTool) %(SpecularTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(SpecularTextures.RecursiveDir) -y"
   		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
           ContinueOnError="false" />
 		  
 	<Message Text="Converting Roughness (BC4_UNORM)..." Importance="high"/>
-	<Exec Command="$(TextureTool) %(RoughnessTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(RoughnessTextures.RecursiveDir)"
+	<Exec Command="$(TextureTool) %(RoughnessTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(RoughnessTextures.RecursiveDir) -y"
   		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
           ContinueOnError="false" />
 
 	<Message Text="Converting Metallic (BC4_UNORM)..." Importance="high"/>
-	<Exec Command="$(TextureTool) %(MetallicTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(MetallicTextures.RecursiveDir)"
+	<Exec Command="$(TextureTool) %(MetallicTextures.FullPath) -f BC4_UNORM -m 1 -o $(TextureOutputDir)%(MetallicTextures.RecursiveDir) -y"
   		  Condition="'%(Extension)' == '.png' OR '%(Extension)' == '.jpg' OR '%(Extension)' == '.jpeg' OR '%(Extension)' == '.tga'"
           ContinueOnError="false" />
 		  
