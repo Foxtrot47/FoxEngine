@@ -16,7 +16,7 @@ public:
 		DirectX::XMFLOAT3 bitangent;
 	};
 
-	Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned short> indices, std::shared_ptr<Material> material);
+	Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::shared_ptr<Material> material);
 	void Update(float deltaTime) override;
 };
 

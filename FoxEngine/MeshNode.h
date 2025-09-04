@@ -24,7 +24,7 @@ public:
     MeshNode(Graphics& gfx,
              SceneNode* parent,
              const std::vector<Mesh::Vertex>& vertices,
-             const std::vector<unsigned short>& indices,
+             const std::vector<unsigned int>& indices,
              std::shared_ptr<Material> material,
              std::optional<std::string>);
     void AddMesh(std::unique_ptr<Mesh> mesh);

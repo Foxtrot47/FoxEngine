@@ -2,7 +2,7 @@
 #include "BindableBase.h"
 #include "FileUtils.h"
 
-Mesh::Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned short> indices, std::shared_ptr<Material> material)
+Mesh::Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::shared_ptr<Material> material)
 {
 	AddBind(std::make_unique<VertexBuffer>(gfx, vertices));
 

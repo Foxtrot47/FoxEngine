@@ -14,7 +14,7 @@ struct Vertex
 // from https://danielsieger.com/blog/2021/03/27/generating-spheres.html
 static void MakeUvSphere(float radius, int segU, int segV,
 	std::vector<Vertex>& vertices,
-	std::vector<unsigned short>& indices)
+	std::vector<unsigned int>& indices)
 {
 	vertices.clear();
 	indices.clear();
@@ -38,10 +38,10 @@ static void MakeUvSphere(float radius, int segU, int segV,
 	// indices
 	for (int v = 0; v < segV; ++v) {
 		for (int u = 0; u < segU; ++u) {
-			unsigned short i0 = (unsigned short)(v * (segU + 1) + u);
-			unsigned short i1 = (unsigned short)(i0 + 1);
-			unsigned short i2 = (unsigned short)(i0 + (segU + 1));
-			unsigned short i3 = (unsigned short)(i2 + 1);
+			unsigned int i0 = (unsigned int)(v * (segU + 1) + u);
+			unsigned int i1 = (unsigned int)(i0 + 1);
+			unsigned int i2 = (unsigned int)(i0 + (segU + 1));
+			unsigned int i3 = (unsigned int)(i2 + 1);
 
 			// two triangles per quad
 			indices.push_back(i0); indices.push_back(i1); indices.push_back(i2);
@@ -53,7 +53,7 @@ static void MakeUvSphere(float radius, int segU, int segV,
 SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 {
 	std::vector<Vertex> vertices;
-	std::vector<unsigned short> indices;
+	std::vector<unsigned int> indices;
 
 	MakeUvSphere(radius, segU, segV, vertices, indices);
 

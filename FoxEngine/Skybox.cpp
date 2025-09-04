@@ -8,7 +8,7 @@ Skybox::Skybox(Graphics& gfx, float size, std::wstring cubemapPath)
     // Define cube vertices (-1 to 1, scaled by size)
 
     std::vector<Skybox::Vertex> vertices;
-    std::vector<unsigned short> indices;
+    std::vector<unsigned int> indices;
     MakeUvSphere(size, 20, 20, vertices, indices);
 
     Material::MaterialInstanceData mData = {};
@@ -39,7 +39,7 @@ void Skybox::Update(float deltaTime)
 
 void Skybox::MakeUvSphere(float radius, int segU, int segV,
     std::vector<Skybox::Vertex>& vertices,
-    std::vector<unsigned short>& indices)
+    std::vector<unsigned int>& indices)
 {
     vertices.clear();
     indices.clear();
@@ -66,10 +66,10 @@ void Skybox::MakeUvSphere(float radius, int segU, int segV,
     // Indices (reverse winding for inside rendering)
     for (int v = 0; v < segV; ++v) {
         for (int u = 0; u < segU; ++u) {
-            unsigned short i0 = (unsigned short)(v * (segU + 1) + u);
-            unsigned short i1 = (unsigned short)(i0 + 1);
-            unsigned short i2 = (unsigned short)(i0 + (segU + 1));
-            unsigned short i3 = (unsigned short)(i2 + 1);
+            unsigned int i0 = (unsigned int)(v * (segU + 1) + u);
+            unsigned int i1 = (unsigned int)(i0 + 1);
+            unsigned int i2 = (unsigned int)(i0 + (segU + 1));
+            unsigned int i3 = (unsigned int)(i2 + 1);
 
             // Reverse winding order for inside rendering
             indices.push_back(i0); indices.push_back(i2); indices.push_back(i1);

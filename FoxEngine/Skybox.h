@@ -14,10 +14,10 @@ public:
 	void Update(float deltaTime) override;
 	static void MakeUvSphere(float radius, int segU, int segV,
 		std::vector<Skybox::Vertex>& vertices,
-		std::vector<unsigned short>& indices);
+		std::vector<unsigned int>& indices);
 private:
 	std::vector<Vertex> vertices;
-	std::vector<unsigned short> indices;
+	std::vector<unsigned int> indices;
 	float size;
 };
 

@@ -131,7 +131,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 			vertices.push_back(vertex);
 		}
 
-		std::vector<unsigned short> indices;
+		std::vector<unsigned int> indices;
 		indices.resize(pMesh->mNumFaces * 3);
 
 		for (size_t i = 0; i < pMesh->mNumFaces; ++i)
