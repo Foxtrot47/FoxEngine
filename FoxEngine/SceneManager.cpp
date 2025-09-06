@@ -3,6 +3,7 @@
 #include "FileUtils.h"
 #include "MeshNode.h"
 #include "PointLightNode.h"
+#include "DirectionalLightNode.h"
 #include "SkyboxNode.h"
 #include <fstream>
 
@@ -11,35 +12,45 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 	const DirectX::XMFLOAT3 defaultPos = { 0.0f, 0.0f, 0.0f };
 	const DirectX::XMFLOAT4 defaultRot = { 0.0f, 0.0f, 0.0f, 1.0f };
 	const DirectX::XMFLOAT3 defaultScaling = { 1.0f, 1.0f, 1.0f };
+	lightManager = std::make_unique<LightManager>(gfx);
 
 	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node", defaultPos, defaultRot, defaultScaling);
 
-	 auto pointLight = std::make_unique<PointLightNode>(gfx, rootNode.get(), "Point_Light", DirectX::XMFLOAT3(-71.0f, 40.0f, 0.0f));
-	 rootNode->AddChild(std::move(pointLight));
+	auto sun = std::make_unique<DirectionalLightNode>(
+		gfx,
+		rootNode.get(),
+		*lightManager,
+		"Sun",
+		DirectX::XMFLOAT3(-71.0f, 40.0f, 0.0f)
+	);
+	rootNode->AddChild(std::move(sun));
 
-	 LoadScene(gfx, "F:\\Software\\Projects\\FoxEngine\\FoxEngine\\scene_downtown.json");
-	 auto node = std::make_unique<MeshNode>(
-		 gfx,
-		 rootNode.get(),
-		 GetModelPath(Utility::convertToUTF16("scene_01.glb")),
-		 materials,
-		 std::make_optional("Scene_Root"),
-		 defaultPos,
-		 defaultRot,
-		 defaultScaling);
-	 rootNode->AddChild(std::move(node));
 
-	 auto cumeMap = GetExecutableDirectory() + L"\\Textures\\citrus_orchard_road_puresky_2k.hdr";
-	 auto skybox = std::make_unique<SkyboxNode>(gfx,
-		 rootNode.get(),
-		 cumeMap,
-		 &cam
-	 );
+	LoadScene(gfx, "F:\\Software\\Projects\\FoxEngine\\FoxEngine\\scene_downtown.json");
+	auto node = std::make_unique<MeshNode>(
+		gfx,
+		rootNode.get(),
+		GetModelPath(Utility::convertToUTF16("scene_01.glb")),
+		materials,
+		std::make_optional("Scene_Root"),
+		defaultPos,
+		defaultRot,
+		defaultScaling);
+	rootNode->AddChild(std::move(node));
+
+	auto cumeMap = GetExecutableDirectory() + L"\\Textures\\citrus_orchard_road_puresky_2k.hdr";
+	auto skybox = std::make_unique<SkyboxNode>(gfx,
+		rootNode.get(),
+		cumeMap,
+		&cam
+	);
 	rootNode->AddChild(std::move(skybox));
 }
 
 void SceneManager::Draw(Graphics& gfx) const
 {
+	lightManager->Update(gfx);
+	lightManager->Bind(gfx);
 	rootNode->Draw(gfx);
 }
 
@@ -122,6 +133,6 @@ Material::MaterialInstanceData SceneManager::ParseBaseMaterial(const nlohmann::j
 		}
 	}
 	mData.vsPath = GetShaderPath(L"PhongNormalVS.cso");
-	mData.psPath = GetShaderPath(L"PhongNormalPS.cso");
+	mData.psPath = GetShaderPath(L"PhongMultiLightsPS.cso");
 	return mData;
 }

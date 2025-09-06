@@ -1,24 +1,20 @@
 #pragma once
 #include "SceneNode.h"
-#include "ConstantBuffer.h"
-#include <memory>
-#include "SolidSphere.h"
 
-class SolidSphere;
 
-class PointLightNode : public SceneNode
+class DirectionalLightNode : public SceneNode
 {
 public:
-	PointLightNode(
+	DirectionalLightNode(
 		Graphics& gfx,
 		SceneNode* parent,
 		LightManager& lightManager,
 		std::optional<std::string> name,
-		const DirectX::XMFLOAT3& initialPosition = { 0.0f, 0.0f, 0.0f },
+		const DirectX::XMFLOAT3& direction = { -0.3f, -0.8f, 0.5f },
 		const DirectX::XMFLOAT3& color = { 1.0f, 1.0f, 1.0f },
-		float intensity = 1.0f,
-		float range = 100.0f
+		float intensity = 1.0f
 	);
+	void Bind(Graphics& gfx);
 	void DrawInspectorWindow() override;
 
 	void Draw(Graphics& gfx) override;
@@ -28,9 +24,7 @@ private:
 
 	int lightIndex;
 	DirectX::XMFLOAT3 lightColor;
+	DirectX::XMFLOAT3 lightDirection;
 	float lightIntensity;
-	float lightRange;
-	std::unique_ptr<class SolidSphere> sphere;
 	bool valuesChanged;
 };
-

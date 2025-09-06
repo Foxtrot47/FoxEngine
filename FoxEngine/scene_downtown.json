@@ -309,7 +309,7 @@
         "1": "MI_Trim_Wood_Metal_B_Normal.png"
       }
     },
-    "UnrealMaterial.033": {
+    "UnrealMaterial.032": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -339,7 +339,7 @@
         "1": "MI_Building_Stucco_Normal.png"
       }
     },
-    "UnrealMaterial.032": {
+    "UnrealMaterial.033": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -429,7 +429,7 @@
         "1": "MI_Building_Sandstone_Normal.png"
       }
     },
-    "UnrealMaterial.037": {
+    "UnrealMaterial.036": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -444,7 +444,7 @@
         "1": "MI_Building_F_Bricks_A_Normal.png"
       }
     },
-    "UnrealMaterial.036": {
+    "UnrealMaterial.037": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -519,7 +519,7 @@
         "1": "MI_Building_Green_Trim_B_Normal.png"
       }
     },
-    "UnrealMaterial.026": {
+    "UnrealMaterial.027": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -534,7 +534,7 @@
         "1": "MI_Building_A_Door_Normal.png"
       }
     },
-    "UnrealMaterial.027": {
+    "UnrealMaterial.026": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -623,7 +623,7 @@
         "1": "MI_Bricks_Props_C_Normal.png"
       }
     },
-    "UnrealMaterial.042": {
+    "UnrealMaterial.041": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -638,7 +638,7 @@
         "1": "MI_building_a_awning_trim_Normal.png"
       }
     },
-    "UnrealMaterial.041": {
+    "UnrealMaterial.042": {
       "properties": {
         "diffuseColor": [
           0.2462013214826584,
@@ -682,7 +682,7 @@
         "1": "MI_building_awning_a_b_Normal.png"
       }
     },
-    "UnrealMaterial.045": {
+    "UnrealMaterial.046": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -697,7 +697,7 @@
         "1": "MI_building_awning_c_cloth_Normal.png"
       }
     },
-    "UnrealMaterial.046": {
+    "UnrealMaterial.045": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -847,7 +847,7 @@
         "1": "MI_Fire_Hydrant_Normal.png"
       }
     },
-    "UnrealMaterial.054": {
+    "UnrealMaterial.053": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -862,7 +862,7 @@
         "1": "MI_hotdog_cart_Normal.png"
       }
     },
-    "UnrealMaterial.053": {
+    "UnrealMaterial.052": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -877,7 +877,7 @@
         "1": "MI_hotdog_umbr_signs_Normal.png"
       }
     },
-    "UnrealMaterial.052": {
+    "UnrealMaterial.054": {
       "properties": {
         "diffuseColor": [
           0.4677838087081909,
@@ -891,7 +891,7 @@
         "1": "MI_GlassPlastic_Translucent1_Normal.png"
       }
     },
-    "UnrealMaterial.095": {
+    "UnrealMaterial.091": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -906,7 +906,7 @@
         "1": "MI_Fount_Shell_Bottom_Normal.png"
       }
     },
-    "UnrealMaterial.090": {
+    "UnrealMaterial.094": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -921,7 +921,7 @@
         "1": "MI_Fount_Shell_Top_Normal.png"
       }
     },
-    "UnrealMaterial.093": {
+    "UnrealMaterial.092": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -936,7 +936,7 @@
         "1": "MI_Fount_Platform_Bottom_Normal.png"
       }
     },
-    "UnrealMaterial.098": {
+    "UnrealMaterial.088": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -951,7 +951,7 @@
         "1": "MI_Fount_Platform_Pillar_Normal.png"
       }
     },
-    "UnrealMaterial.094": {
+    "UnrealMaterial.096": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -966,7 +966,7 @@
         "1": "MI_Fount_Dolphin2_Normal.png"
       }
     },
-    "UnrealMaterial.097": {
+    "UnrealMaterial.089": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -981,7 +981,7 @@
         "1": "MI_Fount_Dolphin_Normal.png"
       }
     },
-    "UnrealMaterial.089": {
+    "UnrealMaterial.097": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -996,7 +996,7 @@
         "1": "MI_Fount_Statue_Normal.png"
       }
     },
-    "UnrealMaterial.092": {
+    "UnrealMaterial.095": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1011,7 +1011,7 @@
         "1": "MI_Fount_WaterBasin_A_Normal.png"
       }
     },
-    "UnrealMaterial.088": {
+    "UnrealMaterial.093": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1026,7 +1026,7 @@
         "1": "MI_Fount_WaterBasin_B_Normal.png"
       }
     },
-    "UnrealMaterial.096": {
+    "UnrealMaterial.090": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1041,7 +1041,7 @@
         "1": "MI_Fount_WaterBasin_Bottom_Normal.png"
       }
     },
-    "UnrealMaterial.091": {
+    "UnrealMaterial.098": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1056,7 +1056,7 @@
         "1": "MI_Fount_WaterBasin_Plaq_Normal.png"
       }
     },
-    "UnrealMaterial.057": {
+    "UnrealMaterial.056": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1071,7 +1071,7 @@
         "1": "MI_Concrete_Ground_Tiles_A_Dark_Normal.png"
       }
     },
-    "UnrealMaterial.056": {
+    "UnrealMaterial.057": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1295,7 +1295,7 @@
         "1": "MI_Light_post_glass_banner_pot_Normal.png"
       }
     },
-    "UnrealMaterial.071": {
+    "UnrealMaterial.073": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1340,7 +1340,7 @@
         "1": "MI_Light_post_glass_banner_pot_color_b_Normal.png"
       }
     },
-    "UnrealMaterial.072": {
+    "UnrealMaterial.071": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1355,7 +1355,7 @@
         "1": "MI_Light_On_Normal.png"
       }
     },
-    "UnrealMaterial.073": {
+    "UnrealMaterial.072": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1624,7 +1624,7 @@
         "1": "MI_sewer_caps_Normal.png"
       }
     },
-    "UnrealMaterial.10598": {
+    "UnrealMaterial.10597": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1654,7 +1654,7 @@
         "1": "MI_Building_Wood_Brick_Trim_C_Normal.png"
       }
     },
-    "UnrealMaterial.10605": {
+    "UnrealMaterial.10610": {
       "properties": {
         "diffuseColor": [
           1.0,
@@ -1682,7 +1682,7 @@
         "1": "MI_prop_store_signs_color5_Normal.png"
       }
     },
-    "UnrealMaterial.10610": {
+    "UnrealMaterial.112": {
       "properties": {
         "diffuseColor": [
           0.05612849071621895,
@@ -1696,7 +1696,7 @@
         "1": "MI_prop_store_signs_color4_Normal.png"
       }
     },
-    "UnrealMaterial.112": {
+    "UnrealMaterial.10613": {
       "properties": {
         "diffuseColor": [
           0.5840784311294556,
@@ -1710,7 +1710,7 @@
         "1": "MI_prop_store_signs_color3_Normal.png"
       }
     },
-    "UnrealMaterial.10613": {
+    "UnrealMaterial.10616": {
       "properties": {
         "diffuseColor": [
           0.6307571530342102,
@@ -1724,7 +1724,7 @@
         "1": "MI_prop_store_signs_color2_Normal.png"
       }
     },
-    "UnrealMaterial.10618": {
+    "UnrealMaterial.10623": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1754,7 +1754,7 @@
         "1": "MI_statue_deer_Normal.png"
       }
     },
-    "UnrealMaterial.10638": {
+    "UnrealMaterial.118": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1769,7 +1769,7 @@
         "1": "MI_Foliage_TreeLeaves_Normal.png"
       }
     },
-    "UnrealMaterial.118": {
+    "UnrealMaterial.10640": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1814,7 +1814,7 @@
         "1": "MI_prop_statue_tortoise_Normal.png"
       }
     },
-    "UnrealMaterial.115": {
+    "UnrealMaterial.10631": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1829,7 +1829,7 @@
         "1": "MI_Tree_Narrowleaf_Leaf_A_Normal.png"
       }
     },
-    "UnrealMaterial.10627": {
+    "UnrealMaterial.115": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1859,7 +1859,7 @@
         "1": "MI_Foliage_Tree_Pine_Knots_Normal.png"
       }
     },
-    "UnrealMaterial.10630": {
+    "UnrealMaterial.10635": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1874,7 +1874,7 @@
         "1": "MI_Foliage_Tree_Pine_Normal.png"
       }
     },
-    "UnrealMaterial.10632": {
+    "UnrealMaterial.10633": {
       "properties": {
         "diffuseColor": [
           0.800000011920929,
@@ -1903,7 +1903,21 @@
         "0": "MI_Building_Wood_Brick_Trim_C_Darker1_BaseColor.png",
         "1": "MI_Building_Wood_Brick_Trim_C_Darker1_Normal.png"
       }
+    },
+    "M_Landscape": {
+      "properties": {
+        "diffuseColor": [
+          0.800000011920929,
+          0.800000011920929,
+          0.800000011920929
+        ],
+        "specularIntensity": 1.0,
+        "specularPower": 5.692307692307692
+      },
+      "textures": {
+        "0": "Landscape2_BaseColor.png",
+        "1": "Landscape2_Normal.png"
+      }
     }
-  },
-  "objects": []
+  }
 }

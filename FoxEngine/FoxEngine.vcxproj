@@ -144,6 +144,7 @@
     <ClInclude Include="Bindable.h" />
     <ClInclude Include="BindableBase.h" />
     <ClInclude Include="Box.h" />
+    <ClInclude Include="DirectionalLightNode.h" />
     <ClInclude Include="FPVCamera.h" />
     <ClInclude Include="ConstantBuffer.h" />
     <ClInclude Include="Drawable.h" />
@@ -154,6 +155,7 @@
     <ClInclude Include="ImGuiManager.h" />
     <ClInclude Include="IndexBuffer.h" />
     <ClInclude Include="Keeyboard.h" />
+    <ClInclude Include="LightManager.h" />
     <ClInclude Include="Material.h" />
     <ClInclude Include="Math.h" />
     <ClInclude Include="Mesh.h" />
@@ -177,6 +179,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Bindable.cpp" />
+    <ClCompile Include="DirectionalLightNode.cpp" />
     <ClCompile Include="FPVCamera.cpp" />
     <ClCompile Include="Drawable.cpp" />
     <ClCompile Include="FoxEngine.cpp" />
@@ -184,6 +187,7 @@
     <ClCompile Include="ImGuiManager.cpp" />
     <ClCompile Include="IndexBuffer.cpp" />
     <ClCompile Include="Keeyboard.cpp" />
+    <ClCompile Include="LightManager.cpp" />
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="Mesh.cpp" />
     <ClCompile Include="MeshNode.cpp" />
@@ -211,6 +215,12 @@
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="AlbedoPS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+    </FxCompile>
+    <FxCompile Include="PhongMultiLightsPS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>

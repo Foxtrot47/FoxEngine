@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics.h"
+#include "LightManager.h"
 #include <optional>
 
 class SceneNode
