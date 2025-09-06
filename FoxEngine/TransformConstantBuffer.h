@@ -9,8 +9,8 @@ class TransformConstantBuffer : public Bindable
 public:
 	struct Transforms
 	{
-		DirectX::XMMATRIX modelViewProjection;
 		DirectX::XMMATRIX modelMatrix;
+		DirectX::XMMATRIX modelViewProjection;
 	};
 	TransformConstantBuffer(Graphics& gfx, UINT slot = 0u);
 	static void Bind(Graphics& gfx, DirectX::XMMATRIX transform);
