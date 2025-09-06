@@ -73,18 +73,18 @@ void Material::InitializeBindings(Graphics& gfx)
 		};
 	}
 
-		hr = GetDevice(gfx)->CreateInputLayout(
-			topologyDesc.data(),
-			(UINT)topologyDesc.size(),
-			pVSByteCodeBlob->GetBufferPointer(),
-			pVSByteCodeBlob->GetBufferSize(),
-			&pInputLayout
-		);
+	hr = GetDevice(gfx)->CreateInputLayout(
+		topologyDesc.data(),
+		(UINT)topologyDesc.size(),
+		pVSByteCodeBlob->GetBufferPointer(),
+		pVSByteCodeBlob->GetBufferSize(),
+		&pInputLayout
+	);
 	if (FAILED(hr))
 	{
 		throw std::runtime_error("Failed to create input layout");
 	}
-	
+
 	D3D11_DEPTH_STENCIL_DESC dsDesc = {};
 	dsDesc.DepthEnable = TRUE;
 	dsDesc.StencilEnable = FALSE;
@@ -97,7 +97,7 @@ void Material::InitializeBindings(Graphics& gfx)
 	{
 		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
-}
+	}
 
 	hr = GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
 	if (FAILED(hr)) {
@@ -203,7 +203,7 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 	// Handle missing texture
 	if (FAILED(hr))
 	{
-		OutputDebugStringA(("Texture missing: " + stringPath).c_str());
+		OutputDebugStringA(("Texture missing: " + stringPath + "\n").c_str());
 		return false;
 	}
 
@@ -218,7 +218,7 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 
 	if (FAILED(hr))
 	{
-		OutputDebugStringA(("Failed to create texture view: " + stringPath).c_str());
+		OutputDebugStringA(("Failed to create texture view: " + stringPath + "\n").c_str());
 		return false;
 	}
 	return true;
