@@ -64,7 +64,7 @@ SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 	Material::MaterialInstanceData sphereMat = {};
 	sphereMat.name = "M_Sphere";
 	sphereMat.vsPath = GetShaderPath(L"PhongVS.cso");
-	sphereMat.psPath = GetShaderPath(L"PhongPS.cso");
+	sphereMat.psPath = GetShaderPath(L"AlbedoPS.cso");
 	AddBind(std::make_unique<Material>(gfx, sphereMat));
 
 	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
