@@ -12,14 +12,13 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 	const DirectX::XMFLOAT3 defaultPos = { 0.0f, 0.0f, 0.0f };
 	const DirectX::XMFLOAT4 defaultRot = { 0.0f, 0.0f, 0.0f, 1.0f };
 	const DirectX::XMFLOAT3 defaultScaling = { 1.0f, 1.0f, 1.0f };
-	lightManager = std::make_unique<LightManager>(gfx);
 
 	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node", defaultPos, defaultRot, defaultScaling);
 
 	auto sun = std::make_unique<DirectionalLightNode>(
 		gfx,
 		rootNode.get(),
-		*lightManager,
+		gfx.GetLightManager(),
 		"Sun",
 		DirectX::XMFLOAT3(-71.0f, 40.0f, 0.0f)
 	);
@@ -49,9 +48,12 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 
 void SceneManager::Draw(Graphics& gfx) const
 {
-	lightManager->Update(gfx);
-	lightManager->Bind(gfx);
 	rootNode->Draw(gfx);
+}
+
+void SceneManager::DrawShadows(Graphics& gfx) const
+{
+	rootNode->DrawShadows(gfx);
 }
 
 void SceneManager::DrawSceneGraph(Graphics& gfx)

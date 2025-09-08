@@ -1,4 +1,6 @@
 #include "Graphics.h"
+#include "LightManager.h"
+#include "ShadowManager.h"
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
 
@@ -59,7 +61,6 @@ Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullp
 	pContext->OMSetDepthStencilState(pDepthStencilState.Get(), 1u); // Set the depth stencil state
 
 	// create depth stencil texture
-	Microsoft::WRL::ComPtr<ID3D11Texture2D> pDepthStencilTexture;
 	D3D11_TEXTURE2D_DESC descDepth;
 	ZeroMemory(&descDepth, sizeof(D3D11_TEXTURE2D_DESC));
 	descDepth.Width = windowWidth;   // Set the width of the depth stencil buffer
@@ -80,12 +81,10 @@ Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullp
 	descDepthStencilView.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 	descDepthStencilView.Texture2D.MipSlice = 0; // Use the first mip level
 	pDevice->CreateDepthStencilView(
-		pDepthStencilTexture.Get(), 
+		pDepthStencilTexture.Get(),
 		&descDepthStencilView,
 		&pDepthStencilView
 	);
-
-	pContext->OMSetRenderTargets(1u, pTarget.GetAddressOf(), pDepthStencilView.Get()); // Set the render target and depth stencil view
 
 	D3D11_RASTERIZER_DESC rsDesc = {};
 	rsDesc.FillMode = D3D11_FILL_SOLID;          // solid rendering (wireframe = D3D11_FILL_WIREFRAME)
@@ -93,22 +92,22 @@ Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullp
 	rsDesc.FrontCounterClockwise = FALSE;        // DX default = clockwise is front
 	rsDesc.DepthClipEnable = TRUE;               // clip primitives outside near/far planes
 
-	Microsoft::WRL::ComPtr<ID3D11RasterizerState> rasterizerState;
-	hr = pDevice->CreateRasterizerState(&rsDesc, &rasterizerState);
-	if (SUCCEEDED(hr))
+	hr = pDevice->CreateRasterizerState(&rsDesc, &pRasterizerState);
+	if (FAILED(hr))
 	{
-		pContext->RSSetState(rasterizerState.Get());
+		throw std::runtime_error("Failed to create rasterizer state");
 	}
 
 	// configure viewport
-	D3D11_VIEWPORT vp = {};
-	vp.Width = windowWidth;						// Set viewport width
-	vp.Height = windowHeight;					// Set viewport height
-	vp.MinDepth = 0;							// Minimum depth
-	vp.MaxDepth = 1;							// Maximum depth
-	vp.TopLeftX = 0;							// Top-left X position
-	vp.TopLeftY = 0;							// Top-left Y position
-	pContext->RSSetViewports(1, &vp);
+	renderViewPort.Width = windowWidth;						// Set viewport width
+	renderViewPort.Height = windowHeight;					// Set viewport height
+	renderViewPort.MinDepth = 0;							// Minimum depth
+	renderViewPort.MaxDepth = 1;							// Maximum depth
+	renderViewPort.TopLeftX = 0;							// Top-left X position
+	renderViewPort.TopLeftY = 0;							// Top-left Y position
+
+	pLightManager = std::make_shared<LightManager>(*this);
+	pShadowManager = std::make_shared<ShadowManager>(*this);
 
 	ImGui_ImplDX11_Init(pDevice.Get(), pContext.Get());
 }
@@ -153,6 +152,21 @@ void Graphics::BeginFrame(float red, float green, float blue)
 	}
 }
 
+void Graphics::BeginRenderPass()
+{
+	pContext->OMSetRenderTargets(1u, pTarget.GetAddressOf(), pDepthStencilView.Get());
+	pContext->RSSetState(pRasterizerState.Get());
+	pContext->RSSetViewports(1, &renderViewPort);
+	pLightManager->Update(*this);
+	pLightManager->Bind(*this);
+	pShadowManager->Bind(*this);
+}
+
+void Graphics::BeginShadowPass()
+{
+	pShadowManager->BeginShadowPass(*this);
+}
+
 void Graphics::DrawIndexed(UINT count)
 {
 	pContext->DrawIndexed(count, 0u, 0u);
@@ -160,7 +174,7 @@ void Graphics::DrawIndexed(UINT count)
 
 void Graphics::SetProjection(DirectX::FXMMATRIX proj)
 {
-	projection = proj; 
+	projection = proj;
 }
 
 DirectX::XMMATRIX Graphics::GetProjection() const
@@ -191,4 +205,9 @@ void Graphics::SetCamera(DirectX::FXMMATRIX _camera)
 DirectX::XMMATRIX Graphics::GetCamera() const
 {
 	return camera;
+}
+
+Microsoft::WRL::ComPtr<ID3D11RenderTargetView> Graphics::GetRenderTargetView() const
+{
+	return pTarget;
 }

@@ -12,7 +12,7 @@ Material::Material(Graphics& gfx, const MaterialInstanceData& data)
 
 void Material::InitializeBindings(Graphics& gfx)
 {
-	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 1u);
+	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 2u);
 
 	if (!std::filesystem::exists(instanceData.vsPath)) {
 		throw std::runtime_error("Shader file not found: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));

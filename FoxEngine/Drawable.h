@@ -13,6 +13,7 @@ public:
 	Drawable(const Drawable&) = delete;
 
 	void Draw(Graphics& gfx, DirectX::XMMATRIX transform) const;
+	void DrawShadows(Graphics& gfx, DirectX::XMMATRIX transform) const;
 	void AddBind(std::shared_ptr<Bindable> bindable);
 	void AddIndexBuffer(std::shared_ptr<class IndexBuffer> indexBuffer);
 

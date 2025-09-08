@@ -9,5 +9,7 @@ public:
 protected:
 	static ID3D11DeviceContext* GetContext(Graphics& gfx);
 	static ID3D11Device* GetDevice(Graphics& gfx);
+	static std::shared_ptr<ShadowManager>  GetShadowManager(Graphics& gfx);
+	static std::shared_ptr<LightManager> GetLightManager(Graphics& gfx);
 };
 

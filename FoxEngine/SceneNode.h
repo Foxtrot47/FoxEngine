@@ -18,6 +18,7 @@ public:
 	virtual DirectX::XMMATRIX GetLocalTransform() const;
 	DirectX::XMMATRIX GetWorldTransform() const;
 	virtual void Draw(Graphics& gfx);
+	virtual void DrawShadows(Graphics& gfx);
 	virtual ~SceneNode() = default;
 	virtual void DrawSceneNode(SceneNode*& pSelectedNode);
 	virtual void DrawInspectorWindow();

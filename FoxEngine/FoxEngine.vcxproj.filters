@@ -141,6 +141,12 @@
     <ClInclude Include="DirectionalLightNode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ShadowManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ShadowConstantBuffer.h">
+      <Filter>Header Files\Bindable</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Window.cpp">
@@ -224,6 +230,12 @@
     <ClCompile Include="DirectionalLightNode.cpp">
       <Filter>Source Files\Nodes</Filter>
     </ClCompile>
+    <ClCompile Include="ShadowManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ShadowConstantBuffer.cpp">
+      <Filter>Source Files\Bindable</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="FoxEngine.rc">
@@ -261,6 +273,12 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="AlbedoPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="ShadowMapVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="SampleState.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

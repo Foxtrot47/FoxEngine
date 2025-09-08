@@ -63,6 +63,14 @@ void SceneNode::Draw(Graphics& gfx)
 	}
 }
 
+void SceneNode::DrawShadows(Graphics& gfx)
+{
+	for (auto& child : children)
+	{
+		child->DrawShadows(gfx);
+	}
+}
+
 const std::string& SceneNode::GetName() const
 {
 	return name;

@@ -8,7 +8,7 @@ public:
 	DirectionalLightNode(
 		Graphics& gfx,
 		SceneNode* parent,
-		LightManager& lightManager,
+		std::shared_ptr<LightManager> lightManager,
 		std::optional<std::string> name,
 		const DirectX::XMFLOAT3& direction = { -0.3f, -0.8f, 0.5f },
 		const DirectX::XMFLOAT3& color = { 1.0f, 1.0f, 1.0f },
@@ -20,7 +20,7 @@ public:
 	void Draw(Graphics& gfx) override;
 private:
 	void UpdateLightManager();
-	LightManager& lightManager;
+	std::shared_ptr<LightManager> lightManager;
 
 	int lightIndex;
 	DirectX::XMFLOAT3 lightColor;

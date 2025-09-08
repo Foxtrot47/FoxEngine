@@ -20,7 +20,7 @@ cbuffer CamerCbuffer : register(b11)
 };
 
 Texture2D tex : register(t0);
-Texture2D specularTex : register(t1);
+Texture2D specularTex : register(t5);
 SamplerState splr : register(s0);
 
 float4 main(float3 worldPos : Position, float3 normal : Normal, float2 tc : TexCoord) : SV_Target

@@ -5,7 +5,7 @@
 DirectionalLightNode::DirectionalLightNode(
 	Graphics& gfx,
 	SceneNode* parent,
-	LightManager& lightManager,
+	std::shared_ptr<LightManager> lightManager,
 	std::optional<std::string> name,
 	const DirectX::XMFLOAT3& direction,
 	const DirectX::XMFLOAT3& color,
@@ -19,7 +19,7 @@ DirectionalLightNode::DirectionalLightNode(
 	lightColor(color),
 	lightIntensity(intensity)
 {
-	lightIndex = lightManager.AddDirectionalLight(direction, color);
+	lightIndex = lightManager->AddDirectionalLight(direction, color);
 }
 
 void DirectionalLightNode::DrawInspectorWindow()
@@ -90,5 +90,5 @@ void DirectionalLightNode::UpdateLightManager()
 	light.color = lightColor;
 	light.intensity = lightIntensity;
 
-	lightManager.UpdateLight(lightIndex, light);
+	lightManager->UpdateLight(lightIndex, light);
 }

@@ -45,10 +45,14 @@ int CALLBACK WinMain(
 		cam.HandleInput();
 
 		wnd.Gfx().BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
+		wnd.Gfx().BeginShadowPass();
 		wnd.Gfx().SetCamera(cam.GetViewMatrix());
+
 		cam.Update(deltaTime);
 		cam.Bind(wnd.Gfx());
+		scene.DrawShadows(wnd.Gfx());
 
+		wnd.Gfx().BeginRenderPass();
 		scene.Draw(wnd.Gfx());
 
 		scene.DrawSceneGraph(wnd.Gfx());

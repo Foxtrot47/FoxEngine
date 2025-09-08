@@ -19,7 +19,7 @@ FPVCamera::FPVCamera(HWND hWnd, Graphics& gfx, Keyboard& kbd, Mouse& mouse)
 {
 	if (!cameraCBuff)
 	{
-		cameraCBuff = std::make_unique<PixelConstantBuffer<CamerCbuff>>(gfx, 11u);
+		cameraCBuff = std::make_unique<PixelConstantBuffer<CamerCbuff>>(gfx, 3u);
 	}
 	UpdateViewMatrix();
 }

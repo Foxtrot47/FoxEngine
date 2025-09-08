@@ -260,6 +260,19 @@ void MeshNode::Draw(Graphics& gfx)
 	}
 }
 
+void MeshNode::DrawShadows(Graphics& gfx)
+{
+	const auto transform = GetWorldTransform();
+	for (const auto& mesh : meshes)
+	{
+		mesh->DrawShadows(gfx, transform);
+	}
+	for (auto& child : children)
+	{
+		child->DrawShadows(gfx);
+	}
+}
+
 void MeshNode::DrawSceneNode(SceneNode*& pSelectedNode)
 {
 	if (meshes.empty() && children.size() == 1)
