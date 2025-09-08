@@ -13,6 +13,8 @@ Mesh::Mesh(Graphics& gfx, std::vector<Vertex> vertices, std::vector<unsigned int
 	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
 
 	AddBind(std::make_unique<TransformConstantBuffer>(gfx));
+
+	AddBind(std::make_unique<ShadowConstantBuffer>(gfx));
 }
 
 void Mesh::Update(float deltaTime)

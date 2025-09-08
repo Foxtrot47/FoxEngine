@@ -12,6 +12,9 @@ void Drawable::Draw(Graphics& gfx, DirectX::XMMATRIX transform) const
 		{
 			transformCB->Bind(gfx, transform);
 		}
+		else if (auto* shadowCB = dynamic_cast<ShadowConstantBuffer*>(bindable.get()))
+		{
+		}
 		else
 		{
 			bindable->Bind(gfx);
