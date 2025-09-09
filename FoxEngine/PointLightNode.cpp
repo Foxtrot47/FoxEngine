@@ -5,7 +5,7 @@
 PointLightNode::PointLightNode(
 	Graphics& gfx,
 	SceneNode* parent,
-	LightManager& lightManager,
+	std::shared_ptr<LightManager> lightManager,
 	std::optional<std::string> name,
 	const DirectX::XMFLOAT3& initialPosition,
 	const DirectX::XMFLOAT3& color,
@@ -20,7 +20,7 @@ PointLightNode::PointLightNode(
 	lightIntensity(intensity),
 	lightRange(range)
 {
-	lightIndex = lightManager.AddPointLight(initialPosition, color, intensity, range);
+	lightIndex = lightManager->AddPointLight(initialPosition, color, intensity, range);
 	sphere = std::make_unique<SolidSphere>(gfx, 0.3f, 20, 20);
 }
 
@@ -92,6 +92,6 @@ void PointLightNode::UpdateLightManager()
 		light.color = lightColor;
 		light.intensity = lightIntensity;
 
-		lightManager.UpdateLight(lightIndex, light);
+		lightManager->UpdateLight(lightIndex, light);
 	}
 }

@@ -12,7 +12,7 @@ public:
 	PointLightNode(
 		Graphics& gfx,
 		SceneNode* parent,
-		LightManager& lightManager,
+		std::shared_ptr<LightManager>  lightManager,
 		std::optional<std::string> name,
 		const DirectX::XMFLOAT3& initialPosition = { 0.0f, 0.0f, 0.0f },
 		const DirectX::XMFLOAT3& color = { 1.0f, 1.0f, 1.0f },
@@ -24,7 +24,7 @@ public:
 	void Draw(Graphics& gfx) override;
 private:
 	void UpdateLightManager();
-	LightManager& lightManager;
+	std::shared_ptr<LightManager>  lightManager;
 
 	int lightIndex;
 	DirectX::XMFLOAT3 lightColor;
