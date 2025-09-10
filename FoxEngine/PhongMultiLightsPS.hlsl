@@ -66,13 +66,22 @@ float CalculateShadows(float3 worldPos)
     
     // Check if outside shadow map bounds
     if (shadowTexCoord.x < 0.0f || shadowTexCoord.x > 1.0f ||
-      shadowTexCoord.y < 0.0f || shadowTexCoord.y > 1.0f)
+      shadowTexCoord.y < 0.0f || shadowTexCoord.y > 1.0f ||
+      projCoords.z > 1.0f || projCoords.z < 0.0f)
     {
         return 1.0f; // Assume lit if outside shadow map
     }
 
+    // Improved bias to prevent self-shadowing
+    // Use larger bias to eliminate shadow acne under the light
+    float bias = 0.005f;
+    float currentDepth = projCoords.z - bias;
+    
+    // Clamp depth to valid range
+    currentDepth = saturate(currentDepth);
+    
     // 0 = in shadow, 1 = lit
-    return shadowMap.SampleCmpLevelZero(shadowSampler, shadowTexCoord, projCoords.z);
+    return shadowMap.SampleCmpLevelZero(shadowSampler, shadowTexCoord, currentDepth);
 }
 
 float CalculateAttenuation(float distance, float range)
@@ -91,7 +100,7 @@ float CalculateAttenuation(float distance, float range)
     return attenuation * rangeFactor;
 }
 
-float3 CalculateLightContribution(Light light, float3 worldPos, float3 normal, float3 viewDir, float3 materialColor,  float materialSpecular)
+float3 CalculateLightContribution(Light light, float3 worldPos, float3 normal, float3 viewDir, float3 materialColor, float materialSpecular)
 {
     float3 lightDir;
     float attenuation = 1.0f;
