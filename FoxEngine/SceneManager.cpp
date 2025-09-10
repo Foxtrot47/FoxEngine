@@ -39,13 +39,13 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 		defaultScaling);
 	rootNode->AddChild(std::move(node));
 
-	auto cumeMap = GetExecutableDirectory() + L"\\Textures\\citrus_orchard_road_puresky_2k.hdr";
+	auto cumeMap = GetExecutableDirectory() + L"\\Textures\\NightSkyHDRI008_4K-HDR.exr";
 	auto skybox = std::make_unique<SkyboxNode>(gfx,
 		rootNode.get(),
 		cumeMap,
 		&cam
 	);
-	//rootNode->AddChild(std::move(skybox));
+	rootNode->AddChild(std::move(skybox));
 }
 
 void SceneManager::Draw(Graphics& gfx) const
