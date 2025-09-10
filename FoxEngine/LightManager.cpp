@@ -59,7 +59,7 @@ void LightManager::UpdateLight(int lightIndex, Light lightData)
 {
     if (lightIndex < 0 || lightIndex >= lightBuffer.activeLightCount)
         return;
-    lightMatrices.lightViewProj = CalculateLightMatrix(lightIndex);
+    lightMatrices.lightViewProj = DirectX::XMMatrixTranspose(CalculateLightMatrix(lightIndex));
     lightBuffer.lights[lightIndex] = lightData;
 	isDirty = true;
 }
@@ -69,29 +69,28 @@ DirectX::XMMATRIX LightManager::CalculateLightMatrix(const int lightIndex)
     if (lightIndex < 0 || lightIndex >= lightBuffer.activeLightCount)
         return DirectX::XMMatrixIdentity();
 
-    auto center = DirectX::XMFLOAT3(0.0f, 0.0f, 0.0f);
-	DirectX::XMVECTOR lightDirection = DirectX::XMLoadFloat3(&lightBuffer.lights[lightIndex].direction);
-    lightDirection = DirectX::XMVector3Normalize(lightDirection);
-
-    DirectX::XMVECTOR lightPosition = DirectX::XMVectorSubtract(
-        DirectX::XMLoadFloat3(&center),
-        DirectX::XMVectorScale(lightDirection, 400.0f)
+    const Light& light = lightBuffer.lights[lightIndex];
+    DirectX::XMVECTOR lightPos = DirectX::XMLoadFloat3(&light.position);
+    DirectX::XMVECTOR center = DirectX::XMVectorSet(
+        light.position.x + 70.0f,  // Look 70 units forward in X
+        light.position.y - 30.0f,  // Look 30 units down
+        light.position.z + 50.0f,  // Look 50 units forward in Z
+        0.0f
     );
-
     DirectX::XMVECTOR upVector = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
     DirectX::XMMATRIX viewMatrix = DirectX::XMMatrixLookAtLH(
-        lightPosition,
-        DirectX::XMLoadFloat3(&center),
+        lightPos,
+        center,
         upVector
     );
 
-    float shadowDistance = 500.0f;  // Very large
-    float orthoSize = 5000.0f;       // Very large
-    auto projMatrix = DirectX::XMMatrixOrthographicLH(
-        orthoSize,
-        orthoSize,
-        0.1f,
-        shadowDistance
+    // Use perspective projection for point lights
+    DirectX::XMMATRIX projMatrix = DirectX::XMMatrixPerspectiveFovLH(
+        DirectX::XM_PI / 2.0f,
+        1.0f,
+        1.0f,
+        light.range
     );
 
     return viewMatrix * projMatrix;
@@ -107,8 +106,9 @@ void LightManager::Update(Graphics& gfx)
 {
     if (isDirty)
     {
-        lightCBuff->Update(gfx, lightBuffer);
+        lightMatrices.lightViewProj = DirectX::XMMatrixTranspose(CalculateLightMatrix(0));
         lightMatrixCBuff->Update(gfx, lightMatrices);
+        lightCBuff->Update(gfx, lightBuffer);
         isDirty = false;
-    } 
+    }
 }
