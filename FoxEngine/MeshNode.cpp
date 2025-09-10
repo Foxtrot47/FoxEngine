@@ -24,7 +24,7 @@ MeshNode::MeshNode(Graphics& gfx,
 {
 	std::string modelPathStr(modelPath.begin(), modelPath.end());
 	Assimp::Importer importer;
-	const auto pScene = importer.ReadFile(modelPathStr, aiProcessPreset_TargetRealtime_Fast);
+	const auto pScene = importer.ReadFile(modelPathStr, aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
 
@@ -51,7 +51,7 @@ MeshNode::MeshNode(Graphics& gfx,
 {
 	std::string modelPathStr(modelPath.begin(), modelPath.end());
 	Assimp::Importer importer;
-	const auto pScene = importer.ReadFile(modelPathStr, aiProcessPreset_TargetRealtime_Fast);
+	const auto pScene = importer.ReadFile(modelPathStr, aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
 	LoadAssimpNode(gfx, pScene->mRootNode, pScene, materials);
