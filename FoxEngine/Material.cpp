@@ -108,10 +108,14 @@ void Material::InitializeBindings(Graphics& gfx)
 void Material::InitializeTextures(Graphics& gfx)
 {
 	D3D11_SAMPLER_DESC samplerDesc = {
-		.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+		.Filter = D3D11_FILTER_ANISOTROPIC,
 		.AddressU = D3D11_TEXTURE_ADDRESS_WRAP,
 		.AddressV = D3D11_TEXTURE_ADDRESS_WRAP,
 		.AddressW = D3D11_TEXTURE_ADDRESS_WRAP,
+		.MaxAnisotropy = 16,
+		.ComparisonFunc = D3D11_COMPARISON_NEVER,
+		.MinLOD = 0,
+		.MaxLOD = D3D11_FLOAT32_MAX,
 	};
 
 	HRESULT hr = E_FAIL;
@@ -234,13 +238,13 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 		{
 			// Mipmap generation failed, use original texture
 			OutputDebugStringA(("Mipmap generation failed for: " + stringPath + " (using original)\n").c_str());
-	hr = DirectX::CreateShaderResourceView(
-		GetDevice(gfx),
-		scratchImage.GetImages(),
-		scratchImage.GetImageCount(),
-		metadata,
-		&outTexture.textureView
-	);
+			hr = DirectX::CreateShaderResourceView(
+				GetDevice(gfx),
+				scratchImage.GetImages(),
+				scratchImage.GetImageCount(),
+				metadata,
+				&outTexture.textureView
+			);
 		}
 	}
 	else
