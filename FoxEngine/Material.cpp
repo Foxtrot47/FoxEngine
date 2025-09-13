@@ -207,7 +207,33 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 		return false;
 	}
 
-	// Create texture and shader resource view
+	// Generate mipmaps if not present
+	DirectX::ScratchImage mipMappedImage;
+	if (metadata.mipLevels == 1)
+	{
+		hr = DirectX::GenerateMipMaps(
+			scratchImage.GetImages(),
+			scratchImage.GetImageCount(),
+			metadata,
+			DirectX::TEX_FILTER_DEFAULT,
+			0,
+			mipMappedImage
+		);
+		if (SUCCEEDED(hr))
+		{
+			hr = DirectX::CreateShaderResourceView(
+				GetDevice(gfx),
+				mipMappedImage.GetImages(),
+				mipMappedImage.GetImageCount(),
+				mipMappedImage.GetMetadata(),
+				&outTexture.textureView
+			);
+			OutputDebugStringA(("Generated mipmaps for: " + stringPath + "\n").c_str());
+		}
+		else
+		{
+			// Mipmap generation failed, use original texture
+			OutputDebugStringA(("Mipmap generation failed for: " + stringPath + " (using original)\n").c_str());
 	hr = DirectX::CreateShaderResourceView(
 		GetDevice(gfx),
 		scratchImage.GetImages(),
@@ -215,11 +241,18 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 		metadata,
 		&outTexture.textureView
 	);
-
-	if (FAILED(hr))
+		}
+	}
+	else
 	{
-		OutputDebugStringA(("Failed to create texture view: " + stringPath + "\n").c_str());
-		return false;
+		// Texture already has mipmaps, use as-is
+		hr = DirectX::CreateShaderResourceView(
+			GetDevice(gfx),
+			scratchImage.GetImages(),
+			scratchImage.GetImageCount(),
+			metadata,
+			&outTexture.textureView
+		);
 	}
 	return true;
 }
