@@ -39,9 +39,8 @@ public:
              std::shared_ptr<Material> material,
              std::optional<std::string>);
     void AddMesh(std::unique_ptr<Mesh> mesh);
-    void Draw(Graphics& gfx);
-    void DrawShadows(Graphics& gfx);
     void DrawSceneNode(SceneNode*& pSelectedNode) override;
+    const std::vector<std::unique_ptr<Mesh>>& GetMeshes() const { return meshes; }
 private:
     void LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* scene, const std::unordered_map<std::string, std::shared_ptr<Material>>& materials);
     std::vector<std::unique_ptr<Mesh>> meshes;

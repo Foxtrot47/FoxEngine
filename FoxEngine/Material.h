@@ -41,26 +41,22 @@ public:
 	void SetSpecularIntensity(float specularIntensity);
 	void SetSpecularPower(float specularPower);
 	void Bind(Graphics& gfx) override;
+
+	// Methods for renderer to access shader paths
+	const std::wstring& GetVertexShaderPath() const { return instanceData.vsPath; }
+	const std::wstring& GetPixelShaderPath() const { return instanceData.psPath; }
+	bool HasShaderOverride() const { return !instanceData.vsPath.empty() || !instanceData.psPath.empty(); }
 private:
 	struct TextureData
 	{
 		Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> textureView;
 	};
 	MaterialInstanceData instanceData;
-	Microsoft::WRL::ComPtr<ID3DBlob> pVSByteCodeBlob;
-	Microsoft::WRL::ComPtr<ID3DBlob> pPSByteCodeBlob;
-	Microsoft::WRL::ComPtr<ID3D11VertexShader> pVertexShader;
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> pPixelShader;
-	Microsoft::WRL::ComPtr<ID3D11InputLayout> pInputLayout;
-	Microsoft::WRL::ComPtr<ID3D11DepthStencilState> pDepthState;
-	Microsoft::WRL::ComPtr<ID3D11RasterizerState> pRasterizerState;
 	Microsoft::WRL::ComPtr<ID3D11SamplerState> defaultSamplerState;
-	std::vector<D3D11_INPUT_ELEMENT_DESC> topologyDesc = {};
 
 	std::unordered_map<int, TextureData> loadedTextures;
 	std::unique_ptr<PixelConstantBuffer<MaterialCbuff>> materialCBuff;
 
-	void InitializeBindings(Graphics& gfx);
 	void InitializeTextures(Graphics& gfx);
 	bool LoadTexture(Graphics& gfx, const std::wstring& path, TextureData& outTexture);
 	std::vector<std::wstring> ExpandUDIM(const std::string& udimPath);

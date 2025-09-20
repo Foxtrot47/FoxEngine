@@ -15,6 +15,7 @@ int CALLBACK WinMain(
 	ImGuiManager imGuiManager;
 	Window wnd(1920, 1080, L"FoxEngine Window", nCmdShow);
 	FPVCamera cam(wnd.GetHandle(), wnd.Gfx(), wnd.kbd, wnd.mouse);
+	Renderer renderer(wnd.Gfx(), cam, 1920, 1080);
 
 	wnd.Gfx().SetProjection(cam.GetProjectionMatrix());
 	SceneManager scene(wnd.Gfx(), cam);
@@ -44,16 +45,12 @@ int CALLBACK WinMain(
 
 		cam.HandleInput();
 
-		wnd.Gfx().BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
-		wnd.Gfx().BeginShadowPass();
+		renderer.BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
 		wnd.Gfx().SetCamera(cam.GetViewMatrix());
-
 		cam.Update(deltaTime);
 		cam.Bind(wnd.Gfx());
-		scene.DrawShadows(wnd.Gfx());
-
-		wnd.Gfx().BeginRenderPass();
-		scene.Draw(wnd.Gfx());
+		renderer.CollectFrameData(scene.GetRootNode());
+		renderer.RenderScene();
 
 		scene.DrawSceneGraph(wnd.Gfx());
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer

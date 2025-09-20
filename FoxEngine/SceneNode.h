@@ -24,6 +24,7 @@ public:
 	virtual void DrawInspectorWindow();
 	const std::string& GetName() const;
 	SceneNode() = delete;
+	std::vector<std::shared_ptr<SceneNode>> GetChildren() { return children; }
 protected:
 	void MarkDirty() const;
 	DirectX::XMFLOAT3 position;
@@ -31,7 +32,7 @@ protected:
 	DirectX::XMFLOAT3 scale;
 
 	SceneNode* parent;
-	std::vector<std::unique_ptr<SceneNode>> children;
+	std::vector<std::shared_ptr<SceneNode>> children;
 
 	std::string name;
 	static int count;

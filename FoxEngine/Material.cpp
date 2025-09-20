@@ -7,103 +7,9 @@ Material::Material(Graphics& gfx, const MaterialInstanceData& data)
 	: instanceData(data)
 {
 	InitializeTextures(gfx);
-	InitializeBindings(gfx);
-}
-
-void Material::InitializeBindings(Graphics& gfx)
-{
 	materialCBuff = std::make_unique<PixelConstantBuffer<MaterialCbuff>>(gfx, 2u);
-
-	if (!std::filesystem::exists(instanceData.vsPath)) {
-		throw std::runtime_error("Shader file not found: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));
-	}
-
-	HRESULT hr = E_FAIL;
-	hr = D3DReadFileToBlob(instanceData.vsPath.c_str(), &pVSByteCodeBlob);
-
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to read vertex shader file: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));
-	}
-
-	hr = GetDevice(gfx)->CreateVertexShader(
-		pVSByteCodeBlob->GetBufferPointer(),
-		pVSByteCodeBlob->GetBufferSize(),
-		nullptr,
-		&pVertexShader
-	);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create vertex shader: " + std::string(instanceData.vsPath.begin(), instanceData.vsPath.end()));
-	}
-
-	if (!std::filesystem::exists(instanceData.psPath)) {
-		throw std::runtime_error("Shader file not found: " + std::string(instanceData.psPath.begin(), instanceData.psPath.end()));
-	}
-
-	hr = D3DReadFileToBlob(instanceData.psPath.c_str(), &pPSByteCodeBlob);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to read pixel shader file: " + std::string(instanceData.psPath.begin(), instanceData.psPath.end()));
-	}
-
-	hr = GetDevice(gfx)->CreatePixelShader(
-		pPSByteCodeBlob->GetBufferPointer(),
-		pPSByteCodeBlob->GetBufferSize(),
-		nullptr,
-		&pPixelShader
-	);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create pixel shader: " + std::string(instanceData.psPath.begin(), instanceData.psPath.end()));
-	}
-
-	if (instanceData.hasDepthState)
-	{
-		topologyDesc =
-		{
-			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		};
-	}
-	else {
-		topologyDesc =
-		{
-			{ "Position", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "Normal", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "TexCoord", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "Tangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-			{ "BiTangent", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		};
-	}
-
-	hr = GetDevice(gfx)->CreateInputLayout(
-		topologyDesc.data(),
-		(UINT)topologyDesc.size(),
-		pVSByteCodeBlob->GetBufferPointer(),
-		pVSByteCodeBlob->GetBufferSize(),
-		&pInputLayout
-	);
-	if (FAILED(hr))
-	{
-		throw std::runtime_error("Failed to create input layout");
-	}
-
-	D3D11_DEPTH_STENCIL_DESC dsDesc = {};
-	dsDesc.DepthEnable = TRUE;
-	dsDesc.StencilEnable = FALSE;
-	if (instanceData.hasDepthState)
-	{
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-		dsDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-	}
-	else
-	{
-		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-		dsDesc.DepthFunc = D3D11_COMPARISON_LESS;
-	}
-
-	hr = GetDevice(gfx)->CreateDepthStencilState(&dsDesc, &pDepthState);
-	if (FAILED(hr)) {
-		throw std::runtime_error("Failed to create depth stencil state");
-	}
 }
+
 
 void Material::InitializeTextures(Graphics& gfx)
 {
@@ -263,17 +169,11 @@ bool Material::LoadTexture(Graphics& gfx, const std::wstring& path, TextureData&
 
 void Material::Bind(Graphics& gfx)
 {
-	GetContext(gfx)->VSSetShader(pVertexShader.Get(), nullptr, 0u);
-	GetContext(gfx)->OMSetDepthStencilState(pDepthState.Get(), 0);
-
 	GetContext(gfx)->PSSetSamplers(0, 1u, defaultSamplerState.GetAddressOf());
-	
+
 	for (const auto& [slotName, textureData] : loadedTextures) {
 		GetContext(gfx)->PSSetShaderResources(slotName, 1u, textureData.textureView.GetAddressOf());
 	}
-
-	GetContext(gfx)->PSSetShader(pPixelShader.Get(), nullptr, 0u);
-	GetContext(gfx)->IASetInputLayout(pInputLayout.Get());
 
 	const MaterialCbuff buff = {
 		{ instanceData.diffuseColor.x, instanceData.diffuseColor.y , instanceData.diffuseColor.z },

@@ -24,7 +24,7 @@ MeshNode::MeshNode(Graphics& gfx,
 {
 	std::string modelPathStr(modelPath.begin(), modelPath.end());
 	Assimp::Importer importer;
-	const auto pScene = importer.ReadFile(modelPathStr, aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
+	const auto pScene = importer.ReadFile(modelPathStr, aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace | aiProcess_Triangulate);
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
 
@@ -51,7 +51,7 @@ MeshNode::MeshNode(Graphics& gfx,
 {
 	std::string modelPathStr(modelPath.begin(), modelPath.end());
 	Assimp::Importer importer;
-	const auto pScene = importer.ReadFile(modelPathStr, aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace);
+	const auto pScene = importer.ReadFile(modelPathStr, aiProcess_ConvertToLeftHanded | aiProcess_CalcTangentSpace | aiProcess_Triangulate);
 
 	assert(pScene && pScene->mRootNode && "Failed to load model file");
 	LoadAssimpNode(gfx, pScene->mRootNode, pScene, materials);
@@ -177,7 +177,7 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 		else {
 			Material::MaterialInstanceData mData = {};
 			mData.vsPath = GetShaderPath(L"PhongNormalVS.cso");;
-			mData.psPath = GetShaderPath(L"PhongNormalPS.cso");
+			mData.psPath = GetShaderPath(L"PhongMultiLightsPS.cso");
 			mData.texturePaths = std::unordered_map<int, std::wstring>{};
 
 			for (unsigned int texIndex = 0; texIndex < aiMat->GetTextureCount(aiTextureType_DIFFUSE); texIndex++)
@@ -245,32 +245,6 @@ void MeshNode::LoadAssimpNode(Graphics& gfx, const aiNode* node, const aiScene* 
 void MeshNode::AddMesh(std::unique_ptr<Mesh> mesh)
 {
 	meshes.push_back(std::move(mesh));
-}
-
-void MeshNode::Draw(Graphics& gfx)
-{
-	const auto transform = GetWorldTransform();
-	for (const auto& mesh : meshes)
-	{
-		mesh->Draw(gfx, transform);
-	}
-	for (auto& child : children)
-	{
-		child->Draw(gfx);
-	}
-}
-
-void MeshNode::DrawShadows(Graphics& gfx)
-{
-	const auto transform = GetWorldTransform();
-	for (const auto& mesh : meshes)
-	{
-		mesh->DrawShadows(gfx, transform);
-	}
-	for (auto& child : children)
-	{
-		child->DrawShadows(gfx);
-	}
 }
 
 void MeshNode::DrawSceneNode(SceneNode*& pSelectedNode)

@@ -42,9 +42,6 @@
     <ClInclude Include="targetver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="FoxEngine.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -66,9 +63,6 @@
     <ClInclude Include="Bindable.h">
       <Filter>Header Files\Bindable</Filter>
     </ClInclude>
-    <ClInclude Include="Drawable.h">
-      <Filter>Header Files\Drawable</Filter>
-    </ClInclude>
     <ClInclude Include="IndexBuffer.h">
       <Filter>Header Files\Bindable</Filter>
     </ClInclude>
@@ -77,9 +71,6 @@
     </ClInclude>
     <ClInclude Include="Topology.h">
       <Filter>Header Files\Bindable</Filter>
-    </ClInclude>
-    <ClInclude Include="Box.h">
-      <Filter>Header Files\Drawable</Filter>
     </ClInclude>
     <ClInclude Include="FileUtils.h">
       <Filter>Header Files</Filter>
@@ -141,11 +132,8 @@
     <ClInclude Include="DirectionalLightNode.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="ShadowManager.h">
+    <ClInclude Include="Renderer.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ShadowConstantBuffer.h">
-      <Filter>Header Files\Bindable</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -169,9 +157,6 @@
     </ClCompile>
     <ClCompile Include="Bindable.cpp">
       <Filter>Source Files\Bindable</Filter>
-    </ClCompile>
-    <ClCompile Include="Drawable.cpp">
-      <Filter>Source Files\Drawable</Filter>
     </ClCompile>
     <ClCompile Include="IndexBuffer.cpp">
       <Filter>Source Files\Bindable</Filter>
@@ -230,11 +215,8 @@
     <ClCompile Include="DirectionalLightNode.cpp">
       <Filter>Source Files\Nodes</Filter>
     </ClCompile>
-    <ClCompile Include="ShadowManager.cpp">
+    <ClCompile Include="Renderer.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ShadowConstantBuffer.cpp">
-      <Filter>Source Files\Bindable</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

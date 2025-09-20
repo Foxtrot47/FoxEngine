@@ -12,3 +12,4 @@
 #include "imgui_impl_dx11.h"
 #include "FPVCamera.h"
 #include "SceneManager.h"
+#include "Renderer.h"

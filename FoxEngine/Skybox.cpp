@@ -1,7 +1,5 @@
 #include "Skybox.h"
-
 #include "FileUtils.h"
-#include "Material.h"
 
 Skybox::Skybox(Graphics& gfx, float size, std::wstring cubemapPath)
     : size(size) {
@@ -21,20 +19,11 @@ Skybox::Skybox(Graphics& gfx, float size, std::wstring cubemapPath)
     mData.hasDepthState = true;
     auto material = std::make_unique<Material>(gfx, mData);
 
-    AddBind(std::make_unique<VertexBuffer>(gfx, vertices));
-
-    AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
-
-    AddBind(std::move(material));
-
-    AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
-
-    AddBind(std::make_unique<TransformConstantBuffer>(gfx));
-
-}
-
-void Skybox::Update(float deltaTime)
-{
+    pVertexBuffer = std::make_unique<VertexBuffer>(gfx, vertices);
+    pIndexBuffer = std::make_unique<IndexBuffer>(gfx, indices);
+    pMaterial = std::move(material);
+    pTopology = std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    pTransformCB = std::make_unique<TransformConstantBuffer>(gfx);
 }
 
 void Skybox::MakeUvSphere(float radius, int segU, int segV,
@@ -76,4 +65,14 @@ void Skybox::MakeUvSphere(float radius, int segU, int segV,
             indices.push_back(i2); indices.push_back(i3); indices.push_back(i1);
         }
     }
+}
+
+void Skybox::Draw(Graphics& gfx, DirectX::XMMATRIX transform) const
+{
+    pVertexBuffer->Bind(gfx);
+    pIndexBuffer->Bind(gfx);
+    pMaterial->Bind(gfx);
+    pTopology->Bind(gfx);
+    pTransformCB->Bind(gfx, transform);
+    gfx.DrawIndexed(pIndexBuffer->GetCount());
 }

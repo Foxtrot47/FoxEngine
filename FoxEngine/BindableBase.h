@@ -6,4 +6,3 @@
 #include "TransformConstantBuffer.h"
 #include "VertexBuffer.h"
 #include "Material.h"
-#include "ShadowConstantBuffer.h"
