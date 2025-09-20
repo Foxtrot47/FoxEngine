@@ -27,7 +27,7 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 	);
 	rootNode->AddChild(std::move(pointLight));
 
-	LoadScene(gfx, "F:\\Software\\Projects\\FoxEngine\\FoxEngine\\scene_downtown.json");
+	LoadScene(gfx, "E:\\Software\\Projects\\FoxEngine\\FoxEngine\\scene_downtown.json");
 	auto node = std::make_unique<MeshNode>(
 		gfx,
 		rootNode.get(),
@@ -46,16 +46,6 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 		&cam
 	);
 	rootNode->AddChild(std::move(skybox));
-}
-
-void SceneManager::Draw(Graphics& gfx) const
-{
-	rootNode->Draw(gfx);
-}
-
-void SceneManager::DrawShadows(Graphics& gfx) const
-{
-	rootNode->DrawShadows(gfx);
 }
 
 void SceneManager::DrawSceneGraph(Graphics& gfx)

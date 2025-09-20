@@ -142,11 +142,9 @@
   <ItemGroup>
     <ClInclude Include="Bindable.h" />
     <ClInclude Include="BindableBase.h" />
-    <ClInclude Include="Box.h" />
     <ClInclude Include="DirectionalLightNode.h" />
     <ClInclude Include="FPVCamera.h" />
     <ClInclude Include="ConstantBuffer.h" />
-    <ClInclude Include="Drawable.h" />
     <ClInclude Include="FileUtils.h" />
     <ClInclude Include="FoxEngine.h" />
     <ClInclude Include="framework.h" />
@@ -161,11 +159,9 @@
     <ClInclude Include="MeshNode.h" />
     <ClInclude Include="Mouse.h" />
     <ClInclude Include="PointLightNode.h" />
-    <ClInclude Include="Resource.h" />
+    <ClInclude Include="Renderer.h" />
     <ClInclude Include="SceneManager.h" />
     <ClInclude Include="SceneNode.h" />
-    <ClInclude Include="ShadowConstantBuffer.h" />
-    <ClInclude Include="ShadowManager.h" />
     <ClInclude Include="Skybox.h" />
     <ClInclude Include="SkyboxNode.h" />
     <ClInclude Include="SolidSphere.h" />
@@ -182,7 +178,6 @@
     <ClCompile Include="Bindable.cpp" />
     <ClCompile Include="DirectionalLightNode.cpp" />
     <ClCompile Include="FPVCamera.cpp" />
-    <ClCompile Include="Drawable.cpp" />
     <ClCompile Include="FoxEngine.cpp" />
     <ClCompile Include="Graphics.cpp" />
     <ClCompile Include="ImGuiManager.cpp" />
@@ -194,10 +189,9 @@
     <ClCompile Include="MeshNode.cpp" />
     <ClCompile Include="Mouse.cpp" />
     <ClCompile Include="PointLightNode.cpp" />
+    <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="SceneManager.cpp" />
     <ClCompile Include="SceneNode.cpp" />
-    <ClCompile Include="ShadowConstantBuffer.cpp" />
-    <ClCompile Include="ShadowManager.cpp" />
     <ClCompile Include="Skybox.cpp" />
     <ClCompile Include="SkyboxNode.cpp" />
     <ClCompile Include="SolidSphere.cpp" />

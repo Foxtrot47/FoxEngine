@@ -1,5 +1,4 @@
 #include "SolidSphere.h"
-#include "BindableBase.h"
 #include "FileUtils.h"
 
 struct Vertex
@@ -57,23 +56,27 @@ SolidSphere::SolidSphere(Graphics& gfx, float radius, int segU, int segV)
 
 	MakeUvSphere(radius, segU, segV, vertices, indices);
 
-	AddBind(std::make_unique<VertexBuffer>(gfx, vertices));
-
-	AddIndexBuffer(std::make_unique<IndexBuffer>(gfx, indices));
+	pVertexBuffer = std::make_unique<VertexBuffer>(gfx, vertices).get();
+	pIndexBuffer = std::make_unique<IndexBuffer>(gfx, indices).get();
 
 	Material::MaterialInstanceData sphereMat = {};
 	sphereMat.name = "M_Sphere";
 	sphereMat.vsPath = GetShaderPath(L"PhongVS.cso");
 	sphereMat.psPath = GetShaderPath(L"AlbedoPS.cso");
-	AddBind(std::make_unique<Material>(gfx, sphereMat));
 
-	AddBind(std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST));
-
-	AddBind(std::make_unique<TransformConstantBuffer>(gfx));
+	pMaterial = std::make_unique<Material>(gfx, sphereMat).get();
+	pTopology = std::make_unique<Topology>(gfx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST).get();
+	pTransformCB = std::make_unique<TransformConstantBuffer>(gfx).get();
 }
 
-void SolidSphere::Update(float deltaTime)
+void SolidSphere::Draw(Graphics& gfx, DirectX::XMMATRIX transform) const
 {
+	pVertexBuffer->Bind(gfx);
+	pIndexBuffer->Bind(gfx);
+	pMaterial->Bind(gfx);
+	pTopology->Bind(gfx);
+	pTransformCB->Bind(gfx, transform);
+	gfx.DrawIndexed(pIndexBuffer->GetCount());
 }
 
 void SolidSphere::SetPosition(const DirectX::XMFLOAT3& _position) { position = _position; }

@@ -1,6 +1,5 @@
 #include "Graphics.h"
 #include "LightManager.h"
-#include "ShadowManager.h"
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
 
@@ -9,11 +8,9 @@
 
 Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullptr), pSwapChain(nullptr), pContext(nullptr)
 {
-	// Create a struct to hold information about the swap chain
-	DXGI_SWAP_CHAIN_DESC scd;
-	ZeroMemory(&scd, sizeof(DXGI_SWAP_CHAIN_DESC));
+	HRESULT hr = E_FAIL;
 
-	// Fill the swap chain description struct
+	DXGI_SWAP_CHAIN_DESC scd = {};
 	scd.BufferCount = 1;                                   // One back buffer
 	scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;    // Use 32-bit color
 	scd.BufferDesc.Width = windowWidth;                    // Set the back buffer width
@@ -26,7 +23,7 @@ Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullp
 	scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;             // Discard the old back buffer when presenting
 
 	// Create a device, device context and swap chain using the information in the scd struct
-	D3D11CreateDeviceAndSwapChain(
+	hr = D3D11CreateDeviceAndSwapChain(
 		nullptr,                    // Default adapter
 		D3D_DRIVER_TYPE_HARDWARE,   // Use hardware rendering
 		nullptr,                    // No software device
@@ -40,74 +37,11 @@ Graphics::Graphics(HWND hWnd, int windowWidth, int windowHeight) : pDevice(nullp
 		nullptr,                    // The feature level
 		&pContext                   // The device context
 	);
-
-	// gain access to texture subresource of the swap chain (back buffer)
-	Microsoft::WRL::ComPtr<ID3D11Resource> pBackBuffer = nullptr;
-	if (pSwapChain) {
-		HRESULT hr = pSwapChain->GetBuffer(0, __uuidof(ID3D11Resource), &pBackBuffer);
-		if (SUCCEEDED(hr) && pBackBuffer) {
-			pDevice->CreateRenderTargetView(pBackBuffer.Get(), nullptr, &pTarget); // Create a render target view  
-		}
+	if (FAILED(hr)) {
+		throw new std::runtime_error("Failed to create device and swap chain");
 	}
-
-	D3D11_DEPTH_STENCIL_DESC descDepthStencil;
-	ZeroMemory(&descDepthStencil, sizeof(D3D11_DEPTH_STENCIL_DESC));
-	descDepthStencil.DepthEnable = TRUE;
-	descDepthStencil.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-	descDepthStencil.DepthFunc = D3D11_COMPARISON_LESS;
-
-	Microsoft::WRL::ComPtr<ID3D11DepthStencilState> pDepthStencilState;
-	HRESULT hr = pDevice->CreateDepthStencilState(&descDepthStencil, &pDepthStencilState);
-	pContext->OMSetDepthStencilState(pDepthStencilState.Get(), 1u); // Set the depth stencil state
-
-	// create depth stencil texture
-	D3D11_TEXTURE2D_DESC descDepth;
-	ZeroMemory(&descDepth, sizeof(D3D11_TEXTURE2D_DESC));
-	descDepth.Width = windowWidth;   // Set the width of the depth stencil buffer
-	descDepth.Height = windowHeight; // Set the height of the depth stencil buffer
-	descDepth.MipLevels = 1u; // No mipmaps
-	descDepth.ArraySize = 1u; // Single texture
-	descDepth.Format = DXGI_FORMAT_D32_FLOAT; // 32-bit depth buffer
-	descDepth.SampleDesc.Count = 1; // No multisampling
-	descDepth.SampleDesc.Quality = 0u; // No multisampling quality
-	descDepth.Usage = D3D11_USAGE_DEFAULT;
-	descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL; // Bind as a depth stencil buffer
-	pDevice->CreateTexture2D(&descDepth, nullptr, &pDepthStencilTexture);	// Create the depth stencil buffer
-
-	// create view of the depth stencil texture
-	D3D11_DEPTH_STENCIL_VIEW_DESC descDepthStencilView;
-	ZeroMemory(&descDepthStencilView, sizeof(D3D11_DEPTH_STENCIL_VIEW_DESC));
-	descDepthStencilView.Format = DXGI_FORMAT_D32_FLOAT;
-	descDepthStencilView.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-	descDepthStencilView.Texture2D.MipSlice = 0; // Use the first mip level
-	pDevice->CreateDepthStencilView(
-		pDepthStencilTexture.Get(),
-		&descDepthStencilView,
-		&pDepthStencilView
-	);
-
-	D3D11_RASTERIZER_DESC rsDesc = {};
-	rsDesc.FillMode = D3D11_FILL_SOLID;          // solid rendering (wireframe = D3D11_FILL_WIREFRAME)
-	rsDesc.CullMode = D3D11_CULL_BACK;           // cull backfaces
-	rsDesc.FrontCounterClockwise = FALSE;        // DX default = clockwise is front
-	rsDesc.DepthClipEnable = TRUE;               // clip primitives outside near/far planes
-
-	hr = pDevice->CreateRasterizerState(&rsDesc, &pRasterizerState);
-	if (FAILED(hr))
-	{
-		throw std::runtime_error("Failed to create rasterizer state");
-	}
-
-	// configure viewport
-	renderViewPort.Width = windowWidth;						// Set viewport width
-	renderViewPort.Height = windowHeight;					// Set viewport height
-	renderViewPort.MinDepth = 0;							// Minimum depth
-	renderViewPort.MaxDepth = 1;							// Maximum depth
-	renderViewPort.TopLeftX = 0;							// Top-left X position
-	renderViewPort.TopLeftY = 0;							// Top-left Y position
 
 	pLightManager = std::make_shared<LightManager>(*this);
-	pShadowManager = std::make_shared<ShadowManager>(*this);
 
 	ImGui_ImplDX11_Init(pDevice.Get(), pContext.Get());
 }
@@ -130,7 +64,7 @@ void Graphics::EndFrame()
 	}
 }
 
-void Graphics::BeginFrame(float red, float green, float blue)
+void Graphics::BeginFrame()
 {
 	if (imGuiEnabled)
 	{
@@ -138,34 +72,14 @@ void Graphics::BeginFrame(float red, float green, float blue)
 		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 	}
-
-	// Clear the back buffer to a specific color
-	if (pContext) {
-		const float clearColor[4] = { red, green, blue, 1.0f }; // RGBA color
-		pContext->ClearRenderTargetView(pTarget.Get(), clearColor); // Clear the render target view
-		pContext->ClearDepthStencilView(
-			pDepthStencilView.Get(),
-			D3D11_CLEAR_DEPTH, // Clear depth and stencil
-			1.0f, // Depth value to clear to
-			0u // Stencil value to clear to
-		); // Clear the depth stencil view
-	}
 }
 
 void Graphics::BeginRenderPass()
 {
-	pContext->OMSetRenderTargets(1u, pTarget.GetAddressOf(), pDepthStencilView.Get());
-	pContext->RSSetState(pRasterizerState.Get());
-	pContext->RSSetViewports(1, &renderViewPort);
 	pLightManager->Update(*this);
 	pLightManager->Bind(*this);
-	pShadowManager->Bind(*this);
 }
 
-void Graphics::BeginShadowPass()
-{
-	pShadowManager->BeginShadowPass(*this);
-}
 
 void Graphics::DrawIndexed(UINT count)
 {
@@ -205,9 +119,4 @@ void Graphics::SetCamera(DirectX::FXMMATRIX _camera)
 DirectX::XMMATRIX Graphics::GetCamera() const
 {
 	return camera;
-}
-
-Microsoft::WRL::ComPtr<ID3D11RenderTargetView> Graphics::GetRenderTargetView() const
-{
-	return pTarget;
 }

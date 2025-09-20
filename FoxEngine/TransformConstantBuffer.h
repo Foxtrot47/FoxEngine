@@ -1,6 +1,5 @@
 #pragma once
 #include "Bindable.h"
-#include "Drawable.h"
 #include "BindableBase.h"
 #include <DirectXMath.h>
 

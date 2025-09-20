@@ -10,11 +10,6 @@ ID3D11Device* Bindable::GetDevice(Graphics& gfx)
 	return gfx.pDevice.Get();
 }
 
-std::shared_ptr<ShadowManager> Bindable::GetShadowManager(Graphics& gfx)
-{
-	return gfx.pShadowManager;
-}
-
 std::shared_ptr<LightManager> Bindable::GetLightManager(Graphics& gfx)
 {
 	return gfx.pLightManager;
