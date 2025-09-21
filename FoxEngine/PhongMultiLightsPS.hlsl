@@ -19,7 +19,7 @@ cbuffer LightCBuffer : register(b0) // global light properties
 
 cbuffer LightShadowMatrices : register(b1)
 {
-    matrix lightViewProj; // one matrix for now
+    matrix lightViewProj[5];
 };
 
 cbuffer MaterialCBuffer : register(b2) // Material properties
@@ -38,7 +38,7 @@ Texture2D tex : register(t0);
 Texture2D normalTex : register(t1);
 SamplerState splr : register(s0);
 
-Texture2D shadowMap : register(t4);
+Texture2D shadowMap[5] : register(t4);
 SamplerComparisonState shadowSampler : register(s1);
 
 struct PSIn
@@ -51,10 +51,10 @@ struct PSIn
     float3 bitangent : BiTangent;
 };
 
-float CalculateShadows(float3 worldPos)
+float CalculateShadows(float3 worldPos, int lightIndex)
 {
     // Transform world position into light space
-    float4 lightSpacePos = mul(float4(worldPos, 1.0f), lightViewProj);
+	float4 lightSpacePos = mul(float4(worldPos, 1.0f), lightViewProj[lightIndex]);
 
     // Perspective divide
     float3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
@@ -81,7 +81,7 @@ float CalculateShadows(float3 worldPos)
     currentDepth = saturate(currentDepth);
     
     // 0 = in shadow, 1 = lit
-    return shadowMap.SampleCmpLevelZero(shadowSampler, shadowTexCoord, currentDepth);
+	return shadowMap[lightIndex].SampleCmpLevelZero(shadowSampler, shadowTexCoord, currentDepth);
 }
 
 float CalculateAttenuation(float distance, float range)
@@ -100,31 +100,31 @@ float CalculateAttenuation(float distance, float range)
     return attenuation * rangeFactor;
 }
 
-float3 CalculateLightContribution(Light light, float3 worldPos, float3 normal, float3 viewDir, float3 materialColor, float materialSpecular)
+float3 CalculateLightContribution(int index, float3 worldPos, float3 normal, float3 viewDir, float3 materialColor, float materialSpecular)
 {
     float3 lightDir;
     float attenuation = 1.0f;
     
-    if (light.type == 0) // Point Light
+	if (lights[index].type == 0) // Point Light
     {
-        float3 vectorToLight = light.position - worldPos;
+		float3 vectorToLight = lights[index].position - worldPos;
         float distanceToLight = length(vectorToLight);
         lightDir = vectorToLight / distanceToLight;
-        attenuation = CalculateAttenuation(distanceToLight, light.range);
-    }
-    else if (light.type == 1)   // Directional Light
+		attenuation = CalculateAttenuation(distanceToLight, lights[index].range);
+	}
+	else if (lights[index].type == 1)   // Directional Light
     {
-        lightDir = normalize(-light.direction);
+		lightDir = normalize(-lights[index].direction);
         attenuation = 1.0f; // No attenuation for directional lights
     }
-    float3 diffuse = light.color  * light.intensity * attenuation * max(0.0f, dot(normal, lightDir));
+	float3 diffuse = lights[index].color * lights[index].intensity * attenuation * max(0.0f, dot(normal, lightDir));
         
     float3 reflectionDirection = reflect(-lightDir, normal);
     float3 vectorToCamera = normalize(viewDir - worldPos);
     float3 spec = pow(max(0.0f, dot(reflectionDirection, vectorToCamera)), specularPower);
     
-    float3 specular = light.color * globalSpecularIntensity * materialSpecularMask *  attenuation;
-    float shadowFactor = CalculateShadows(worldPos);
+	float3 specular = lights[index].color * globalSpecularIntensity * materialSpecularMask * attenuation;
+	float shadowFactor = CalculateShadows(worldPos, index);
     
     return (diffuse + specular) * shadowFactor;
 }
@@ -151,7 +151,7 @@ float4 main(PSIn input) : SV_Target
     for (int i = 0; i < activeLightCount; ++i)
     {
         finalColor += CalculateLightContribution(
-        lights[i],
+        i,
         input.worldPos,
         finalNormal,
         viewDir,

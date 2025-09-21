@@ -33,7 +33,7 @@ public:
 
     struct LightShadowMatrices
     {
-        DirectX::XMMATRIX lightViewProj;
+        DirectX::XMMATRIX lightViewProj[5];
     };
 
     LightManager(Graphics& gfx);
@@ -43,7 +43,7 @@ public:
     void UpdateLight(int lightIndex, Light lightData);
 
     DirectX::XMMATRIX CalculateLightMatrix(int lightIndex);
-
+    int GetActiveLights() const;
     void Bind(Graphics& gfx) const;
     void Update(Graphics& gfx);
 

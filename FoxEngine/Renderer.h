@@ -53,9 +53,10 @@ private:
 	ComPtr<ID3D11Buffer> lightBuffer = nullptr;
 	std::unique_ptr<VertexConstantBuffer<ShadowConstants>> shadowConstantBuffer = nullptr;
 
-	ComPtr<ID3D11Texture2D> pShadowMapTexture = nullptr;
+	std::array<ComPtr<ID3D11Texture2D>, 5> shadowMapTextures;
+	std::array<ComPtr<ID3D11DepthStencilView>, 5> pShadowDepthView;
+	std::array<ComPtr<ID3D11ShaderResourceView>, 5> shadowMapSRVs;
 	ComPtr<ID3D11RenderTargetView> pShadowRTV = nullptr;
-	ComPtr<ID3D11ShaderResourceView> pShadowMapSRV = nullptr;
 	ComPtr<ID3D11SamplerState> pShadowSamplerState = nullptr;
 
 	ComPtr<ID3D11VertexShader> pShadowVS = nullptr;
@@ -63,8 +64,6 @@ private:
 	ComPtr<ID3D11Buffer> pShadowConstantBuffer = nullptr;
 	ComPtr<ID3D11SamplerState> pComparisonSampler = nullptr;
 
-	ComPtr<ID3D11DepthStencilView> pShadowDepthView = nullptr;
-	ComPtr<ID3D11Texture2D> pShadowTexture = nullptr;
 	ComPtr<ID3D11RasterizerState> pShadowRasterizerState = nullptr;
 	ComPtr<ID3D11DepthStencilState> pShadowDepthStencilState = nullptr;
 

@@ -33,12 +33,16 @@ void Renderer::BeginFrame(float red, float green, float blue)
 		1.0f, // Depth value to clear to
 		0u // Stencil value to clear to
 	); // Clear the depth stencil view
-	gfx.pContext->ClearDepthStencilView(
-		pShadowDepthView.Get(),
-		D3D11_CLEAR_DEPTH,
-		1.0f,
-		0u
-	);
+
+	for (int i = 0; i < shadowMapSRVs.size(); i++)
+	{
+		gfx.pContext->ClearDepthStencilView(
+			pShadowDepthView[i].Get(),
+			D3D11_CLEAR_DEPTH,
+			1.0f,
+			0u
+		);
+	}
 	gfx.BeginFrame();
 }
 
@@ -56,7 +60,12 @@ void Renderer::RenderColorPass()
 	gfx.BeginRenderPass();
 
 	// Bind shadow map to 4th slot
-	gfx.pContext->PSSetShaderResources(4u, 1u, pShadowMapSRV.GetAddressOf());
+	std::vector<ID3D11ShaderResourceView*> rawSRV(shadowMapSRVs.size());
+	for (int i=0; i< shadowMapSRVs.size(); i++)
+	{
+		rawSRV[i] = shadowMapSRVs[i].Get();
+	}
+	gfx.pContext->PSSetShaderResources(4u, static_cast<UINT>(rawSRV.size()), rawSRV.data());
 	gfx.pContext->PSSetSamplers(1u, 1u, pComparisonSampler.GetAddressOf());
 
 	currentVertexShaderPath.clear();
@@ -79,32 +88,37 @@ void Renderer::RendeShadowPass()
 	gfx.pContext->PSSetShader(nullptr, nullptr, 0u);
 	gfx.pContext->VSSetShader(pShadowVS.Get(), nullptr, 0u);
 
-	gfx.pContext->OMSetRenderTargets(0u, nullptr, pShadowDepthView.Get());
 	gfx.pContext->RSSetState(pShadowRasterizerState.Get());
 	gfx.pContext->RSSetViewports(1, &shadowViewPort);
 	gfx.pContext->OMSetDepthStencilState(pShadowDepthStencilState.Get(), 1u);
 	gfx.pContext->IASetInputLayout(pShadowInputLayout.Get());
 
-	auto lightViewProj = gfx.GetLightManager()->CalculateLightMatrix(0);
+	const int activeLights = gfx.GetLightManager()->GetActiveLights();
 
-	for (MeshNode* node : nodes)
+	for (int i = 0; i < activeLights; i++)
 	{
-		auto& meshes = node->GetMeshes();
-		const auto transform = node->GetWorldTransform();
+		auto lightViewProj = gfx.GetLightManager()->CalculateLightMatrix(i);
+		gfx.pContext->OMSetRenderTargets(0u, nullptr, pShadowDepthView[i].Get());
 
-		for (auto& mesh : meshes)
+		for (MeshNode* node : nodes)
 		{
-			const ShadowConstants shadowTransforms = {
-				DirectX::XMMatrixTranspose(transform * lightViewProj)
-			};
+			auto& meshes = node->GetMeshes();
+			const auto transform = node->GetWorldTransform();
 
-			shadowConstantBuffer->Update(gfx, shadowTransforms);
-			shadowConstantBuffer->Bind(gfx);
+			for (auto& mesh : meshes)
+			{
+				const ShadowConstants shadowTransforms = {
+					DirectX::XMMatrixTranspose(transform * lightViewProj)
+				};
 
-			mesh->GetVertexBuffer()->Bind(gfx);
-			mesh->GetIndexBuffer()->Bind(gfx);
-			mesh->GetTopology()->Bind(gfx);
-			gfx.DrawIndexed(mesh->GetIndexBuffer()->GetCount());
+				shadowConstantBuffer->Update(gfx, shadowTransforms);
+				shadowConstantBuffer->Bind(gfx);
+
+				mesh->GetVertexBuffer()->Bind(gfx);
+				mesh->GetIndexBuffer()->Bind(gfx);
+				mesh->GetTopology()->Bind(gfx);
+				gfx.DrawIndexed(mesh->GetIndexBuffer()->GetCount());
+			}
 		}
 	}
 }
@@ -247,17 +261,6 @@ void Renderer::InitializeShadowPass()
 	shadowMapDesc.Height = static_cast<UINT>(2048);
 	shadowMapDesc.Width = static_cast<UINT>(2048);
 
-	hr = gfx.pDevice->CreateTexture2D(
-		&shadowMapDesc,
-		nullptr,
-		&pShadowMapTexture
-	);
-
-	if (FAILED(hr))
-	{
-		throw std::runtime_error("Failed to create shadow map texture");
-	}
-
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc = {};
 	depthStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
@@ -273,28 +276,42 @@ void Renderer::InitializeShadowPass()
 	descDepthStencil.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 	descDepthStencil.DepthFunc = D3D11_COMPARISON_LESS;
 
+	for (int i = 0; i < shadowMapSRVs.size(); i++)
+	{
+		hr = gfx.pDevice->CreateTexture2D(
+			&shadowMapDesc,
+			nullptr,
+			&shadowMapTextures[i]
+		);
+
+		if (FAILED(hr))
+		{
+			throw std::runtime_error("Failed to create shadow map texture");
+		}
+
+		hr = gfx.pDevice->CreateDepthStencilView(
+			shadowMapTextures[i].Get(),
+			&depthStencilViewDesc,
+			&pShadowDepthView[i]
+		);
+
+		if (FAILED(hr))
+		{
+			throw std::runtime_error("Failed to create shadow map depth stencil view");
+		}
+
+		hr = gfx.pDevice->CreateShaderResourceView(
+			shadowMapTextures[i].Get(),
+			&shaderResourceViewDesc,
+			&shadowMapSRVs[i]
+		);
+		if (FAILED(hr))
+		{
+			throw std::runtime_error("Failed to create shadow map shader resource view");
+		}
+	}
+
 	hr = gfx.pDevice->CreateDepthStencilState(&descDepthStencil, &pShadowDepthStencilState);
-
-	hr = gfx.pDevice->CreateDepthStencilView(
-		pShadowMapTexture.Get(),
-		&depthStencilViewDesc,
-		&pShadowDepthView
-	);
-
-	if (FAILED(hr))
-	{
-		throw std::runtime_error("Failed to create shadow map depth stencil view");
-	}
-
-	hr = gfx.pDevice->CreateShaderResourceView(
-		pShadowMapTexture.Get(),
-		&shaderResourceViewDesc,
-		&pShadowMapSRV
-	);
-	if (FAILED(hr))
-	{
-		throw std::runtime_error("Failed to create shadow map shader resource view");
-	}
 
 	D3D11_SAMPLER_DESC comparisonSamplerDesc = {};
 	comparisonSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
