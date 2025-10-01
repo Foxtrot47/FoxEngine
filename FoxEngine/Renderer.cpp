@@ -36,12 +36,15 @@ void Renderer::BeginFrame(float red, float green, float blue)
 
 	for (int i = 0; i < shadowMapSRVs.size(); i++)
 	{
-		gfx.pContext->ClearDepthStencilView(
-			pShadowDepthView[i].Get(),
-			D3D11_CLEAR_DEPTH,
-			1.0f,
-			0u
-		);
+		for (int face = 0; face < 6; face++)
+		{
+			gfx.pContext->ClearDepthStencilView(
+				pShadowDepthView[i][face].Get(),
+				D3D11_CLEAR_DEPTH,
+				1.0f,
+				0u
+			);
+		}
 	}
 	gfx.BeginFrame();
 }
@@ -82,42 +85,60 @@ void Renderer::RenderColorPass()
 }
 
 void Renderer::RendeShadowPass()
-{	// set pixel shader to null
-	ID3D11ShaderResourceView* nullSRV[1] = { nullptr };
-	gfx.pContext->PSSetShaderResources(4, 1, nullSRV);
-	gfx.pContext->PSSetShader(nullptr, nullptr, 0u);
+{	
+	// set pixel shader to null
+	ID3D11ShaderResourceView* nullSRV[5] = { nullptr };
+	gfx.pContext->PSSetShaderResources(4, 5, nullSRV);
+	gfx.pContext->PSSetShader(pShadowPS.Get(), nullptr, 0u);
 	gfx.pContext->VSSetShader(pShadowVS.Get(), nullptr, 0u);
+	gfx.pContext->IASetInputLayout(pShadowInputLayout.Get());
 
 	gfx.pContext->RSSetState(pShadowRasterizerState.Get());
 	gfx.pContext->RSSetViewports(1, &shadowViewPort);
 	gfx.pContext->OMSetDepthStencilState(pShadowDepthStencilState.Get(), 1u);
-	gfx.pContext->IASetInputLayout(pShadowInputLayout.Get());
+
+	gfx.GetLightManager()->Update(gfx);
+
+	auto lightMatrixCBuff = gfx.GetLightManager()->GetLightMatrixBuffer();
+	shadowMatrixCbuffer->Update(gfx, lightMatrixCBuff);
+	shadowMatrixCbuffer->Bind(gfx);
 
 	const int activeLights = gfx.GetLightManager()->GetActiveLights();
 
 	for (int i = 0; i < activeLights; i++)
 	{
-		auto lightViewProj = gfx.GetLightManager()->CalculateLightMatrix(i);
-		gfx.pContext->OMSetRenderTargets(0u, nullptr, pShadowDepthView[i].Get());
+		const auto& lightBuffer = gfx.GetLightManager()->GetLightBuffer();
+		const auto& light = lightBuffer.lights[i];
 
-		for (MeshNode* node : nodes)
+		// Render to each face of the cubemap
+		for (int face = 0; face < 6; face++)
 		{
-			auto& meshes = node->GetMeshes();
-			const auto transform = node->GetWorldTransform();
+			gfx.pContext->OMSetRenderTargets(0u, nullptr, pShadowDepthView[i][face].Get());
 
-			for (auto& mesh : meshes)
+			for (MeshNode* node : nodes)
 			{
-				const ShadowConstants shadowTransforms = {
-					DirectX::XMMatrixTranspose(transform * lightViewProj)
-				};
+				auto& meshes = node->GetMeshes();
+				const auto transform = node->GetWorldTransform();
 
-				shadowConstantBuffer->Update(gfx, shadowTransforms);
-				shadowConstantBuffer->Bind(gfx);
+				for (auto& mesh : meshes)
+				{
+					const ShadowConstants shadowData = {
+						DirectX::XMMatrixTranspose(transform),
+						light.position,
+						light.range,
+						i,
+						face,
+						{0.0f, 0.0f}
+					};
 
-				mesh->GetVertexBuffer()->Bind(gfx);
-				mesh->GetIndexBuffer()->Bind(gfx);
-				mesh->GetTopology()->Bind(gfx);
-				gfx.DrawIndexed(mesh->GetIndexBuffer()->GetCount());
+					shadowConstantBuffer->Update(gfx, shadowData);
+					shadowConstantBuffer->Bind(gfx);
+
+					mesh->GetVertexBuffer()->Bind(gfx);
+					mesh->GetIndexBuffer()->Bind(gfx);
+					mesh->GetTopology()->Bind(gfx);
+					gfx.DrawIndexed(mesh->GetIndexBuffer()->GetCount());
+				}
 			}
 		}
 	}
@@ -255,21 +276,24 @@ void Renderer::InitializeShadowPass()
 	D3D11_TEXTURE2D_DESC shadowMapDesc = {};
 	shadowMapDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	shadowMapDesc.MipLevels = 1;
-	shadowMapDesc.ArraySize = 1;
+	shadowMapDesc.ArraySize = 6;
 	shadowMapDesc.SampleDesc.Count = 1;
 	shadowMapDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_DEPTH_STENCIL;
 	shadowMapDesc.Height = static_cast<UINT>(2048);
 	shadowMapDesc.Width = static_cast<UINT>(2048);
+	shadowMapDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+	shadowMapDesc.Usage = D3D11_USAGE_DEFAULT;
 
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc = {};
 	depthStencilViewDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-	depthStencilViewDesc.Texture2D.MipSlice = 0;
+	depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+	depthStencilViewDesc.Texture2DArray.MipSlice = 0;
+	depthStencilViewDesc.Texture2DArray.ArraySize = 1;
 
 	D3D11_SHADER_RESOURCE_VIEW_DESC shaderResourceViewDesc = {};
-	shaderResourceViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	shaderResourceViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
 	shaderResourceViewDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-	shaderResourceViewDesc.Texture2D.MipLevels = 1;
+	shaderResourceViewDesc.TextureCube.MipLevels = 1;
 
 	D3D11_DEPTH_STENCIL_DESC descDepthStencil = {};
 	descDepthStencil.DepthEnable = TRUE;
@@ -289,15 +313,20 @@ void Renderer::InitializeShadowPass()
 			throw std::runtime_error("Failed to create shadow map texture");
 		}
 
-		hr = gfx.pDevice->CreateDepthStencilView(
-			shadowMapTextures[i].Get(),
-			&depthStencilViewDesc,
-			&pShadowDepthView[i]
-		);
-
-		if (FAILED(hr))
+		// 6 depth stencil views for each cubemap face
+		for (int face = 0; face < 6; face++)
 		{
-			throw std::runtime_error("Failed to create shadow map depth stencil view");
+			depthStencilViewDesc.Texture2DArray.FirstArraySlice = face;
+			hr = gfx.pDevice->CreateDepthStencilView(
+				shadowMapTextures[i].Get(),
+				&depthStencilViewDesc,
+				&pShadowDepthView[i][face]
+			);
+
+			if (FAILED(hr))
+			{
+				throw std::runtime_error("Failed to create shadow map depth stencil view for face " + std::to_string(face));
+			}
 		}
 
 		hr = gfx.pDevice->CreateShaderResourceView(
@@ -391,7 +420,22 @@ void Renderer::InitializeShadowPass()
 		throw std::runtime_error("Failed to create shadow input layout");
 	}
 
+	const auto psPath = GetShaderPath(L"ShadowMapPS.cso");
+	hr = D3DReadFileToBlob(psPath.c_str(), &pShaderBlob);
+
+	hr = gfx.pDevice->CreatePixelShader(
+		pShaderBlob->GetBufferPointer(),
+		pShaderBlob->GetBufferSize(),
+		nullptr,
+		&pShadowPS
+	);
+	if (FAILED(hr))
+	{
+		throw std::runtime_error("Failed to create pixel shader");
+	}
+
 	shadowConstantBuffer = std::make_unique<VertexConstantBuffer<ShadowConstants>>(gfx, 0u);
+	shadowMatrixCbuffer = std::make_unique<VertexConstantBuffer<LightManager::LightShadowMatrices>>(gfx, 1u);
 }
 
 void Renderer::BindShaderForMaterial(Material* material)

@@ -44,15 +44,17 @@ int CALLBACK WinMain(
 		auto deltaTime = timer.Mark();
 
 		cam.HandleInput();
+		cam.Update(deltaTime);
+		scene.Update(deltaTime);
 
 		renderer.BeginFrame(0.0f, 0.0f, 0.0f); // Clear the back buffer to black
 		wnd.Gfx().SetCamera(cam.GetViewMatrix());
-		cam.Update(deltaTime);
 		cam.Bind(wnd.Gfx());
-		renderer.CollectFrameData(scene.GetRootNode());
-		renderer.RenderScene();
 
 		scene.DrawSceneGraph(wnd.Gfx());
+
+		renderer.CollectFrameData(scene.GetRootNode());
+		renderer.RenderScene();
 		wnd.Gfx().EndFrame(); // End the frame, which will present the back buffer to the front buffer
 	}
 	return msg.wParam;

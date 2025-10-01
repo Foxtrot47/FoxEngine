@@ -22,6 +22,8 @@ public:
 	void DrawInspectorWindow() override;
 
 	void Draw(Graphics& gfx) override;
+
+	void Update(float dt) override;
 private:
 	void UpdateLightManager();
 	std::shared_ptr<LightManager>  lightManager;

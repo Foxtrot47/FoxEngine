@@ -95,3 +95,12 @@ void PointLightNode::UpdateLightManager()
 		lightManager->UpdateLight(lightIndex, light);
 	}
 }
+
+void PointLightNode::Update(float dt)
+{
+	SceneNode::Update(dt);
+	if (isTransformDirty)
+	{
+		UpdateLightManager();
+	}
+}

@@ -130,3 +130,11 @@ Material::MaterialInstanceData SceneManager::ParseBaseMaterial(const nlohmann::j
 	mData.psPath = GetShaderPath(L"PhongMultiLightsPS.cso");
 	return mData;
 }
+
+void SceneManager::Update(float dt)
+{
+	if (rootNode)
+	{
+		rootNode->Update(dt);
+	}
+}

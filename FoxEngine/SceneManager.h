@@ -17,6 +17,7 @@ public:
 
 	std::shared_ptr<Material> GetMaterial(const std::string& name) const;
 	SceneNode& GetRootNode() { return *rootNode;  }
+	void Update(float dt);
 private:
 	std::unique_ptr<SceneNode> rootNode;
 	std::unordered_map<std::string, std::shared_ptr<Material>> materials;

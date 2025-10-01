@@ -25,6 +25,12 @@ public:
 	const std::string& GetName() const;
 	SceneNode() = delete;
 	std::vector<std::shared_ptr<SceneNode>> GetChildren() { return children; }
+
+	virtual void Update(float dt) {
+		for (auto& child : children) {
+			child->Update(dt);
+		}
+	}
 protected:
 	void MarkDirty() const;
 	DirectX::XMFLOAT3 position;
