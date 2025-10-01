@@ -20,7 +20,10 @@ class Renderer
 {
 private:
 	struct ShadowConstants {
-		DirectX::XMMATRIX modelLightViewProjection;
+		DirectX::XMMATRIX modelMatrix;
+		int lightIndex;
+		int faceIndex;
+		DirectX::XMFLOAT2 padding;
 	};
 	static const uint32_t SHADOW_MAP_SIZE = 2048;
 
@@ -54,12 +57,13 @@ private:
 	std::unique_ptr<VertexConstantBuffer<ShadowConstants>> shadowConstantBuffer = nullptr;
 
 	std::array<ComPtr<ID3D11Texture2D>, 5> shadowMapTextures;
-	std::array<ComPtr<ID3D11DepthStencilView>, 5> pShadowDepthView;
+	std::array<std::array<ComPtr<ID3D11DepthStencilView>, 6>, 5> pShadowDepthView;
 	std::array<ComPtr<ID3D11ShaderResourceView>, 5> shadowMapSRVs;
 	ComPtr<ID3D11RenderTargetView> pShadowRTV = nullptr;
 	ComPtr<ID3D11SamplerState> pShadowSamplerState = nullptr;
 
 	ComPtr<ID3D11VertexShader> pShadowVS = nullptr;
+	ComPtr<ID3D11PixelShader> pShadowPS = nullptr;
 	ComPtr<ID3D11InputLayout> pShadowInputLayout = nullptr;
 	ComPtr<ID3D11Buffer> pShadowConstantBuffer = nullptr;
 	ComPtr<ID3D11SamplerState> pComparisonSampler = nullptr;

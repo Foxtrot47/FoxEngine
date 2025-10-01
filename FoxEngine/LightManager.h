@@ -1,6 +1,7 @@
 #pragma once
 #include "ConstantBuffer.h"
 #include "Graphics.h"
+#include <array>
 
 class LightManager
 {
@@ -21,7 +22,7 @@ public:
         DirectX::XMFLOAT3 color;
         float intensity;
     };
-    
+
     struct LightBuffer
     {
         Light lights[MAX_LIGHTS];
@@ -33,7 +34,8 @@ public:
 
     struct LightShadowMatrices
     {
-        DirectX::XMMATRIX lightViewProj[5];
+        DirectX::XMMATRIX lightViewProj[5][6];
+        DirectX::XMFLOAT3 lightPositions[5];
     };
 
     LightManager(Graphics& gfx);
@@ -42,7 +44,7 @@ public:
     int AddDirectionalLight(const DirectX::XMFLOAT3& direction, const DirectX::XMFLOAT3& color, float intensity = 1.0f);
     void UpdateLight(int lightIndex, Light lightData);
 
-    DirectX::XMMATRIX CalculateLightMatrix(int lightIndex);
+    std::array<DirectX::XMMATRIX, 6> CalculateLightMatrix(const int lightIndex);
     int GetActiveLights() const;
     void Bind(Graphics& gfx) const;
     void Update(Graphics& gfx);

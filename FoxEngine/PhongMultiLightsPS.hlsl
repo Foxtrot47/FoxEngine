@@ -19,7 +19,8 @@ cbuffer LightCBuffer : register(b0) // global light properties
 
 cbuffer LightShadowMatrices : register(b1)
 {
-    matrix lightViewProj[5];
+    matrix lightViewProj[5][6];
+    float3 lightPositions[5];
 };
 
 cbuffer MaterialCBuffer : register(b2) // Material properties
@@ -38,7 +39,7 @@ Texture2D tex : register(t0);
 Texture2D normalTex : register(t1);
 SamplerState splr : register(s0);
 
-Texture2D shadowMap[5] : register(t4);
+TextureCube shadowMap[5] : register(t4);
 SamplerComparisonState shadowSampler : register(s1);
 
 struct PSIn
@@ -53,35 +54,60 @@ struct PSIn
 
 float CalculateShadows(float3 worldPos, int lightIndex)
 {
-    // Transform world position into light space
-	float4 lightSpacePos = mul(float4(worldPos, 1.0f), lightViewProj[lightIndex]);
+	if (lights[lightIndex].type == 0) // Point Light
+	{
+          // Use cubemap shadow mapping
+		float3 lightToFragment = worldPos - lights[lightIndex].position;
+		float distanceToLight = length(lightToFragment);
+		float3 sampleDir = normalize(lightToFragment);
 
-    // Perspective divide
-    float3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+		float sampledDepth = shadowMap[lightIndex].Sample(splr, sampleDir).r;
 
-    // Texture coords in [0,1]
-    float2 shadowTexCoord;
-    shadowTexCoord.x = projCoords.x * 0.5f + 0.5f;
-    shadowTexCoord.y = -projCoords.y * 0.5f + 0.5f; // Flip Y!
-    
-    // Check if outside shadow map bounds
-    if (shadowTexCoord.x < 0.0f || shadowTexCoord.x > 1.0f ||
-      shadowTexCoord.y < 0.0f || shadowTexCoord.y > 1.0f ||
-      projCoords.z > 1.0f || projCoords.z < 0.0f)
-    {
-        return 1.0f; // Assume lit if outside shadow map
-    }
+		// Convert normalized depth back to distance
+		// Using the same projection parameters: near=1.0f, far=lights[lightIndex].range
+		float near = 1.0f;
+		float far = lights[lightIndex].range;
+		float sampledDistance = near / (1.0f - sampledDepth * (1.0f - near/far));
 
-    // Improved bias to prevent self-shadowing
-    // Use larger bias to eliminate shadow acne under the light
-    float bias = 0.005f;
-    float currentDepth = projCoords.z - bias;
+		float bias = 0.05f;
+		return (distanceToLight - bias) <= sampledDistance ? 1.0f : 0.0f;
+	}
+	else
+	{
+        // Transform world position into light space
+		float4 lightSpacePos = mul(float4(worldPos, 1.0f), lightViewProj[lightIndex][0]);
+        
+        // Perspective divide
+		float3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+        
+        // Texture coords in [0,1]
+		float2 shadowTexCoord;
+		shadowTexCoord.x = projCoords.x * 0.5f + 0.5f;
+		shadowTexCoord.y = -projCoords.y * 0.5f + 0.5f; // Flip Y!
+        
+        // Check if outside shadow map bounds
+		if (shadowTexCoord.x < 0.0f || shadowTexCoord.x > 1.0f ||
+            shadowTexCoord.y < 0.0f || shadowTexCoord.y > 1.0f ||
+            projCoords.z > 1.0f || projCoords.z < 0.0f)
+		{
+			return 1.0f; // Assume lit if outside shadow map
+		}
+        
+		float3 sampleDir = float3(1.0f, shadowTexCoord.y * 2.0f - 1.0f, -(shadowTexCoord.x * 2.0f - 1.0f));
+		sampleDir = normalize(sampleDir);
+		float sampledDepth = shadowMap[lightIndex].Sample(splr, sampleDir).r;
+
+        // Improved bias to prevent self-shadowing
+        // Use larger bias to eliminate shadow acne under the light
+		float bias = 0.005f;
+		float currentDepth = projCoords.z - bias;
     
-    // Clamp depth to valid range
-    currentDepth = saturate(currentDepth);
+        // Clamp depth to valid range
+		currentDepth = saturate(currentDepth);
     
-    // 0 = in shadow, 1 = lit
-	return shadowMap[lightIndex].SampleCmpLevelZero(shadowSampler, shadowTexCoord, currentDepth);
+        // 0 = in shadow, 1 = lit
+		return currentDepth <= sampledDepth ? 1.0f : 0.0f;
+	}
 }
 
 float CalculateAttenuation(float distance, float range)

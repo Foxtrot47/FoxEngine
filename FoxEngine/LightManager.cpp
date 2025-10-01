@@ -1,10 +1,10 @@
 #include "LightManager.h"
 
-LightManager::LightManager(Graphics& gfx): isDirty(true)
+LightManager::LightManager(Graphics& gfx) : isDirty(true)
 {
 	lightBuffer = {};
 	lightBuffer.activeLightCount = 0;
-    lightBuffer.ambientLight = {0.01f, 0.01f, 0.01f};
+	lightBuffer.ambientLight = { 0.01f, 0.01f, 0.01f };
 	lightBuffer.globalSpecularIntensity = 1.0f;
 
 	lightMatrices = {};
@@ -59,36 +59,52 @@ void LightManager::UpdateLight(int lightIndex, Light lightData)
 {
 	if (lightIndex < 0 || lightIndex >= lightBuffer.activeLightCount)
 		return;
-	lightMatrices.lightViewProj[lightIndex] = DirectX::XMMatrixTranspose(CalculateLightMatrix(lightIndex));
+	auto matrices = CalculateLightMatrix(lightIndex);
+	for (int face = 0; face < 6; face++)
+	{
+		lightMatrices.lightViewProj[lightIndex][face] = DirectX::XMMatrixTranspose(matrices[face]);
+	}
 	lightBuffer.lights[lightIndex] = lightData;
 	isDirty = true;
 }
 
-DirectX::XMMATRIX LightManager::CalculateLightMatrix(const int lightIndex)
+std::array<DirectX::XMMATRIX, 6> LightManager::CalculateLightMatrix(const int lightIndex)
 {
+	std::array<DirectX::XMMATRIX, 6> matrices;
 	if (lightIndex < 0 || lightIndex >= lightBuffer.activeLightCount)
-		return DirectX::XMMatrixIdentity();
+		return matrices;
 
 	const Light& light = lightBuffer.lights[lightIndex];
 	DirectX::XMVECTOR worldUp = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
 	if (light.type == static_cast<int>(LightType::POINT))
 	{
-		DirectX::XMVECTOR sceneCenter = DirectX::XMVectorSet(0.1f, 0.1f, 0.1f, 0.0f);
 		DirectX::XMVECTOR lightPos = DirectX::XMLoadFloat3(&light.position);
-		DirectX::XMVECTOR lightToTarget = DirectX::XMVector3Normalize(lightPos);
+		struct CubeFace {
+			DirectX::XMVECTOR direction;
+			DirectX::XMVECTOR up;
+		};
 
-		DirectX::XMVECTOR baseUp = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-		// Calculate proper orthogonal up vector
-		DirectX::XMVECTOR rightVector = DirectX::XMVector3Cross(lightToTarget, baseUp);
-		DirectX::XMVECTOR upVector = DirectX::XMVector3Cross(rightVector, lightToTarget);
-		upVector = DirectX::XMVector3Normalize(upVector);
-
-		DirectX::XMMATRIX viewMatrix = DirectX::XMMatrixLookAtLH(
-			lightPos,
-			sceneCenter,
-			upVector
-		);
+		std::array<CubeFace, 6> faces = { {
+				// +X face
+				{DirectX::XMVectorAdd(lightPos, DirectX::XMVectorSet(1.0f, 0.0f, 0.0f, 0.0f)),
+				DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)},
+				 // -X face
+				 {DirectX::XMVectorAdd(lightPos, DirectX::XMVectorSet(-1.0f, 0.0f, 0.0f, 0.0f)),
+				  DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)},
+				  // +Y face
+				  {DirectX::XMVectorAdd(lightPos, DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)),
+				   DirectX::XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f)},
+				   // -Y face
+				   {DirectX::XMVectorAdd(lightPos, DirectX::XMVectorSet(0.0f, -1.0f, 0.0f, 0.0f)),
+					DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)},
+					// +Z face
+					{DirectX::XMVectorAdd(lightPos, DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f)),
+					 DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)},
+					 // -Z face
+					 {DirectX::XMVectorAdd(lightPos, DirectX::XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f)),
+					  DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)}
+				 } };
 
 		// Use perspective projection for point lights
 		DirectX::XMMATRIX projMatrix = DirectX::XMMatrixPerspectiveFovLH(
@@ -98,7 +114,17 @@ DirectX::XMMATRIX LightManager::CalculateLightMatrix(const int lightIndex)
 			light.range
 		);
 
-		return viewMatrix * projMatrix;
+		for (int face = 0; face < 6; face++)
+		{
+			DirectX::XMVECTOR target = DirectX::XMVectorAdd(lightPos, faces[face].direction);
+			DirectX::XMMATRIX viewMatrix = DirectX::XMMatrixLookAtLH(
+				lightPos,
+				target,
+				faces[face].up
+			);
+			matrices[face] = viewMatrix * projMatrix;
+		}
+		return matrices;
 	}
 	else if (light.type == static_cast<int>(LightType::DIRECTIONAL))
 	{
@@ -138,7 +164,11 @@ DirectX::XMMATRIX LightManager::CalculateLightMatrix(const int lightIndex)
 			1000.0f     // Far plane
 		);
 
-		return viewMatrix * projMatrix;
+		for (int face = 0; face < 6; face++)
+		{
+			matrices[face] = viewMatrix * projMatrix;
+		}
+		return matrices;
 	}
 }
 
@@ -159,7 +189,11 @@ void LightManager::Update(Graphics& gfx)
 	{
 		for (int i = 0; i < lightBuffer.activeLightCount; i++)
 		{
-			lightMatrices.lightViewProj[i] = DirectX::XMMatrixTranspose(CalculateLightMatrix(i));
+			auto matrices = CalculateLightMatrix(i);
+			for (int face = 0; face < 6; face++)
+			{
+				lightMatrices.lightViewProj[i][face] = DirectX::XMMatrixTranspose(matrices[face]);
+			}
 		}
 		lightMatrixCBuff->Update(gfx, lightMatrices);
 		lightCBuff->Update(gfx, lightBuffer);
