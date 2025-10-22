@@ -22,7 +22,6 @@ private:
 	void UpdateLightManager();
 	std::shared_ptr<LightManager> lightManager;
 
-	int lightIndex;
 	DirectX::XMFLOAT3 lightColor;
 	DirectX::XMFLOAT3 lightDirection;
 	float lightIntensity;

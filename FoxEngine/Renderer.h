@@ -22,7 +22,7 @@ private:
 	struct ShadowConstants {
 		DirectX::XMMATRIX modelLightViewProjection;
 	};
-	static const uint32_t SHADOW_MAP_SIZE = 2048;
+	static const uint32_t SHADOW_MAP_SIZE = 8192;
 
 	Graphics& gfx;
 	FPVCamera& camera;
@@ -53,9 +53,12 @@ private:
 	ComPtr<ID3D11Buffer> lightBuffer = nullptr;
 	std::unique_ptr<VertexConstantBuffer<ShadowConstants>> shadowConstantBuffer = nullptr;
 
-	std::array<ComPtr<ID3D11Texture2D>, 5> shadowMapTextures;
-	std::array<ComPtr<ID3D11DepthStencilView>, 5> pShadowDepthView;
-	std::array<ComPtr<ID3D11ShaderResourceView>, 5> shadowMapSRVs;
+	ComPtr<ID3D11DepthStencilView> pDirectionalShadowDepthView;
+	ComPtr<ID3D11ShaderResourceView> pDirectionalShadowSRV;
+	ComPtr<ID3D11Texture2D> pDirectionalShadowTexture;
+	std::array<ComPtr<ID3D11Texture2D>, 5> pPointShadowTexture;
+	std::array<ComPtr<ID3D11DepthStencilView>, 5> pPointShadowDepthView;
+	std::array<ComPtr<ID3D11ShaderResourceView>, 5> pointShadowMapSRVs;
 	ComPtr<ID3D11RenderTargetView> pShadowRTV = nullptr;
 	ComPtr<ID3D11SamplerState> pShadowSamplerState = nullptr;
 

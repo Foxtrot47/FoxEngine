@@ -84,14 +84,12 @@ void PointLightNode::UpdateLightManager()
 {
 	if (lightIndex >= 0)
 	{
-		LightManager::Light light = {};
+		LightManager::PointLight light = {};
 		light.position = position;
-		light.type = static_cast<int>(LightManager::LightType::POINT);
-		light.direction = { 0.0f, 0.0f, 0.0f };
 		light.range = lightRange;
 		light.color = lightColor;
 		light.intensity = lightIntensity;
 
-		lightManager->UpdateLight(lightIndex, light);
+		lightManager->UpdatePointLight(lightIndex, light);
 	}
 }

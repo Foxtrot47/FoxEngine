@@ -19,7 +19,7 @@ DirectionalLightNode::DirectionalLightNode(
 	lightColor(color),
 	lightIntensity(intensity)
 {
-	lightIndex = lightManager->AddDirectionalLight(direction, color);
+	lightManager->SetDirectionalLight(direction, color, intensity);
 }
 
 void DirectionalLightNode::DrawInspectorWindow()
@@ -79,16 +79,10 @@ void DirectionalLightNode::Draw(Graphics& gfx)
 
 void DirectionalLightNode::UpdateLightManager()
 {
-	if (lightIndex < 0)
-		return;
-
-	LightManager::Light light = {};
-	light.position = position;
-	light.type = static_cast<int>(LightManager::LightType::DIRECTIONAL);
+	LightManager::DirectionalLight light = {};
 	light.direction = lightDirection;
-	light.range = 0.0f;
 	light.color = lightColor;
 	light.intensity = lightIntensity;
 
-	lightManager->UpdateLight(lightIndex, light);
+	lightManager->UpdateDirectionLight(light);
 }

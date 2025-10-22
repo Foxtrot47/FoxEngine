@@ -15,13 +15,21 @@ SceneManager::SceneManager(Graphics& gfx, const FPVCamera& cam)
 
 	rootNode = std::make_unique<TransformNode>(nullptr, "Root_Node", defaultPos, defaultRot, defaultScaling);
 
+	auto sun = std::make_unique<DirectionalLightNode>(
+		gfx,
+		rootNode.get(),
+		gfx.GetLightManager(),
+		"Sun"
+	);
+	rootNode->AddChild(std::move(sun));
+
 	auto pointLight = std::make_unique<PointLightNode>(
 		gfx,
 		rootNode.get(),
 		gfx.GetLightManager(),
 		"Point_Light",
 		DirectX::XMFLOAT3(-71.0f, 40.0f, 0.0f),
-		DirectX::XMFLOAT3( 1.0f, 1.0f, 1.0f ),
+		DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f),
 		40.0f,
 		100.0f
 	);
