@@ -7,6 +7,13 @@ target_include_directories(FoxEngine
     PRIVATE src
 )
 
+target_link_libraries(FoxEngine PUBLIC
+    d3d11.lib
+    dxgi.lib
+    d3dcompiler.lib
+    dxguid.lib
+)
+
 target_compile_definitions(FoxEngine PUBLIC
     UNICODE
     _UNICODE
