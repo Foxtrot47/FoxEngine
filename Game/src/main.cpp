@@ -21,7 +21,7 @@
 #include "Engine/Renderer/LightEnvironment.h"
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Renderer/SkyboxRenderer.h"
-#include "Engine/Renderer/ShadowMap.h"
+#include "Engine/Renderer/CascadedShadowMap.h"
 #include "Engine/Renderer/RenderTarget.h"
 #include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/PointShadowMap.h"
@@ -324,22 +324,19 @@ protected:
         // Use bistro entity's transform for mesh world matrix
         m_meshWorld = m_bistroTransform->GetLocalMatrix();
 
-        // Shadow pass
+        // Cascaded shadow pass
         {
             float er = XMConvertToRadians(m_lights.elevDeg);
             float ar = XMConvertToRadians(m_lights.azimDeg);
             XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
-            SE::AABB raw = m_mesh ? m_mesh->GetBounds() : SE::AABB{};
-            float s = m_bistroTransform->scale;
-            SE::AABB bounds = {
-                { raw.min.x * s, raw.min.y * s, raw.min.z * s },
-                { raw.max.x * s, raw.max.y * s, raw.max.z * s }
-            };
-            m_shadowMap.UpdateLightMatrix(lightDir, bounds);
-            m_shadowMap.BeginShadowPass(ctx);
-            if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, m_meshWorld);
-            m_shadowMap.DrawSphere(ctx, m_ballTransform->position, m_ballRadius);
-            m_shadowMap.EndShadowPass(ctx);
+            m_shadowMap.Update(lightDir, view, proj, m_camera->nearZ, m_camera->farZ);
+            for (int c = 0; c < SE::CSM_NUM_CASCADES; ++c)
+            {
+                m_shadowMap.BeginCascade(ctx, c);
+                if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, m_meshWorld);
+                m_shadowMap.DrawSphere(ctx, m_ballTransform->position, m_ballRadius);
+                m_shadowMap.EndCascade(ctx);
+            }
         }
 
         // Point shadow passes
@@ -830,7 +827,7 @@ private:
     SE::SkyboxRenderer                       m_skybox;
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;
-    SE::ShadowMap                            m_shadowMap;
+    SE::CascadedShadowMap                    m_shadowMap;
     SE::AssetHandle<SE::Mesh>                m_mesh;
     std::vector<SE::ForwardPipeline::SubMat> m_subMats;
 
