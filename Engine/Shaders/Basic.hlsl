@@ -39,6 +39,15 @@ cbuffer ForwardShadowCB : register(b4)
     float2 _fscbPad;
 };
 
+cbuffer SpotLightCB : register(b5)
+{
+    float3 SpotPosition;   float  SpotRange;
+    float3 SpotDirection;  float  SpotOuterCos;
+    float3 SpotColor;      float  SpotInnerCos;
+    row_major matrix SpotViewProj;
+    float  SpotShadowBias; int SpotEnabled; float2 _spotPad;
+};
+
 Texture2D              g_albedo       : register(t0);
 Texture2D              g_roughness    : register(t1);
 Texture2D              g_normal       : register(t2);
@@ -47,6 +56,7 @@ Texture2D              g_sky          : register(t4);  // equirectangular HDR pa
 TextureCube<float>     g_pointShadow0 : register(t5);
 TextureCube<float>     g_pointShadow1 : register(t6);
 Texture2D              g_metallic     : register(t7);  // metallic map (R channel)
+Texture2D              g_spotShadow   : register(t8);  // spot light shadow map
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -260,6 +270,49 @@ PSOut PS_Main(PSIn input)
         float3 PL = toL / d;
         color += ptShadow * atten * PointLights[i].Color
                * CookTorrance(N, V, PL, albedo.rgb, roughness, metallic, F0);
+    }
+
+    // Spot light
+    if (SpotEnabled > 0)
+    {
+        float3 toSpot = SpotPosition - input.WorldPos;
+        float  dist   = length(toSpot);
+
+        if (dist < SpotRange)
+        {
+            float3 SL    = toSpot / dist;
+            float  cosA  = dot(-SL, normalize(SpotDirection));
+            float  cone  = smoothstep(SpotOuterCos, SpotInnerCos, cosA);
+
+            if (cone > 0.0f)
+            {
+                float distAtten = 1.0f - (dist / SpotRange);
+                distAtten       = distAtten * distAtten;
+
+                // Shadow (PCF 3×3)
+                float spotShadow = 1.0f;
+                {
+                    float4 sc  = mul(float4(input.WorldPos, 1.0f), SpotViewProj);
+                    float3 ndc = sc.xyz / sc.w;
+                    float2 uv  = float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
+                    float  dref = ndc.z;
+                    if (saturate(uv.x) == uv.x && saturate(uv.y) == uv.y && dref < 1.0f)
+                    {
+                        float sw, sh; g_spotShadow.GetDimensions(sw, sh);
+                        float ts = 1.0f / sw;
+                        spotShadow = 0.0f;
+                        [unroll] for (int sx = -1; sx <= 1; ++sx)
+                        [unroll] for (int sy = -1; sy <= 1; ++sy)
+                            spotShadow += g_spotShadow.SampleCmpLevelZero(
+                                g_shadowSampler, uv + float2(sx, sy) * ts, dref - SpotShadowBias);
+                        spotShadow /= 9.0f;
+                    }
+                }
+
+                color += spotShadow * cone * distAtten * SpotColor
+                       * CookTorrance(N, V, SL, albedo.rgb, roughness, metallic, F0);
+            }
+        }
     }
 
     if (DebugShadow > 0.5f)

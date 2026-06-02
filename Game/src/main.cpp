@@ -28,6 +28,7 @@
 #include "Engine/Renderer/Bloom.h"
 #include "Engine/Renderer/SSR.h"
 #include "Engine/Renderer/SSAO.h"
+#include "Engine/Renderer/SpotLight.h"
 #include "Engine/Input/GamepadState.h"
 
 using namespace DirectX;
@@ -72,6 +73,9 @@ public:
         // Screen-Space Ambient Occlusion
         if (!m_ssao.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
+
+        // Spot light
+        if (!m_spotLight.Init(device, GetShaders(), 1024)) return false;
 
         // Scan available scenes
         m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
@@ -355,6 +359,14 @@ protected:
             }
         }
 
+        // Spot light shadow pass
+        if (m_spotLight.enabled)
+        {
+            m_spotLight.BeginShadowPass(ctx);
+            if (m_mesh) m_spotLight.DrawMesh(ctx, *m_mesh, m_meshWorld);
+            m_spotLight.EndShadowPass(ctx);
+        }
+
         // --- Forward path (HDR + PBR + IBL) ---
         {
             ID3D11RenderTargetView* rtvs[2] = { m_forwardHDR_RT.GetRTV(), m_normalRT.GetRTV() };
@@ -387,6 +399,7 @@ protected:
         m_pipeline.Begin(ctx, view, proj);
         m_pipeline.BindEnvironment(ctx, m_skybox.GetPanoramaSRV());
         m_pipeline.BindPointShadows(ctx, ptSRVs[0], ptSRVs[1], numPtShadows, m_pointShadowBias);
+        m_spotLight.BindForLitPass(ctx);
         m_pipeline.SetMaterialParams(ctx,
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
             m_debugShadow ? 1.0f : 0.0f);
@@ -457,6 +470,18 @@ protected:
                   m_rayHit.point.y + m_rayHit.normal.y,
                   m_rayHit.point.z + m_rayHit.normal.z },
                 { 1.0f, 1.0f, 0.0f });
+        }
+
+        // Spot light icon (small sphere + direction line)
+        if (m_spotLight.enabled)
+        {
+            m_pipeline.DrawWireSphere(ctx, m_spotLight.position, 0.3f, m_spotLight.color);
+            XMFLOAT3 tip = {
+                m_spotLight.position.x + m_spotLight.direction.x * 2.0f,
+                m_spotLight.position.y + m_spotLight.direction.y * 2.0f,
+                m_spotLight.position.z + m_spotLight.direction.z * 2.0f
+            };
+            m_pipeline.DrawLine(ctx, m_spotLight.position, tip, m_spotLight.color);
         }
     }
 
@@ -697,6 +722,20 @@ private:
         ImGui::Separator();
         ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         ImGui::Separator();
+        ImGui::Text("Spot Light");
+        ImGui::Checkbox("Enable Spot", &m_spotLight.enabled);
+        if (m_spotLight.enabled)
+        {
+            ImGui::DragFloat3("Spot Pos", &m_spotLight.position.x, 0.5f, -500.0f, 500.0f);
+            ImGui::DragFloat3("Spot Dir", &m_spotLight.direction.x, 0.01f, -1.0f, 1.0f);
+            ImGui::ColorEdit3("Spot Color", &m_spotLight.color.x);
+            ImGui::SliderFloat("Spot Range", &m_spotLight.range, 1.0f, 200.0f);
+            ImGui::SliderFloat("Spot Inner", &m_spotLight.innerAngle, 1.0f, m_spotLight.outerAngle - 0.5f);
+            ImGui::SliderFloat("Spot Outer", &m_spotLight.outerAngle, m_spotLight.innerAngle + 0.5f, 89.0f);
+            ImGui::SliderFloat("Spot Intensity", &m_spotLight.intensity, 0.1f, 50.0f);
+            ImGui::SliderFloat("Spot Bias", &m_spotLight.shadowBias, 0.0001f, 0.01f, "%.4f");
+        }
+        ImGui::Separator();
         ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
         for (int i = 0; i < m_lights.numLights; ++i)
         {
@@ -832,6 +871,7 @@ private:
     SE::Bloom                    m_bloom;
     SE::SSR                      m_ssr;
     SE::SSAO                     m_ssao;
+    SE::SpotLight                m_spotLight;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;
