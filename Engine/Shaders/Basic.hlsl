@@ -48,10 +48,16 @@ cbuffer SpotLightCB : register(b5)
     float  SpotShadowBias; int SpotEnabled; float2 _spotPad;
 };
 
+cbuffer CSMCB : register(b6)
+{
+    row_major matrix CascadeVP[3];
+    float4 CascadeSplits;  // view-space far Z for each cascade
+};
+
 Texture2D              g_albedo       : register(t0);
 Texture2D              g_roughness    : register(t1);
 Texture2D              g_normal       : register(t2);
-Texture2D              g_shadowMap    : register(t3);
+Texture2DArray         g_shadowMap    : register(t3);  // CSM cascade array
 Texture2D              g_sky          : register(t4);  // equirectangular HDR panorama
 TextureCube<float>     g_pointShadow0 : register(t5);
 TextureCube<float>     g_pointShadow1 : register(t6);
@@ -78,6 +84,7 @@ struct PSIn
     float3 T        : TEXCOORD2;
     float3 B        : TEXCOORD3;
     float3 N        : TEXCOORD4;
+    float  ViewZ    : TEXCOORD5;
 };
 
 PSIn VS_Main(VSIn input)
@@ -85,7 +92,9 @@ PSIn VS_Main(VSIn input)
     PSIn o;
     float4 world = mul(float4(input.Position, 1.0f), Model);
     o.WorldPos   = world.xyz;
-    o.Position   = mul(mul(world, View), Projection);
+    float4 viewPos = mul(world, View);
+    o.ViewZ      = viewPos.z;
+    o.Position   = mul(viewPos, Projection);
     o.TexCoord   = input.TexCoord;
     float3x3 m3  = (float3x3)Model;
     o.T = normalize(mul(input.Tangent,   m3));
@@ -219,21 +228,28 @@ PSOut PS_Main(PSIn input)
     float metallic  = saturate(g_metallic.Sample(g_sampler, input.TexCoord).r * Metallic);
     float3 F0       = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
 
-    // Directional shadow (PCF 3×3)
+    // Cascaded directional shadow (PCF 3×3)
     float shadow = 1.0f;
     {
-        float4 sc   = mul(float4(input.WorldPos, 1.0f), LightViewProj);
+        // Select cascade based on view-space depth
+        int cascade = 2;
+        if (input.ViewZ < CascadeSplits.x)      cascade = 0;
+        else if (input.ViewZ < CascadeSplits.y)  cascade = 1;
+
+        float4 sc   = mul(float4(input.WorldPos, 1.0f), CascadeVP[cascade]);
         float3 ndc  = sc.xyz / sc.w;
         float2 uv   = float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
         float  dref = ndc.z;
         if (saturate(uv.x) == uv.x && saturate(uv.y) == uv.y && dref < 1.0f)
         {
-            float w, h; g_shadowMap.GetDimensions(w, h);
+            float w, h, elements;
+            g_shadowMap.GetDimensions(w, h, elements);
             float ts = 1.0f / w;
             shadow = 0.0f;
             [unroll] for (int dx = -1; dx <= 1; ++dx)
             [unroll] for (int dy = -1; dy <= 1; ++dy)
-                shadow += g_shadowMap.SampleCmpLevelZero(g_shadowSampler, uv + float2(dx, dy) * ts, dref);
+                shadow += g_shadowMap.SampleCmpLevelZero(
+                    g_shadowSampler, float3(uv + float2(dx, dy) * ts, (float)cascade), dref);
             shadow /= 9.0f;
         }
     }
