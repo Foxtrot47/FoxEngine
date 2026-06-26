@@ -23,7 +23,8 @@ public:
         AssetHandle<Texture2D> albedo;
         AssetHandle<Texture2D> normal;
         AssetHandle<Texture2D> roughness;
-        AssetHandle<Texture2D> metallic;  // t7; nullptr → default black (0 = dielectric)
+        AssetHandle<Texture2D> metallic;   // t7; nullptr → default black (0 = dielectric)
+        AssetHandle<Texture2D> emissive;   // t9; nullptr → default black (no emission)
         AlphaMode alphaMode  = AlphaMode::Opaque;
         float     alphaCutoff = 0.5f;
     };
@@ -49,7 +50,8 @@ public:
     // Upload and bind MaterialParamsCB (b3).
     void SetMaterialParams(ID3D11DeviceContext* ctx,
                            DirectX::XMFLOAT3 tint, float roughnessScale, float metallic,
-                           float debugShadow = 0.0f);
+                           float debugShadow = 0.0f, float emissiveIntensity = 1.0f,
+                           DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f });
 
     // --- Queued rendering (M42) ---
     // Submit a mesh for sorted draw. Call Flush() after all submits to actually draw.
@@ -80,13 +82,17 @@ public:
     void DrawPBRSphere(ID3D11DeviceContext* ctx,
                        DirectX::XMFLOAT3 position, float radius,
                        const SubMat& mat, float metallic, float roughnessScale = 1.0f,
-                       DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f });
+                       DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f },
+                       float emissiveIntensity = 1.0f,
+                       DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f });
 
     // Draw a horizontal unit plane scaled to the given half-extents, with PBR textures.
     void DrawPBRPlane(ID3D11DeviceContext* ctx,
                       DirectX::XMFLOAT3 center, float halfSizeX, float halfSizeZ,
                       const SubMat& mat, float metallic, float roughnessScale = 1.0f,
-                      DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f });
+                      DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f },
+                      float emissiveIntensity = 1.0f,
+                      DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f });
 
     uint32_t GetLastDrawCalls() const { return m_lastDrawCalls; }
     uint32_t GetLastCulledCount() const { return m_lastCulled; }
@@ -109,6 +115,7 @@ private:
     {
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
         float metallic; float unlit; float debugShadow; float alphaCutoff;
+        float emissiveIntensity; DirectX::XMFLOAT3 emissiveColor;
     };
 
     // Stored per-submit for Flush() to reference.

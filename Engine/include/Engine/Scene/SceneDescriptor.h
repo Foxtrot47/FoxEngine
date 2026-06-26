@@ -104,6 +104,9 @@ struct SceneDescriptor
         std::string normalPath;
         std::string roughnessPath;
         std::string metallicPath;
+        std::string emissivePath;
+        float emissiveIntensity = 1.0f;
+        std::array<float, 3> emissiveColor = { 1.f, 1.f, 1.f };
 
         std::array<float, 3> tint = { 1.f, 1.f, 1.f };
     };
