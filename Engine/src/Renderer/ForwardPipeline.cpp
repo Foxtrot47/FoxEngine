@@ -263,6 +263,9 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
         mat.roughness = loadTex(info.roughnessPath);
         if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
 
+        mat.emissive  = loadTex(info.emissivePath);
+        // emissive stays nullptr if no texture (shader uses default black)
+
         mat.metallic    = assets.GetDefaultBlack();
         mat.alphaMode   = info.alphaMode;
         mat.alphaCutoff = info.alphaCutoff;
@@ -288,6 +291,8 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
 
     // Bind default black to t7 (metallic = 0 → dielectric). Draw calls with a metallic map override it.
     m_defaultBlack->BindPS(ctx, 7);
+    // Bind default black to t9 (emissive = 0). Draw calls with an emissive map override it.
+    m_defaultBlack->BindPS(ctx, 9);
 
     // Default: no point shadow casters; caller overrides with BindPointShadows().
     ForwardShadowCBData defaultShadow = { 0, 0.0f, { 0.0f, 0.0f } };
@@ -413,25 +418,22 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
         // Set alpha cutoff in material CB when needed
         if (mat.alphaMode == AlphaMode::Cutout)
         {
-            MaterialParamsCBData mc;
+            MaterialParamsCBData mc = {};
             mc.albedoTint     = { 1.0f, 1.0f, 1.0f };
             mc.roughnessScale = 1.0f;
-            mc.metallic       = 0.0f;
-            mc.unlit          = 0.0f;
-            mc.debugShadow    = 0.0f;
             mc.alphaCutoff    = mat.alphaCutoff;
+            mc.emissiveIntensity = 1.0f;
+            mc.emissiveColor  = { 1.0f, 1.0f, 1.0f };
             m_materialCB.Update(ctx, mc);
             m_materialCB.BindPS(ctx, 3);
         }
         else if (mat.alphaMode != AlphaMode::Opaque)
         {
-            MaterialParamsCBData mc;
+            MaterialParamsCBData mc = {};
             mc.albedoTint     = { 1.0f, 1.0f, 1.0f };
             mc.roughnessScale = 1.0f;
-            mc.metallic       = 0.0f;
-            mc.unlit          = 0.0f;
-            mc.debugShadow    = 0.0f;
-            mc.alphaCutoff    = 0.0f;
+            mc.emissiveIntensity = 1.0f;
+            mc.emissiveColor  = { 1.0f, 1.0f, 1.0f };
             m_materialCB.Update(ctx, mc);
             m_materialCB.BindPS(ctx, 3);
         }
@@ -440,6 +442,7 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
         mat.roughness->BindPS(ctx, 1);
         mat.normal->BindPS(ctx, 2);
         (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
+        (mat.emissive ? mat.emissive : m_defaultBlack)->BindPS(ctx, 9);
         draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
         ++m_lastDrawCalls;
     }
@@ -455,15 +458,16 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 
 void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
                                          DirectX::XMFLOAT3 tint, float roughnessScale, float metallic,
-                                         float debugShadow)
+                                         float debugShadow, float emissiveIntensity,
+                                         DirectX::XMFLOAT3 emissiveColor)
 {
-    MaterialParamsCBData mc;
+    MaterialParamsCBData mc = {};
     mc.albedoTint     = tint;
     mc.roughnessScale = roughnessScale;
     mc.metallic       = metallic;
-    mc.unlit          = 0.0f;
     mc.debugShadow    = debugShadow;
-    mc.alphaCutoff    = 0.0f;
+    mc.emissiveIntensity = emissiveIntensity;
+    mc.emissiveColor  = emissiveColor;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }
@@ -486,6 +490,7 @@ void ForwardPipeline::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
         mats[i].roughness->BindPS(ctx, 1);
         mats[i].normal->BindPS(ctx, 2);
         (mats[i].metallic ? mats[i].metallic : m_defaultBlack)->BindPS(ctx, 7);
+        (mats[i].emissive ? mats[i].emissive : m_defaultBlack)->BindPS(ctx, 9);
         mesh.DrawSubMesh(ctx, i);
     }
 }
@@ -685,16 +690,18 @@ void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
 void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
                                      DirectX::XMFLOAT3 position, float radius,
                                      const SubMat& mat, float metallic, float roughnessScale,
-                                     DirectX::XMFLOAT3 tint)
+                                     DirectX::XMFLOAT3 tint, float emissiveIntensity,
+                                     DirectX::XMFLOAT3 emissiveColor)
 {
     using namespace DirectX;
 
-    SetMaterialParams(ctx, tint, roughnessScale, metallic);
+    SetMaterialParams(ctx, tint, roughnessScale, metallic, 0.0f, emissiveIntensity, emissiveColor);
 
     mat.albedo    ? mat.albedo->BindPS(ctx, 0)    : m_defaultWhite->BindPS(ctx, 0);
     mat.roughness ? mat.roughness->BindPS(ctx, 1) : m_defaultWhite->BindPS(ctx, 1);
     mat.normal    ? mat.normal->BindPS(ctx, 2)    : m_defaultNormal->BindPS(ctx, 2);
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
+    mat.emissive  ? mat.emissive->BindPS(ctx, 9)  : m_defaultBlack->BindPS(ctx, 9);
 
     TransformCBData cb;
     XMStoreFloat4x4(&cb.model,
@@ -713,16 +720,18 @@ void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
 void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
                                     DirectX::XMFLOAT3 center, float halfSizeX, float halfSizeZ,
                                     const SubMat& mat, float metallic, float roughnessScale,
-                                    DirectX::XMFLOAT3 tint)
+                                    DirectX::XMFLOAT3 tint, float emissiveIntensity,
+                                    DirectX::XMFLOAT3 emissiveColor)
 {
     using namespace DirectX;
 
-    SetMaterialParams(ctx, tint, roughnessScale, metallic);
+    SetMaterialParams(ctx, tint, roughnessScale, metallic, 0.0f, emissiveIntensity, emissiveColor);
 
     mat.albedo    ? mat.albedo->BindPS(ctx, 0)    : m_defaultWhite->BindPS(ctx, 0);
     mat.roughness ? mat.roughness->BindPS(ctx, 1) : m_defaultWhite->BindPS(ctx, 1);
     mat.normal    ? mat.normal->BindPS(ctx, 2)    : m_defaultNormal->BindPS(ctx, 2);
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
+    mat.emissive  ? mat.emissive->BindPS(ctx, 9)  : m_defaultBlack->BindPS(ctx, 9);
 
     TransformCBData cb;
     XMStoreFloat4x4(&cb.model,

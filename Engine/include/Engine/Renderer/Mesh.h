@@ -29,6 +29,7 @@ struct SubMeshInfo
     std::string albedoPath;
     std::string normalPath;
     std::string roughnessPath;
+    std::string emissivePath;
     AlphaMode   alphaMode = AlphaMode::Opaque;
     float       alphaCutoff = 0.5f;
 };
@@ -53,6 +54,7 @@ private:
         std::string  albedoPath;
         std::string  normalPath;
         std::string  roughnessPath;
+        std::string  emissivePath;
         AlphaMode    alphaMode = AlphaMode::Opaque;
         float        alphaCutoff = 0.5f;
     };

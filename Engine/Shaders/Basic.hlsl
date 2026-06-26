@@ -30,6 +30,7 @@ cbuffer MaterialCB : register(b3)
 {
     float3 AlbedoTint;  float  RoughnessScale;
     float  Metallic;    float  Unlit;  float  DebugShadow;  float  AlphaCutoff;
+    float  EmissiveIntensity;  float3 EmissiveColor;
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -63,6 +64,7 @@ TextureCube<float>     g_pointShadow0 : register(t5);
 TextureCube<float>     g_pointShadow1 : register(t6);
 Texture2D              g_metallic     : register(t7);  // metallic map (R channel)
 Texture2D              g_spotShadow   : register(t8);  // spot light shadow map
+Texture2D              g_emissive     : register(t9);  // emissive map
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -343,6 +345,12 @@ PSOut PS_Main(PSIn input)
         o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
         return o;
     }
+
+    // Emissive contribution (added directly to HDR color, feeds into bloom)
+    float3 emissive = g_emissive.Sample(g_sampler, input.TexCoord).rgb;
+    float emissiveSum = emissive.r + emissive.g + emissive.b;
+    if (emissiveSum > 0.001f)
+        color += emissive * EmissiveColor * EmissiveIntensity;
 
     // Transform world-space normal to view space for SSR
     float3 viewN = normalize(mul(N, (float3x3)View));

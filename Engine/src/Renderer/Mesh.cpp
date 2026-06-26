@@ -113,6 +113,11 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
             if (sm.roughnessPath.empty())
                 sm.roughnessPath = tryGet(aiTextureType_UNKNOWN);
 
+            // Emissive map
+            sm.emissivePath = tryGet(aiTextureType_EMISSIVE);
+            if (sm.emissivePath.empty())
+                sm.emissivePath = tryGet(aiTextureType_EMISSION_COLOR);
+
             // Alpha mode detection
             aiString alphaStr;
             if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaStr) == AI_SUCCESS)
@@ -173,6 +178,7 @@ SubMeshInfo Mesh::GetSubMeshInfo(uint32_t index) const
     info.albedoPath    = sm.albedoPath;
     info.normalPath    = sm.normalPath;
     info.roughnessPath = sm.roughnessPath;
+    info.emissivePath  = sm.emissivePath;
     info.alphaMode     = sm.alphaMode;
     info.alphaCutoff   = sm.alphaCutoff;
     return info;

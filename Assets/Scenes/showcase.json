@@ -97,6 +97,45 @@
         "normal":    "Assets/Showcase/leather_normal.dds",
         "roughness": "Assets/Showcase/leather_arm.dds"
       }
+    },
+    {
+      "comment": "--- Emissive red glow ---",
+      "type": "sphere",
+      "position": [-4, 3.5, 5],
+      "radius": 0.8,
+      "material": {
+        "albedo":    "Assets/Showcase/marble_albedo.dds",
+        "roughness": "Assets/Showcase/marble_roughness.dds",
+        "emissive":  "Assets/Showcase/marble_roughness.dds",
+        "emissive_intensity": 3.0,
+        "emissive_color": [1.0, 0.1, 0.1]
+      }
+    },
+    {
+      "comment": "--- Emissive green glow ---",
+      "type": "sphere",
+      "position": [0, 3.5, 5],
+      "radius": 0.8,
+      "material": {
+        "albedo":    "Assets/Showcase/marble_albedo.dds",
+        "roughness": "Assets/Showcase/marble_roughness.dds",
+        "emissive":  "Assets/Showcase/marble_roughness.dds",
+        "emissive_intensity": 3.0,
+        "emissive_color": [0.1, 1.0, 0.2]
+      }
+    },
+    {
+      "comment": "--- Emissive blue glow ---",
+      "type": "sphere",
+      "position": [4, 3.5, 5],
+      "radius": 0.8,
+      "material": {
+        "albedo":    "Assets/Showcase/marble_albedo.dds",
+        "roughness": "Assets/Showcase/marble_roughness.dds",
+        "emissive":  "Assets/Showcase/marble_roughness.dds",
+        "emissive_intensity": 3.0,
+        "emissive_color": [0.1, 0.2, 1.0]
+      }
     }
   ]
 }

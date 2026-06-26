@@ -28,6 +28,7 @@
 #include "Engine/Renderer/Bloom.h"
 #include "Engine/Renderer/SSR.h"
 #include "Engine/Renderer/SSAO.h"
+#include "Engine/Renderer/FXAA.h"
 #include "Engine/Renderer/SpotLight.h"
 #include "Engine/Input/GamepadState.h"
 
@@ -73,6 +74,14 @@ public:
         // Screen-Space Ambient Occlusion
         if (!m_ssao.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
+
+        // FXAA
+        if (!m_fxaa.Init(device, GetShaders())) return false;
+
+        // LDR intermediate RT for FXAA input
+        if (!m_ldrRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
+                DXGI_FORMAT_R8G8B8A8_UNORM))
+            return false;
 
         // Spot light
         if (!m_spotLight.Init(device, GetShaders(), 1024)) return false;
@@ -224,6 +233,7 @@ public:
             lo.mat.normal    = obj.normalPath.empty()    ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.normalPath));
             lo.mat.roughness = obj.roughnessPath.empty() ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.roughnessPath));
             lo.mat.metallic  = obj.metallicPath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.metallicPath));
+            lo.mat.emissive  = obj.emissivePath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.emissivePath));
             m_sceneObjects.push_back(std::move(lo));
         }
 
@@ -413,11 +423,12 @@ protected:
             using Type = SE::SceneDescriptor::SceneObject::Type;
             XMFLOAT3 pos  = { lo.def.position[0], lo.def.position[1], lo.def.position[2] };
             XMFLOAT3 tint = { lo.def.tint[0],     lo.def.tint[1],     lo.def.tint[2] };
+            XMFLOAT3 eCol = { lo.def.emissiveColor[0], lo.def.emissiveColor[1], lo.def.emissiveColor[2] };
             if (lo.def.type == Type::Sphere)
-                m_pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat, 1.0f, 1.0f, tint);
+                m_pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat, 1.0f, 1.0f, tint, lo.def.emissiveIntensity, eCol);
             else
                 m_pipeline.DrawPBRPlane(ctx, pos, lo.def.halfSizeX, lo.def.halfSizeZ,
-                                        lo.mat, 1.0f, 1.0f, tint);
+                                        lo.mat, 1.0f, 1.0f, tint, lo.def.emissiveIntensity, eCol);
         }
 
         m_shadowMap.Unbind(ctx);
@@ -498,6 +509,8 @@ protected:
             m_bloom.Resize(dev, w, h);
             m_ssr.Resize(dev, w, h);
             m_ssao.Resize(dev, w, h);
+            m_ldrRT.Shutdown();
+            m_ldrRT.Init(dev, w, h, DXGI_FORMAT_R8G8B8A8_UNORM);
         }
 
         SE::RenderTarget& hdrRT = m_forwardHDR_RT;
@@ -519,8 +532,22 @@ protected:
         if (m_bloom.enabled)
             m_bloom.Apply(ctx, hdrRT);
 
-        GetRenderer().BindBackBuffer(ctx);
-        m_toneMap.Apply(ctx, hdrRT.GetSRV(), w, h);
+        if (m_fxaa.enabled)
+        {
+            // Tone map into intermediate LDR RT, then FXAA to backbuffer
+            float clearBlack[4] = { 0, 0, 0, 1 };
+            m_ldrRT.Begin(ctx, clearBlack);
+            m_toneMap.Apply(ctx, hdrRT.GetSRV(), w, h);
+            m_ldrRT.End(ctx);
+
+            GetRenderer().BindBackBuffer(ctx);
+            m_fxaa.Apply(ctx, m_ldrRT.GetSRV(), w, h);
+        }
+        else
+        {
+            GetRenderer().BindBackBuffer(ctx);
+            m_toneMap.Apply(ctx, hdrRT.GetSRV(), w, h);
+        }
     }
 
 private:
@@ -717,6 +744,15 @@ private:
             ImGui::SliderFloat("AO Power",  &m_ssao.power,  0.5f, 8.0f,   "%.1f");
         }
         ImGui::Separator();
+        ImGui::Text("FXAA");
+        ImGui::Checkbox("Enable FXAA", &m_fxaa.enabled);
+        if (m_fxaa.enabled)
+        {
+            ImGui::SliderFloat("Subpix Quality", &m_fxaa.subpixQuality, 0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Edge Threshold", &m_fxaa.edgeThreshold, 0.063f, 0.333f, "%.3f");
+            ImGui::SliderFloat("Edge Min",       &m_fxaa.edgeThresholdMin, 0.0f, 0.1f, "%.4f");
+        }
+        ImGui::Separator();
         ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         ImGui::Separator();
         ImGui::Text("Spot Light");
@@ -868,6 +904,8 @@ private:
     SE::Bloom                    m_bloom;
     SE::SSR                      m_ssr;
     SE::SSAO                     m_ssao;
+    SE::FXAA                     m_fxaa;
+    SE::RenderTarget             m_ldrRT;
     SE::SpotLight                m_spotLight;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };

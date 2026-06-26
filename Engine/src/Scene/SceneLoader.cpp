@@ -164,6 +164,9 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
                 if (m.contains("normal"))       o.normalPath    = m["normal"].get<std::string>();
                 if (m.contains("roughness"))    o.roughnessPath = m["roughness"].get<std::string>();
                 if (m.contains("metallic_map")) o.metallicPath  = m["metallic_map"].get<std::string>();
+                if (m.contains("emissive"))     o.emissivePath  = m["emissive"].get<std::string>();
+                if (m.contains("emissive_intensity")) o.emissiveIntensity = m["emissive_intensity"].get<float>();
+                if (m.contains("emissive_color")) o.emissiveColor = { m["emissive_color"][0].get<float>(), m["emissive_color"][1].get<float>(), m["emissive_color"][2].get<float>() };
                 o.tint = ReadFloat3(m, "tint", o.tint);
             }
             out.objects.push_back(o);
