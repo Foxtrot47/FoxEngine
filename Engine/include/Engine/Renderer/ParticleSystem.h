@@ -51,6 +51,12 @@ struct ParticleEmitterConfig
     // Emitter shape: point (all spawn at origin)
     DirectX::XMFLOAT3 spawnOffset = { 0.0f, 0.0f, 0.0f };
     float spawnRadius     = 0.0f;   // random sphere radius around offset
+
+    // sprite atlas
+    int   atlasColumns    = 1;      // grid columns (1 = no atlas)
+    int   atlasRows       = 1;      // grid rows
+    int   atlasFrameCount = 0;      // total frames (0 = cols*rows)
+    float atlasSpeed      = 1.0f;   // playback speed multiplier (1 = one full cycle per lifetime)
 };
 
 class ParticleSystem
@@ -83,6 +89,8 @@ private:
     {
         DirectX::XMFLOAT4 posAndSize;  // xyz = world pos, w = size
         DirectX::XMFLOAT4 color;
+        float normalizedAge;           // 0 at birth, 1 at death (for flipbook)
+        float _pad[3];
     };
 
     struct CameraCB
@@ -92,6 +100,11 @@ private:
         float _pad0;
         DirectX::XMFLOAT3 camUp;
         float _pad1;
+        // Flipbook atlas params
+        float atlasColumns;
+        float atlasRows;
+        float atlasFrameCount;
+        float atlasSpeed;
     };
 
     std::vector<Particle>     m_particles;
