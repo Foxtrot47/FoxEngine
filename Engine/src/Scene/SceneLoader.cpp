@@ -15,6 +15,12 @@ static std::array<float, 3> ReadFloat3(const json& j, const std::string& key, st
     return { j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>() };
 }
 
+static std::array<float, 4> ReadFloat4(const json& j, const std::string& key, std::array<float, 4> def)
+{
+    if (!j.contains(key) || !j[key].is_array() || j[key].size() < 4) return def;
+    return { j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>(), j[key][3].get<float>() };
+}
+
 bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
 {
     std::ifstream file(path);
@@ -172,6 +178,30 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
             out.objects.push_back(o);
         }
     }
+    // Particles
+    if (root.contains("particles") && root["particles"].is_array())
+    {
+        for (auto& p : root["particles"])
+        {
+            SceneDescriptor::ParticleEmitterDesc e;
+            e.position     = ReadFloat3(p, "position", e.position);
+            e.velocityMin  = ReadFloat3(p, "velocity_min", e.velocityMin);
+            e.velocityMax  = ReadFloat3(p, "velocity_max", e.velocityMax);
+            e.gravity      = ReadFloat3(p, "gravity", e.gravity);
+            e.colorStart   = ReadFloat4(p, "color_start", e.colorStart);
+            e.colorEnd     = ReadFloat4(p, "color_end", e.colorEnd);
+            if (p.contains("emit_rate"))      e.emitRate     = p["emit_rate"].get<float>();
+            if (p.contains("max_particles"))  e.maxParticles = p["max_particles"].get<int>();
+            if (p.contains("lifetime_min"))   e.lifetimeMin  = p["lifetime_min"].get<float>();
+            if (p.contains("lifetime_max"))   e.lifetimeMax  = p["lifetime_max"].get<float>();
+            if (p.contains("size_start"))     e.sizeStart    = p["size_start"].get<float>();
+            if (p.contains("size_end"))       e.sizeEnd      = p["size_end"].get<float>();
+            if (p.contains("spawn_radius"))   e.spawnRadius  = p["spawn_radius"].get<float>();
+            if (p.contains("texture"))        e.texture      = p["texture"].get<std::string>();
+            out.particles.push_back(e);
+        }
+    }
+
     SE_LOG_INFO("SceneLoader: Loaded '%s' (%s)", out.name.c_str(), path.c_str());
     return true;
 }
