@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "dependencies": [
     "assimp",
-    { "name": "imgui", "features": ["dx11-binding", "win32-binding"] },
+    { "name": "imgui", "features": ["dx11-binding", "win32-binding", "docking-experimental"] },
     "directxtex",
     "nlohmann-json"
   ],

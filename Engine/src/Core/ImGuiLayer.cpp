@@ -14,6 +14,7 @@ bool ImGuiLayer::Init(HWND hwnd, ID3D11Device* device, ID3D11DeviceContext* ctx)
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     ImGui::StyleColorsDark();
 
     if (!ImGui_ImplWin32_Init(hwnd))
