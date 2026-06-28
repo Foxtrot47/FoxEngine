@@ -111,6 +111,26 @@ struct SceneDescriptor
         std::array<float, 3> tint = { 1.f, 1.f, 1.f };
     };
     std::vector<SceneObject> objects;
+
+    // Particle emitters
+    struct ParticleEmitterDesc
+    {
+        std::array<float, 3> position = { 0.f, 0.f, 0.f };
+        float emitRate     = 50.0f;
+        int   maxParticles = 1000;
+        float lifetimeMin  = 1.0f;
+        float lifetimeMax  = 3.0f;
+        std::array<float, 3> velocityMin = { -1.f, 1.f, -1.f };
+        std::array<float, 3> velocityMax = {  1.f, 5.f,  1.f };
+        float sizeStart    = 0.2f;
+        float sizeEnd      = 0.05f;
+        std::array<float, 4> colorStart = { 1.f, 0.8f, 0.2f, 1.f };
+        std::array<float, 4> colorEnd   = { 1.f, 0.2f, 0.0f, 0.f };
+        std::array<float, 3> gravity    = { 0.f, -2.f, 0.f };
+        float spawnRadius  = 0.0f;
+        std::string texture;  // optional DDS path
+    };
+    std::vector<ParticleEmitterDesc> particles;
 };
 
 } // namespace SE

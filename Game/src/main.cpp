@@ -3,6 +3,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
+#include <memory>
 #include <filesystem>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
@@ -87,10 +88,6 @@ public:
 
         // Spot light
         if (!m_spotLight.Init(device, GetShaders(), 1024)) return false;
-
-        // Particle system
-        if (!m_particleSystem.Init(device, GetShaders())) return false;
-        m_particleSystem.SetPosition({ 0.0f, 2.0f, 0.0f });
 
         // Scan available scenes
         m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
@@ -243,6 +240,38 @@ public:
             m_sceneObjects.push_back(std::move(lo));
         }
 
+        // --- Particle emitters (from scene JSON) ---
+        m_particleSystems.clear();
+        for (auto& pe : desc.particles)
+        {
+            auto ps = std::make_unique<SE::ParticleSystem>();
+            ps->config.emitRate     = pe.emitRate;
+            ps->config.maxParticles = pe.maxParticles;
+            ps->config.lifetimeMin  = pe.lifetimeMin;
+            ps->config.lifetimeMax  = pe.lifetimeMax;
+            ps->config.velocityMin  = { pe.velocityMin[0], pe.velocityMin[1], pe.velocityMin[2] };
+            ps->config.velocityMax  = { pe.velocityMax[0], pe.velocityMax[1], pe.velocityMax[2] };
+            ps->config.sizeStart    = pe.sizeStart;
+            ps->config.sizeEnd      = pe.sizeEnd;
+            ps->config.colorStart   = { pe.colorStart[0], pe.colorStart[1], pe.colorStart[2], pe.colorStart[3] };
+            ps->config.colorEnd     = { pe.colorEnd[0], pe.colorEnd[1], pe.colorEnd[2], pe.colorEnd[3] };
+            ps->config.gravity      = { pe.gravity[0], pe.gravity[1], pe.gravity[2] };
+            ps->config.spawnRadius  = pe.spawnRadius;
+            if (!ps->Init(device, GetShaders()))
+            {
+                SE_LOG_WARN("Failed to init particle emitter");
+                continue;
+            }
+            ps->SetPosition({ pe.position[0], pe.position[1], pe.position[2] });
+            if (!pe.texture.empty())
+            {
+                auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
+                ps->SetTexture(GetAssets().GetTexture(toW(pe.texture)));
+            }
+            m_particleSystems.push_back(std::move(ps));
+        }
+
+
         // Update window title
         std::wstring title = L"FoxEngine " + std::wstring(desc.name.begin(), desc.name.end());
         SetWindowTextW(GetWindow().GetHandle(), title.c_str());
@@ -330,7 +359,8 @@ protected:
 
         m_scene.Update(dt);
         m_physicsWorld.Step(dt);
-        m_particleSystem.Update(dt);
+        for (auto& ps : m_particleSystems)
+            ps->Update(dt);
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
@@ -500,13 +530,13 @@ protected:
         }
 
         // Particles — render into HDR RT with depth read (no write)
-        if (m_particleSystem.enabled)
+        if (!m_particleSystems.empty())
         {
-            // Re-bind only RT0 (particles don't output normals to RT1)
             ID3D11RenderTargetView* rtv = m_forwardHDR_RT.GetRTV();
             ctx->OMSetRenderTargets(1, &rtv, m_forwardHDR_RT.GetDSV());
-            m_particleSystem.Render(ctx, view, proj,
-                m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight());
+            for (auto& ps : m_particleSystems)
+                ps->Render(ctx, view, proj,
+                    m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight());
         }
     }
 
@@ -884,22 +914,28 @@ private:
 
         // --- Particles ---
         ImGui::Begin("Particles");
-        ImGui::Checkbox("Enable", &m_particleSystem.enabled);
-        if (m_particleSystem.enabled)
+        ImGui::Text("Emitters: %d", (int)m_particleSystems.size());
+        for (int i = 0; i < (int)m_particleSystems.size(); ++i)
         {
-            ImGui::Text("Alive: %u", m_particleSystem.GetAliveCount());
-            static XMFLOAT3 particlePos = { 0.0f, 2.0f, 0.0f };
-            if (ImGui::DragFloat3("Emitter Pos", &particlePos.x, 0.5f, -100.0f, 100.0f))
-                m_particleSystem.SetPosition(particlePos);
-            ImGui::SliderFloat("Emit Rate",    &m_particleSystem.config.emitRate, 1.0f, 500.0f);
-            ImGui::SliderFloat("Life Min",     &m_particleSystem.config.lifetimeMin, 0.1f, 10.0f);
-            ImGui::SliderFloat("Life Max",     &m_particleSystem.config.lifetimeMax, 0.1f, 10.0f);
-            ImGui::SliderFloat("Size Start",   &m_particleSystem.config.sizeStart, 0.01f, 2.0f);
-            ImGui::SliderFloat("Size End",     &m_particleSystem.config.sizeEnd, 0.0f, 2.0f);
-            ImGui::ColorEdit4("Color Start",   &m_particleSystem.config.colorStart.x);
-            ImGui::ColorEdit4("Color End",     &m_particleSystem.config.colorEnd.x);
-            ImGui::DragFloat3("Gravity",       &m_particleSystem.config.gravity.x, 0.1f, -20.0f, 20.0f);
-            ImGui::SliderFloat("Spawn Radius", &m_particleSystem.config.spawnRadius, 0.0f, 5.0f);
+            auto& ps = *m_particleSystems[i];
+            ImGui::PushID(i);
+            char label[32];
+            sprintf_s(label, "Emitter %d", i);
+            if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Checkbox("Enable", &ps.enabled);
+                ImGui::Text("Alive: %u", ps.GetAliveCount());
+                ImGui::SliderFloat("Emit Rate",    &ps.config.emitRate,    1.0f, 500.0f);
+                ImGui::SliderFloat("Life Min",     &ps.config.lifetimeMin, 0.1f, 10.0f);
+                ImGui::SliderFloat("Life Max",     &ps.config.lifetimeMax, 0.1f, 10.0f);
+                ImGui::SliderFloat("Size Start",   &ps.config.sizeStart,   0.01f, 2.0f);
+                ImGui::SliderFloat("Size End",     &ps.config.sizeEnd,     0.0f, 2.0f);
+                ImGui::ColorEdit4("Color Start",   &ps.config.colorStart.x);
+                ImGui::ColorEdit4("Color End",     &ps.config.colorEnd.x);
+                ImGui::DragFloat3("Gravity",       &ps.config.gravity.x, 0.1f, -20.0f, 20.0f);
+                ImGui::SliderFloat("Spawn Radius", &ps.config.spawnRadius, 0.0f, 5.0f);
+            }
+            ImGui::PopID();
         }
         ImGui::End();
 
@@ -1025,7 +1061,7 @@ private:
     SE::FXAA                     m_fxaa;
     SE::RenderTarget             m_ldrRT;
     SE::SpotLight                m_spotLight;
-    SE::ParticleSystem           m_particleSystem;
+    std::vector<std::unique_ptr<SE::ParticleSystem>> m_particleSystems;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;
