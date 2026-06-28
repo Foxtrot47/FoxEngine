@@ -129,6 +129,11 @@ struct SceneDescriptor
         std::array<float, 3> gravity    = { 0.f, -2.f, 0.f };
         float spawnRadius  = 0.0f;
         std::string texture;  // optional DDS path
+        // Flipbook atlas
+        int   atlasColumns    = 1;
+        int   atlasRows       = 1;
+        int   atlasFrameCount = 0;  // 0 = cols*rows
+        float atlasSpeed      = 1.0f;
     };
     std::vector<ParticleEmitterDesc> particles;
 };

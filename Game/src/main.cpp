@@ -257,6 +257,10 @@ public:
             ps->config.colorEnd     = { pe.colorEnd[0], pe.colorEnd[1], pe.colorEnd[2], pe.colorEnd[3] };
             ps->config.gravity      = { pe.gravity[0], pe.gravity[1], pe.gravity[2] };
             ps->config.spawnRadius  = pe.spawnRadius;
+            ps->config.atlasColumns    = pe.atlasColumns;
+            ps->config.atlasRows       = pe.atlasRows;
+            ps->config.atlasFrameCount = pe.atlasFrameCount;
+            ps->config.atlasSpeed      = pe.atlasSpeed;
             if (!ps->Init(device, GetShaders()))
             {
                 SE_LOG_WARN("Failed to init particle emitter");
@@ -934,6 +938,12 @@ private:
                 ImGui::ColorEdit4("Color End",     &ps.config.colorEnd.x);
                 ImGui::DragFloat3("Gravity",       &ps.config.gravity.x, 0.1f, -20.0f, 20.0f);
                 ImGui::SliderFloat("Spawn Radius", &ps.config.spawnRadius, 0.0f, 5.0f);
+                ImGui::Separator();
+                ImGui::Text("Atlas");
+                ImGui::InputInt("Columns", &ps.config.atlasColumns);
+                ImGui::InputInt("Rows",    &ps.config.atlasRows);
+                ImGui::InputInt("Frames",  &ps.config.atlasFrameCount);
+                ImGui::SliderFloat("Speed", &ps.config.atlasSpeed, 0.1f, 5.0f);
             }
             ImGui::PopID();
         }

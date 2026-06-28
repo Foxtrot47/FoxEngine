@@ -63,8 +63,9 @@ bool ParticleSystem::Init(ID3D11Device* device, ShaderLibrary& shaders)
         { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 8,  D3D11_INPUT_PER_VERTEX_DATA,   0 },
         { "TEXCOORD", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0,  D3D11_INPUT_PER_INSTANCE_DATA,  1 },
         { "TEXCOORD", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA,  1 },
+        { "TEXCOORD", 3, DXGI_FORMAT_R32_FLOAT,          1, 32, D3D11_INPUT_PER_INSTANCE_DATA,  1 },
     };
-    if (FAILED(device->CreateInputLayout(layout, 4, m_perm->vsBlob->GetBufferPointer(),
+    if (FAILED(device->CreateInputLayout(layout, 5, m_perm->vsBlob->GetBufferPointer(),
             m_perm->vsBlob->GetBufferSize(), &m_inputLayout)))
         return false;
 
@@ -222,6 +223,8 @@ void ParticleSystem::UpdateInstanceBuffer(ID3D11DeviceContext* ctx, const XMMATR
         InstanceData inst;
         inst.posAndSize = { p.position.x, p.position.y, p.position.z, p.size };
         inst.color      = p.color;
+        inst.normalizedAge = 1.0f - (p.life / p.maxLife); // 0 at birth, 1 at death
+        inst._pad[0] = inst._pad[1] = inst._pad[2] = 0.0f;
         m_instances.push_back(inst);
     }
 
@@ -270,6 +273,12 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
     cb.viewProj = view * proj;
     cb.camRight = { viewF._11, viewF._21, viewF._31 };
     cb.camUp    = { viewF._12, viewF._22, viewF._32 };
+    cb.atlasColumns    = static_cast<float>(config.atlasColumns);
+    cb.atlasRows       = static_cast<float>(config.atlasRows);
+    cb.atlasFrameCount = static_cast<float>(config.atlasFrameCount > 0
+                             ? config.atlasFrameCount
+                             : config.atlasColumns * config.atlasRows);
+    cb.atlasSpeed      = config.atlasSpeed;
     m_cameraCB.Update(ctx, cb);
     m_cameraCB.BindVS(ctx, 0);
 
