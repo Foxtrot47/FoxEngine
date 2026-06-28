@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <DirectXMath.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <algorithm>
 #include <filesystem>
 #include "Engine/Core/Engine.h"
@@ -29,6 +30,7 @@
 #include "Engine/Renderer/SSR.h"
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/FXAA.h"
+#include "Engine/Renderer/ParticleSystem.h"
 #include "Engine/Renderer/SpotLight.h"
 #include "Engine/Input/GamepadState.h"
 
@@ -85,6 +87,10 @@ public:
 
         // Spot light
         if (!m_spotLight.Init(device, GetShaders(), 1024)) return false;
+
+        // Particle system
+        if (!m_particleSystem.Init(device, GetShaders())) return false;
+        m_particleSystem.SetPosition({ 0.0f, 2.0f, 0.0f });
 
         // Scan available scenes
         m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
@@ -324,6 +330,7 @@ protected:
 
         m_scene.Update(dt);
         m_physicsWorld.Step(dt);
+        m_particleSystem.Update(dt);
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
@@ -491,6 +498,16 @@ protected:
             };
             m_pipeline.DrawLine(ctx, m_spotLight.position, tip, m_spotLight.color);
         }
+
+        // Particles — render into HDR RT with depth read (no write)
+        if (m_particleSystem.enabled)
+        {
+            // Re-bind only RT0 (particles don't output normals to RT1)
+            ID3D11RenderTargetView* rtv = m_forwardHDR_RT.GetRTV();
+            ctx->OMSetRenderTargets(1, &rtv, m_forwardHDR_RT.GetDSV());
+            m_particleSystem.Render(ctx, view, proj,
+                m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight());
+        }
     }
 
     void OnPostProcess() override
@@ -553,6 +570,69 @@ protected:
 private:
     void DrawUI(XMMATRIX view, XMMATRIX proj)
     {
+        // Full-viewport dockspace
+        ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(),
+            ImGuiDockNodeFlags_PassthruCentralNode);
+
+        // Build default layout only on very first run (no saved layout)
+        if (m_firstFrame)
+        {
+            m_firstFrame = false;
+
+            // Check if imgui.ini exists — if not, build a programmatic default
+            FILE* f = nullptr;
+            fopen_s(&f, "imgui.ini", "r");
+            bool hasIni = (f != nullptr);
+            if (f) fclose(f);
+
+            if (!hasIni)
+            {
+                ImGui::DockBuilderRemoveNode(dockspaceId);
+                ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+                ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->Size);
+
+                // Right sidebar (~14% width)
+                ImGuiID dockCenter = dockspaceId;
+                ImGuiID dockRight;
+                ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Right, 0.14f, &dockRight, &dockCenter);
+
+                // Split right sidebar into 4 vertical sections
+                ImGuiID dockTop, dockRest;
+                ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Up, 0.12f, &dockTop, &dockRest);
+                ImGuiID dockMid, dockLower;
+                ImGui::DockBuilderSplitNode(dockRest, ImGuiDir_Up, 0.35f, &dockMid, &dockLower);
+                ImGuiID dockBottom, dockFinal;
+                ImGui::DockBuilderSplitNode(dockLower, ImGuiDir_Up, 0.55f, &dockBottom, &dockFinal);
+
+                // Top tabs: Scene active (last = default)
+                ImGui::DockBuilderDockWindow("Input",  dockTop);
+                ImGui::DockBuilderDockWindow("Camera", dockTop);
+                ImGui::DockBuilderDockWindow("Scene",  dockTop);
+
+                // Mid tabs: Particles active (last = default)
+                ImGui::DockBuilderDockWindow("Physics",   dockMid);
+                ImGui::DockBuilderDockWindow("Particles", dockMid);
+
+                // Bottom tabs: Lighting active (last = default)
+                ImGui::DockBuilderDockWindow("Material", dockBottom);
+                ImGui::DockBuilderDockWindow("Lighting", dockBottom);
+
+                // Final row: Post Processing
+                ImGui::DockBuilderDockWindow("Post Processing", dockFinal);
+
+                ImGui::DockBuilderFinish(dockspaceId);
+            }
+        }
+
+        // On frames 2-4, force focus on desired default tabs one at a time
+        m_frameCount++;
+        if (m_frameCount == 2)
+            ImGui::SetWindowFocus("Scene");
+        else if (m_frameCount == 3)
+            ImGui::SetWindowFocus("Particles");
+        else if (m_frameCount == 4)
+            ImGui::SetWindowFocus("Lighting");
+
         // HUD — FPS + asset stats rendered directly on screen (no window chrome)
         {
             ImDrawList* dl = ImGui::GetForegroundDrawList();
@@ -690,100 +770,136 @@ private:
 
         // --- Lighting ---
         ImGui::Begin("Lighting");
-        ImGui::Text("Sun");
-        ImGui::SliderFloat("Elevation",    &m_lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
-        ImGui::SliderFloat("Azimuth",      &m_lights.azimDeg, -180.0f, 180.0f, "%.1f deg");
-        ImGui::SliderFloat("Intensity",    &m_lights.lightIntensity, 0.0f, 10.0f, "%.2f");
-        ImGui::ColorEdit3("Light Color",   m_lights.lightColor);
-        ImGui::SliderFloat("IBL Intensity", &m_lights.iblIntensity, 0.0f, 5.0f, "%.2f");
-        ImGui::Separator();
-        ImGui::Text("Light Debug");
-        ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
-        int dlm = (int)m_lights.debugLightMode;
-        ImGui::RadioButton("Normal",    &dlm, 0); ImGui::SameLine();
-        ImGui::RadioButton("Force Lit", &dlm, 1); ImGui::SameLine();
-        ImGui::RadioButton("NdotL",     &dlm, 2);
-        m_lights.debugLightMode = (float)dlm;
-        ImGui::Separator();
-        ImGui::Text("Tone Mapping");
-        ImGui::SliderFloat("Exposure",     &m_toneMap.exposure, 0.01f, 10.0f, "%.2f");
+        if (ImGui::CollapsingHeader("Sun", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            int op = static_cast<int>(m_toneMap.op);
-            ImGui::RadioButton("Reinhard", &op, 0); ImGui::SameLine();
-            ImGui::RadioButton("ACES",     &op, 1);
-            m_toneMap.op = static_cast<SE::ToneMap::Operator>(op);
+            ImGui::SliderFloat("Elevation",    &m_lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
+            ImGui::SliderFloat("Azimuth",      &m_lights.azimDeg, -180.0f, 180.0f, "%.1f deg");
+            ImGui::SliderFloat("Intensity",    &m_lights.lightIntensity, 0.0f, 10.0f, "%.2f");
+            ImGui::ColorEdit3("Light Color",   m_lights.lightColor);
+            ImGui::SliderFloat("IBL Intensity", &m_lights.iblIntensity, 0.0f, 5.0f, "%.2f");
+            ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         }
-        ImGui::Checkbox("Gamma Correct", &m_toneMap.gammaCorrect);
-        ImGui::Separator();
-        ImGui::Text("Bloom");
-        ImGui::Checkbox("Enable Bloom", &m_bloom.enabled);
-        if (m_bloom.enabled)
+        if (ImGui::CollapsingHeader("Spot Light"))
         {
-            ImGui::SliderFloat("Threshold", &m_bloom.threshold, 0.0f, 4.0f,  "%.2f");
-            ImGui::SliderFloat("Strength",  &m_bloom.intensity, 0.0f, 0.5f,  "%.3f");
-            ImGui::SliderFloat("Scatter",   &m_bloom.scatter,   0.0f, 1.0f,  "%.2f");
-        }
-        ImGui::Separator();
-        ImGui::Text("SSR (Reflections)");
-        ImGui::Checkbox("Enable SSR", &m_ssr.enabled);
-        if (m_ssr.enabled)
-        {
-            ImGui::SliderFloat("SSR Intensity",  &m_ssr.intensity,   0.0f, 2.0f,  "%.2f");
-            ImGui::SliderFloat("Max Distance",   &m_ssr.maxDistance,  5.0f, 10000.0f, "%.0f");
-            ImGui::SliderFloat("Thickness",      &m_ssr.thickness,   0.1f, 5.0f,  "%.2f");
-            ImGui::SliderInt("Max Steps",        &m_ssr.maxSteps,    16, 10000);
-            ImGui::SliderInt("Binary Steps",     &m_ssr.binarySteps, 0, 16);
-        }
-        ImGui::Separator();
-        ImGui::Text("SSAO");
-        ImGui::Checkbox("Enable SSAO", &m_ssao.enabled);
-        if (m_ssao.enabled)
-        {
-            ImGui::SliderFloat("AO Radius", &m_ssao.radius, 0.01f, 5.0f, "%.2f");
-            ImGui::SliderFloat("AO Bias",   &m_ssao.bias,   0.001f, 0.1f, "%.3f");
-            ImGui::SliderFloat("AO Power",  &m_ssao.power,  0.5f, 8.0f,   "%.1f");
-        }
-        ImGui::Separator();
-        ImGui::Text("FXAA");
-        ImGui::Checkbox("Enable FXAA", &m_fxaa.enabled);
-        if (m_fxaa.enabled)
-        {
-            ImGui::SliderFloat("Subpix Quality", &m_fxaa.subpixQuality, 0.0f, 1.0f, "%.2f");
-            ImGui::SliderFloat("Edge Threshold", &m_fxaa.edgeThreshold, 0.063f, 0.333f, "%.3f");
-            ImGui::SliderFloat("Edge Min",       &m_fxaa.edgeThresholdMin, 0.0f, 0.1f, "%.4f");
-        }
-        ImGui::Separator();
-        ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
-        ImGui::Separator();
-        ImGui::Text("Spot Light");
-        ImGui::Checkbox("Enable Spot", &m_spotLight.enabled);
-        if (m_spotLight.enabled)
-        {
-            ImGui::DragFloat3("Spot Pos", &m_spotLight.position.x, 0.5f, -500.0f, 500.0f);
-            ImGui::DragFloat3("Spot Dir", &m_spotLight.direction.x, 0.01f, -1.0f, 1.0f);
-            ImGui::ColorEdit3("Spot Color", &m_spotLight.color.x);
-            ImGui::SliderFloat("Spot Range", &m_spotLight.range, 1.0f, 200.0f);
-            ImGui::SliderFloat("Spot Inner", &m_spotLight.innerAngle, 1.0f, m_spotLight.outerAngle - 0.5f);
-            ImGui::SliderFloat("Spot Outer", &m_spotLight.outerAngle, m_spotLight.innerAngle + 0.5f, 89.0f);
-            ImGui::SliderFloat("Spot Intensity", &m_spotLight.intensity, 0.1f, 50.0f);
-            ImGui::SliderFloat("Spot Bias", &m_spotLight.shadowBias, 0.0001f, 0.01f, "%.4f");
-        }
-        ImGui::Separator();
-        ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
-        for (int i = 0; i < m_lights.numLights; ++i)
-        {
-            ImGui::PushID(i);
-            char label[24];
-            sprintf_s(label, "Point Light %d", i + 1);
-            if (ImGui::CollapsingHeader(label))
+            ImGui::Checkbox("Enable Spot", &m_spotLight.enabled);
+            if (m_spotLight.enabled)
             {
-                ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
-                ImGui::ColorEdit3("Color",    &m_lights.lights[i].color.x);
-                ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
-                if (i < 2)
-                    ImGui::Checkbox("Cast Shadow", &m_lightCastsShadow[i]);
+                ImGui::DragFloat3("Spot Pos", &m_spotLight.position.x, 0.5f, -500.0f, 500.0f);
+                ImGui::DragFloat3("Spot Dir", &m_spotLight.direction.x, 0.01f, -1.0f, 1.0f);
+                ImGui::ColorEdit3("Spot Color", &m_spotLight.color.x);
+                ImGui::SliderFloat("Spot Range", &m_spotLight.range, 1.0f, 200.0f);
+                ImGui::SliderFloat("Spot Inner", &m_spotLight.innerAngle, 1.0f, m_spotLight.outerAngle - 0.5f);
+                ImGui::SliderFloat("Spot Outer", &m_spotLight.outerAngle, m_spotLight.innerAngle + 0.5f, 89.0f);
+                ImGui::SliderFloat("Spot Intensity", &m_spotLight.intensity, 0.1f, 50.0f);
+                ImGui::SliderFloat("Spot Bias", &m_spotLight.shadowBias, 0.0001f, 0.01f, "%.4f");
             }
-            ImGui::PopID();
+        }
+        if (ImGui::CollapsingHeader("Point Lights"))
+        {
+            ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
+            for (int i = 0; i < m_lights.numLights; ++i)
+            {
+                ImGui::PushID(i);
+                char label[24];
+                sprintf_s(label, "Point Light %d", i + 1);
+                if (ImGui::TreeNode(label))
+                {
+                    ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
+                    ImGui::ColorEdit3("Color",    &m_lights.lights[i].color.x);
+                    ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
+                    if (i < 2)
+                        ImGui::Checkbox("Cast Shadow", &m_lightCastsShadow[i]);
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+        }
+        if (ImGui::CollapsingHeader("Debug"))
+        {
+            ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
+            int dlm = (int)m_lights.debugLightMode;
+            ImGui::RadioButton("Normal",    &dlm, 0); ImGui::SameLine();
+            ImGui::RadioButton("Force Lit", &dlm, 1); ImGui::SameLine();
+            ImGui::RadioButton("NdotL",     &dlm, 2);
+            m_lights.debugLightMode = (float)dlm;
+        }
+        ImGui::End();
+
+        // --- Post Processing ---
+        ImGui::Begin("Post Processing");
+        if (ImGui::CollapsingHeader("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::SliderFloat("Exposure", &m_toneMap.exposure, 0.01f, 10.0f, "%.2f");
+            {
+                int op = static_cast<int>(m_toneMap.op);
+                ImGui::RadioButton("Reinhard", &op, 0); ImGui::SameLine();
+                ImGui::RadioButton("ACES",     &op, 1);
+                m_toneMap.op = static_cast<SE::ToneMap::Operator>(op);
+            }
+            ImGui::Checkbox("Gamma Correct", &m_toneMap.gammaCorrect);
+        }
+        if (ImGui::CollapsingHeader("Bloom"))
+        {
+            ImGui::Checkbox("Enable Bloom", &m_bloom.enabled);
+            if (m_bloom.enabled)
+            {
+                ImGui::SliderFloat("Threshold", &m_bloom.threshold, 0.0f, 4.0f,  "%.2f");
+                ImGui::SliderFloat("Strength",  &m_bloom.intensity, 0.0f, 0.5f,  "%.3f");
+                ImGui::SliderFloat("Scatter",   &m_bloom.scatter,   0.0f, 1.0f,  "%.2f");
+            }
+        }
+        if (ImGui::CollapsingHeader("SSR"))
+        {
+            ImGui::Checkbox("Enable SSR", &m_ssr.enabled);
+            if (m_ssr.enabled)
+            {
+                ImGui::SliderFloat("SSR Intensity",  &m_ssr.intensity,   0.0f, 2.0f,  "%.2f");
+                ImGui::SliderFloat("Max Distance",   &m_ssr.maxDistance,  5.0f, 10000.0f, "%.0f");
+                ImGui::SliderFloat("Thickness",      &m_ssr.thickness,   0.1f, 5.0f,  "%.2f");
+                ImGui::SliderInt("Max Steps",        &m_ssr.maxSteps,    16, 10000);
+                ImGui::SliderInt("Binary Steps",     &m_ssr.binarySteps, 0, 16);
+            }
+        }
+        if (ImGui::CollapsingHeader("SSAO"))
+        {
+            ImGui::Checkbox("Enable SSAO", &m_ssao.enabled);
+            if (m_ssao.enabled)
+            {
+                ImGui::SliderFloat("AO Radius", &m_ssao.radius, 0.01f, 5.0f, "%.2f");
+                ImGui::SliderFloat("AO Bias",   &m_ssao.bias,   0.001f, 0.1f, "%.3f");
+                ImGui::SliderFloat("AO Power",  &m_ssao.power,  0.5f, 8.0f,   "%.1f");
+            }
+        }
+        if (ImGui::CollapsingHeader("FXAA"))
+        {
+            ImGui::Checkbox("Enable FXAA", &m_fxaa.enabled);
+            if (m_fxaa.enabled)
+            {
+                ImGui::SliderFloat("Subpix Quality", &m_fxaa.subpixQuality, 0.0f, 1.0f, "%.2f");
+                ImGui::SliderFloat("Edge Threshold", &m_fxaa.edgeThreshold, 0.063f, 0.333f, "%.3f");
+                ImGui::SliderFloat("Edge Min",       &m_fxaa.edgeThresholdMin, 0.0f, 0.1f, "%.4f");
+            }
+        }
+        ImGui::End();
+
+        // --- Particles ---
+        ImGui::Begin("Particles");
+        ImGui::Checkbox("Enable", &m_particleSystem.enabled);
+        if (m_particleSystem.enabled)
+        {
+            ImGui::Text("Alive: %u", m_particleSystem.GetAliveCount());
+            static XMFLOAT3 particlePos = { 0.0f, 2.0f, 0.0f };
+            if (ImGui::DragFloat3("Emitter Pos", &particlePos.x, 0.5f, -100.0f, 100.0f))
+                m_particleSystem.SetPosition(particlePos);
+            ImGui::SliderFloat("Emit Rate",    &m_particleSystem.config.emitRate, 1.0f, 500.0f);
+            ImGui::SliderFloat("Life Min",     &m_particleSystem.config.lifetimeMin, 0.1f, 10.0f);
+            ImGui::SliderFloat("Life Max",     &m_particleSystem.config.lifetimeMax, 0.1f, 10.0f);
+            ImGui::SliderFloat("Size Start",   &m_particleSystem.config.sizeStart, 0.01f, 2.0f);
+            ImGui::SliderFloat("Size End",     &m_particleSystem.config.sizeEnd, 0.0f, 2.0f);
+            ImGui::ColorEdit4("Color Start",   &m_particleSystem.config.colorStart.x);
+            ImGui::ColorEdit4("Color End",     &m_particleSystem.config.colorEnd.x);
+            ImGui::DragFloat3("Gravity",       &m_particleSystem.config.gravity.x, 0.1f, -20.0f, 20.0f);
+            ImGui::SliderFloat("Spawn Radius", &m_particleSystem.config.spawnRadius, 0.0f, 5.0f);
         }
         ImGui::End();
 
@@ -896,6 +1012,8 @@ private:
     bool                         m_showColliders     = false;
     bool                         m_castRay           = false;
     bool                         m_debugShadow       = false;
+    bool                         m_firstFrame        = true;
+    int                          m_frameCount        = 0;
     DirectX::XMMATRIX            m_meshWorld         = DirectX::XMMatrixIdentity();
     SE::RenderTarget             m_forwardHDR_RT;
     SE::RenderTarget             m_normalRT;
@@ -907,6 +1025,7 @@ private:
     SE::FXAA                     m_fxaa;
     SE::RenderTarget             m_ldrRT;
     SE::SpotLight                m_spotLight;
+    SE::ParticleSystem           m_particleSystem;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;
