@@ -32,6 +32,7 @@ public:
     ID3D11ShaderResourceView* GetDepthSRV() const { return m_depthSrv.Get(); }
     ID3D11RenderTargetView*   GetRTV()      const { return m_rtv.Get(); }
     ID3D11DepthStencilView*   GetDSV()      const { return m_dsv.Get(); }
+    ID3D11DepthStencilView*   GetReadOnlyDSV() const { return m_dsvReadOnly.Get(); }
     ID3D11Texture2D*          GetTexture()  const { return m_tex.Get(); }
     uint32_t GetWidth()  const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
@@ -43,6 +44,7 @@ private:
 
     ComPtr<ID3D11Texture2D>          m_depthTex;
     ComPtr<ID3D11DepthStencilView>   m_dsv;
+    ComPtr<ID3D11DepthStencilView>   m_dsvReadOnly;  // read-only DSV for simultaneous SRV binding
     ComPtr<ID3D11ShaderResourceView> m_depthSrv;  // only if depthReadable
 
     uint32_t m_width  = 0;

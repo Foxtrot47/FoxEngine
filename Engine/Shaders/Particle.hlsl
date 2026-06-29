@@ -1,10 +1,12 @@
-// Particle billboard shader with flipbook/atlas support.
+// Particle billboard shader with flipbook/atlas + soft particle support.
 // Per-vertex: quad corner (POSITION) + UV (TEXCOORD0)
 // Per-instance: world position + size (TEXCOORD1), color (TEXCOORD2), normalizedAge (TEXCOORD3)
 // Camera-facing billboards constructed in the vertex shader.
 // Atlas UVs computed from normalizedAge * atlasSpeed mapped to frame grid.
+// Soft particles: fade alpha based on depth difference with scene geometry.
 
 Texture2D    g_particleTex : register(t0);
+Texture2D    g_depthTex    : register(t1);
 SamplerState g_sampler     : register(s0);
 
 cbuffer ParticleCameraCB : register(b0)
@@ -19,6 +21,11 @@ cbuffer ParticleCameraCB : register(b0)
     float AtlasRows;        // grid rows
     float AtlasFrameCount;  // total frames
     float AtlasSpeed;       // playback speed (1 = full cycle over lifetime)
+    // Soft particle parameters
+    float NearZ;
+    float FarZ;
+    float SoftDistance;     // fade distance in world units
+    float _pad2;
 };
 
 struct VSInput
@@ -38,6 +45,7 @@ struct PSInput
     float2 uv        : TEXCOORD0;
     float2 uvNext    : TEXCOORD1;   // next frame UV for blending
     float  blend     : TEXCOORD2;   // lerp factor between frames
+    float  linearZ   : TEXCOORD3;   // linear depth of this particle
     float4 color     : COLOR0;
 };
 
@@ -54,6 +62,7 @@ PSInput VS_Main(VSInput input)
                     + CamUp    * (input.cornerPos.y * size);
 
     o.pos   = mul(float4(worldPos, 1.0f), ViewProj);
+    o.linearZ = o.pos.w;  // clip-space w = linear view-space depth for perspective projection
     o.color = input.color;
 
     // Compute atlas frame from normalized age
@@ -97,5 +106,26 @@ float4 PS_Main(PSInput input) : SV_TARGET
     float4 tex0 = g_particleTex.Sample(g_sampler, input.uv);
     float4 tex1 = g_particleTex.Sample(g_sampler, input.uvNext);
     float4 tex  = lerp(tex0, tex1, input.blend);
-    return tex * input.color;
+    float4 result = tex * input.color;
+
+    // Soft particle: fade based on depth difference
+    if (SoftDistance > 0.0f)
+    {
+        // Read scene depth from depth buffer
+        float2 screenUV = input.pos.xy;
+        uint2 dims;
+        g_depthTex.GetDimensions(dims.x, dims.y);
+        screenUV /= float2(dims);
+
+        float sceneDepthNDC = g_depthTex.Sample(g_sampler, screenUV).r;
+        // Linearize scene depth (perspective projection)
+        float sceneLinear = NearZ * FarZ / (FarZ - sceneDepthNDC * (FarZ - NearZ));
+        float particleLinear = input.linearZ;
+
+        float depthDiff = sceneLinear - particleLinear;
+        float fade = saturate(depthDiff / SoftDistance);
+        result.a *= fade;
+    }
+
+    return result;
 }
