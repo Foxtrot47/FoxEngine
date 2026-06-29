@@ -63,6 +63,12 @@ bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
 
         if (depthReadable)
         {
+            // Create a read-only DSV so depth can be bound as SRV simultaneously
+            D3D11_DEPTH_STENCIL_VIEW_DESC roDesc = dsvDesc;
+            roDesc.Flags = D3D11_DSV_READ_ONLY_DEPTH;
+            hr = device->CreateDepthStencilView(m_depthTex.Get(), &roDesc, m_dsvReadOnly.GetAddressOf());
+            if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateReadOnlyDSV failed (0x%08X)", hr); return false; }
+
             D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
             srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
             srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;

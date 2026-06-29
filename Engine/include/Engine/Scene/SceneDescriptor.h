@@ -134,6 +134,8 @@ struct SceneDescriptor
         int   atlasRows       = 1;
         int   atlasFrameCount = 0;  // 0 = cols*rows
         float atlasSpeed      = 1.0f;
+        // Soft particles
+        float softDistance    = 0.5f;
     };
     std::vector<ParticleEmitterDesc> particles;
 };
