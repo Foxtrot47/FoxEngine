@@ -90,6 +90,51 @@ const ShaderPermutation* ShaderLibrary::Get(const std::wstring& hlslFile,
 void ShaderLibrary::Clear()
 {
     m_cache.clear();
+    m_csCache.clear();
+}
+
+ID3D11ComputeShader* ShaderLibrary::GetCS(const std::wstring& hlslFile,
+                                           const char* entryPoint,
+                                           const std::vector<ShaderDefine>& defines)
+{
+    // Build key with entry point appended
+    std::string key = MakeKey(hlslFile, defines) + "@" + entryPoint;
+    auto it = m_csCache.find(key);
+    if (it != m_csCache.end())
+        return it->second.Get();
+
+    std::vector<D3D_SHADER_MACRO> macros;
+    for (auto& d : defines)
+        macros.push_back({ d.name.c_str(), d.value.c_str() });
+    macros.push_back({ nullptr, nullptr });
+
+    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
+#ifdef SE_DEBUG
+    flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+
+    Microsoft::WRL::ComPtr<ID3DBlob> csBlob, errBlob;
+    HRESULT hr = D3DCompileFromFile(hlslFile.c_str(),
+        macros.data(), D3D_COMPILE_STANDARD_FILE_INCLUDE,
+        entryPoint, "cs_5_0", flags, 0, &csBlob, &errBlob);
+    if (FAILED(hr))
+    {
+        if (errBlob)
+            SE_LOG_ERROR("ShaderLibrary CS [%ls@%s]: %s",
+                hlslFile.c_str(), entryPoint, (char*)errBlob->GetBufferPointer());
+        return nullptr;
+    }
+
+    Microsoft::WRL::ComPtr<ID3D11ComputeShader> cs;
+    hr = m_device->CreateComputeShader(csBlob->GetBufferPointer(), csBlob->GetBufferSize(), nullptr, &cs);
+    if (FAILED(hr))
+    {
+        SE_LOG_ERROR("ShaderLibrary: CreateComputeShader failed (0x%08X)", hr);
+        return nullptr;
+    }
+
+    auto [insertIt, _] = m_csCache.emplace(std::move(key), std::move(cs));
+    return insertIt->second.Get();
 }
 
 } // namespace SE
