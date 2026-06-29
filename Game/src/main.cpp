@@ -276,7 +276,6 @@ public:
             m_particleSystems.push_back(std::move(ps));
         }
 
-
         // Update window title
         std::wstring title = L"FoxEngine " + std::wstring(desc.name.begin(), desc.name.end());
         SetWindowTextW(GetWindow().GetHandle(), title.c_str());
@@ -365,7 +364,7 @@ protected:
         m_scene.Update(dt);
         m_physicsWorld.Step(dt);
         for (auto& ps : m_particleSystems)
-            ps->Update(dt);
+            ps->Update(GetRenderer().GetContext(), dt);
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
@@ -934,7 +933,7 @@ private:
             if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
             {
                 ImGui::Checkbox("Enable", &ps.enabled);
-                ImGui::Text("Alive: %u", ps.GetAliveCount());
+                ImGui::Text("Max: %d", ps.config.maxParticles);
                 ImGui::SliderFloat("Emit Rate",    &ps.config.emitRate,    1.0f, 500.0f);
                 ImGui::SliderFloat("Life Min",     &ps.config.lifetimeMin, 0.1f, 10.0f);
                 ImGui::SliderFloat("Life Max",     &ps.config.lifetimeMax, 0.1f, 10.0f);
