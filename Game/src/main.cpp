@@ -261,6 +261,7 @@ public:
             ps->config.atlasRows       = pe.atlasRows;
             ps->config.atlasFrameCount = pe.atlasFrameCount;
             ps->config.atlasSpeed      = pe.atlasSpeed;
+            ps->config.softDistance    = pe.softDistance;
             if (!ps->Init(device, GetShaders()))
             {
                 SE_LOG_WARN("Failed to init particle emitter");
@@ -534,13 +535,18 @@ protected:
         }
 
         // Particles — render into HDR RT with depth read (no write)
+        // Use read-only DSV so depth SRV can be bound simultaneously for soft particles
         if (!m_particleSystems.empty())
         {
             ID3D11RenderTargetView* rtv = m_forwardHDR_RT.GetRTV();
-            ctx->OMSetRenderTargets(1, &rtv, m_forwardHDR_RT.GetDSV());
+            auto* readOnlyDSV = m_forwardHDR_RT.GetReadOnlyDSV();
+            auto* dsv = readOnlyDSV ? readOnlyDSV : m_forwardHDR_RT.GetDSV();
+            ctx->OMSetRenderTargets(1, &rtv, dsv);
             for (auto& ps : m_particleSystems)
                 ps->Render(ctx, view, proj,
-                    m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight());
+                    m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight(),
+                    m_forwardHDR_RT.GetDepthSRV(),
+                    m_camera->nearZ, m_camera->farZ);
         }
     }
 
@@ -944,6 +950,8 @@ private:
                 ImGui::InputInt("Rows",    &ps.config.atlasRows);
                 ImGui::InputInt("Frames",  &ps.config.atlasFrameCount);
                 ImGui::SliderFloat("Speed", &ps.config.atlasSpeed, 0.1f, 5.0f);
+                ImGui::Separator();
+                ImGui::SliderFloat("Soft Distance", &ps.config.softDistance, 0.0f, 3.0f);
             }
             ImGui::PopID();
         }

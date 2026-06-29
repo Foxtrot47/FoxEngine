@@ -260,7 +260,9 @@ void ParticleSystem::UpdateInstanceBuffer(ID3D11DeviceContext* ctx, const XMMATR
 void ParticleSystem::Render(ID3D11DeviceContext* ctx,
                             const XMMATRIX& view,
                             const XMMATRIX& proj,
-                            uint32_t screenWidth, uint32_t screenHeight)
+                            uint32_t screenWidth, uint32_t screenHeight,
+                            ID3D11ShaderResourceView* depthSRV,
+                            float nearZ, float farZ)
 {
     if (!enabled || m_particles.empty()) return;
 
@@ -279,8 +281,13 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
                              ? config.atlasFrameCount
                              : config.atlasColumns * config.atlasRows);
     cb.atlasSpeed      = config.atlasSpeed;
+    cb.nearZ           = nearZ;
+    cb.farZ            = farZ;
+    cb.softDistance     = config.softDistance;
+    cb._pad2           = 0.0f;
     m_cameraCB.Update(ctx, cb);
     m_cameraCB.BindVS(ctx, 0);
+    m_cameraCB.BindPS(ctx, 0);
 
     // Set viewport
     D3D11_VIEWPORT vp = {};
@@ -309,6 +316,10 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
         ctx->PSSetShaderResources(0, 1, m_defaultSRV.GetAddressOf());
     ctx->PSSetSamplers(0, 1, m_sampler.GetAddressOf());
 
+    // Bind depth buffer for soft particles
+    if (depthSRV)
+        ctx->PSSetShaderResources(1, 1, &depthSRV);
+
     // Set render states
     float blendFactor[4] = { 0, 0, 0, 0 };
     ctx->OMSetBlendState(m_blendState.Get(), blendFactor, 0xFFFFFFFF);
@@ -325,6 +336,7 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
 
     ID3D11ShaderResourceView* nullSRV = nullptr;
     ctx->PSSetShaderResources(0, 1, &nullSRV);
+    ctx->PSSetShaderResources(1, 1, &nullSRV);
 }
 
 } // namespace SE

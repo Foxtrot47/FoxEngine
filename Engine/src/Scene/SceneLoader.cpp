@@ -202,6 +202,7 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
             if (p.contains("atlasRows"))      e.atlasRows       = p["atlasRows"].get<int>();
             if (p.contains("atlasFrameCount"))e.atlasFrameCount = p["atlasFrameCount"].get<int>();
             if (p.contains("atlasSpeed"))     e.atlasSpeed      = p["atlasSpeed"].get<float>();
+            if (p.contains("softDistance"))   e.softDistance    = p["softDistance"].get<float>();
             out.particles.push_back(e);
         }
     }

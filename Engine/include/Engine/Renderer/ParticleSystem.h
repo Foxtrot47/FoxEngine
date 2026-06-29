@@ -57,6 +57,9 @@ struct ParticleEmitterConfig
     int   atlasRows       = 1;      // grid rows
     int   atlasFrameCount = 0;      // total frames (0 = cols*rows)
     float atlasSpeed      = 1.0f;   // playback speed multiplier (1 = one full cycle per lifetime)
+
+    // Soft particles
+    float softDistance    = 0.5f;   // depth fade distance in world units (0 = disabled)
 };
 
 class ParticleSystem
@@ -74,7 +77,9 @@ public:
     void Render(ID3D11DeviceContext* ctx,
                 const DirectX::XMMATRIX& view,
                 const DirectX::XMMATRIX& proj,
-                uint32_t screenWidth, uint32_t screenHeight);
+                uint32_t screenWidth, uint32_t screenHeight,
+                ID3D11ShaderResourceView* depthSRV = nullptr,
+                float nearZ = 0.1f, float farZ = 500.0f);
 
     ParticleEmitterConfig config;
     bool enabled = true;
@@ -105,6 +110,11 @@ private:
         float atlasRows;
         float atlasFrameCount;
         float atlasSpeed;
+        // Soft particle params
+        float nearZ;
+        float farZ;
+        float softDistance;
+        float _pad2;
     };
 
     std::vector<Particle>     m_particles;
