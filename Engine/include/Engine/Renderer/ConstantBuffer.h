@@ -52,6 +52,11 @@ public:
         ctx->PSSetConstantBuffers(slot, 1, m_buffer.GetAddressOf());
     }
 
+    void BindCS(ID3D11DeviceContext* ctx, uint32_t slot) const
+    {
+        ctx->CSSetConstantBuffers(slot, 1, m_buffer.GetAddressOf());
+    }
+
 private:
     ComPtr<ID3D11Buffer> m_buffer;
 };
