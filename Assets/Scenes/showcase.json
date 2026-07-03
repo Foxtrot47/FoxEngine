@@ -160,6 +160,30 @@
       "softDistance": 0.3,
       "drag": 0.5,
       "shaderMode": 0
+    },
+    {
+      "comment": "Smoke",
+      "position": [-2, 0.5, -5],
+      "emit_rate": 6,
+      "max_particles": 40,
+      "lifetime_min": 3.0,
+      "lifetime_max": 5.0,
+      "velocity_min": [-0.1, 0.3, -0.1],
+      "velocity_max": [0.1, 0.8, 0.1],
+      "size_start": 0.4,
+      "size_end": 2.0,
+      "color_start": [0.2, 0.2, 0.2, 0.4],
+      "color_end": [0.1, 0.1, 0.1, 0.0],
+      "gravity": [0, 0.1, 0],
+      "spawn_radius": 0.2,
+      "texture": "Assets/Particles/smoke_puff.dds",
+      "blendMode": 1,
+      "softDistance": 0.5,
+      "drag": 0.3,
+      "shaderMode": 0,
+      "atlasColumns": 3,
+      "atlasRows": 3,
+      "atlasSpeed": 0.6
     }
   ]
 }
