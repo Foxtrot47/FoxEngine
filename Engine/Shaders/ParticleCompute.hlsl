@@ -29,7 +29,8 @@ struct InstanceOut
     float4 posAndSize;
     float4 color;
     float  normalizedAge;
-    float3 _instPad;
+    float  seed;
+    float2 _instPad;
 };
 
 RWStructuredBuffer<InstanceOut> g_instances : register(u2);
@@ -112,7 +113,10 @@ cbuffer UpdateCB : register(b0)
     float  DeltaTime;
     float3 Gravity;
     uint   MaxParticles;
-    float3 _updatePad;
+    float  Drag;
+    float2 _updatePad;
+    float  Time;
+    float3 _updatePad2;
 };
 
 [numthreads(256, 1, 1)]
@@ -142,8 +146,17 @@ void CS_Update(uint3 dtid : SV_DispatchThreadID)
         return;
     }
 
-    // Integrate
+    // Gravity
     p.velocity += Gravity * DeltaTime;
+
+    // Drag — exponential velocity decay (Drag is per-second rate, 0=no drag, 5=heavy)
+    if (Drag > 0.0f)
+    {
+        float dragFactor = exp(-Drag * DeltaTime);
+        p.velocity *= dragFactor;
+    }
+
+    // Integrate position from velocity
     p.position += p.velocity * DeltaTime;
     g_particles[dtid.x] = p;
 
@@ -156,7 +169,8 @@ void CS_Update(uint3 dtid : SV_DispatchThreadID)
     inst.posAndSize = float4(p.position, size);
     inst.color = color;
     inst.normalizedAge = t;
-    inst._instPad = float3(0, 0, 0);
+    inst.seed = frac((float)dtid.x * 0.6180339887); // golden ratio hash for well-distributed [0,1]
+    inst._instPad = float2(0, 0);
 
     // Atomically get render slot
     uint renderIdx;

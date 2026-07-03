@@ -203,6 +203,9 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
             if (p.contains("atlasFrameCount"))e.atlasFrameCount = p["atlasFrameCount"].get<int>();
             if (p.contains("atlasSpeed"))     e.atlasSpeed      = p["atlasSpeed"].get<float>();
             if (p.contains("softDistance"))   e.softDistance    = p["softDistance"].get<float>();
+            if (p.contains("blendMode"))      e.blendMode       = p["blendMode"].get<int>();
+            if (p.contains("drag"))           e.drag            = p["drag"].get<float>();
+            if (p.contains("shaderMode"))     e.shaderMode      = p["shaderMode"].get<int>();
             out.particles.push_back(e);
         }
     }

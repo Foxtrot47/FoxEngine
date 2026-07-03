@@ -262,6 +262,9 @@ public:
             ps->config.atlasFrameCount = pe.atlasFrameCount;
             ps->config.atlasSpeed      = pe.atlasSpeed;
             ps->config.softDistance    = pe.softDistance;
+            ps->config.blendMode       = pe.blendMode;
+            ps->config.drag            = pe.drag;
+            ps->config.shaderMode      = pe.shaderMode;
             if (!ps->Init(device, GetShaders()))
             {
                 SE_LOG_WARN("Failed to init particle emitter");
@@ -937,6 +940,8 @@ private:
                 ImGui::SliderFloat("Emit Rate",    &ps.config.emitRate,    1.0f, 500.0f);
                 ImGui::SliderFloat("Life Min",     &ps.config.lifetimeMin, 0.1f, 10.0f);
                 ImGui::SliderFloat("Life Max",     &ps.config.lifetimeMax, 0.1f, 10.0f);
+                ImGui::DragFloat3("Velocity Min",  &ps.config.velocityMin.x, 0.1f, -20.0f, 20.0f);
+                ImGui::DragFloat3("Velocity Max",  &ps.config.velocityMax.x, 0.1f, -20.0f, 20.0f);
                 ImGui::SliderFloat("Size Start",   &ps.config.sizeStart,   0.01f, 2.0f);
                 ImGui::SliderFloat("Size End",     &ps.config.sizeEnd,     0.0f, 2.0f);
                 ImGui::ColorEdit4("Color Start",   &ps.config.colorStart.x);
@@ -951,6 +956,9 @@ private:
                 ImGui::SliderFloat("Speed", &ps.config.atlasSpeed, 0.1f, 5.0f);
                 ImGui::Separator();
                 ImGui::SliderFloat("Soft Distance", &ps.config.softDistance, 0.0f, 3.0f);
+                ImGui::Combo("Blend Mode", &ps.config.blendMode, "Additive\0Alpha Blend\0");
+                ImGui::SliderFloat("Drag", &ps.config.drag, 0.0f, 5.0f);
+                ImGui::Combo("Shader Mode", &ps.config.shaderMode, "Textured\0Ember\0");
             }
             ImGui::PopID();
         }
