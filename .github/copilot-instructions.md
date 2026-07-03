@@ -10,22 +10,27 @@ A from-scratch DirectX 11 engine on Windows. Forward PBR renderer with HDR pipel
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Debug
 # Run: build/Game/Debug/TestGame.exe
+# Or from project root: .\build\Game\Debug\TestGame.exe --scene showcase.json
 ```
 
-New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no need to edit CMakeLists, but you must re-run CMake configure for them to be picked up (the build system does this automatically when CMakeLists.txt changes).
+The exe auto-detects the project root by walking up from its location until it finds `Engine/` + `Assets/`. No need to set working directory manually.
+
+New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no need to edit CMakeLists, but you must re-run CMake configure for them to be picked up.
+
+**Shader/asset iteration**: Edit shaders in `Engine/Shaders/` or assets in `Assets/` and re-run the exe — no rebuild needed. Only C++ changes require a build.
 
 ## Architecture
 
 - **Engine/** — Static library (`FoxEngine.lib`). All code in `namespace SE {}`.
 - **Game/** — Test executable. Links `FoxEngine`. Integration target for all features.
-- **Engine/Shaders/** — HLSL files copied to build dir at compile time. Compiled at runtime via `D3DCompileFromFile`.
+- **Engine/Shaders/** — HLSL files loaded directly from source at runtime via `D3DCompileFromFile`.
 
 ### Renderer Pipeline (forward-only)
 
 1. `ForwardPipeline::Begin()` → caches view/proj, extracts frustum
 2. `SubmitMesh()` → frustum cull, push to render queue
 3. `Flush()` → sort queue (opaque front-to-back, transparent back-to-front), bind per-draw state, draw
-4. Post-process chain: **SSAO → SSR → Bloom → ToneMap → Present**
+4. Post-process chain: **SSAO → SSR → Bloom → FXAA → ToneMap → Present**
 
 ### Key Classes
 
@@ -36,10 +41,14 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `LightEnvironment` | Directional + point light state (b1, b2 cbuffers) |
 | `ShadowMap` | Directional light depth pass |
 | `PointShadowMap` | Cube depth map (6-face) for point lights |
+| `CascadedShadowMap` | 4-cascade directional shadow mapping |
+| `SpotLight` | Spot light with cone angle + shadow map |
 | `Bloom` | Dual Kawase blur chain |
 | `ToneMap` | Reinhard/ACES, auto-exposure |
 | `SSR` | View-space ray march, MRT normals |
 | `SSAO` | Hemisphere sampling, bilateral blur, multiply composite |
+| `FXAA` | Post-process anti-aliasing |
+| `ParticleSystem` | GPU compute emit/update, billboard render, flipbook atlas, soft particles |
 | `ShaderLibrary` | Compile + cache shader permutations |
 | `RenderStateCache` | Deduplicate blend/raster/depth-stencil states |
 | `AssetManager` | Path-keyed cache, ref-counted handles |
@@ -108,22 +117,35 @@ Created as `R32_TYPELESS` with DSV view (`D32_FLOAT`) and SRV view (`R32_FLOAT`)
 ### Post-Process SRV/RTV Hazard Prevention
 When a pass needs to both read and write the same RT (e.g., SSAO apply), use a multiply blend state to avoid binding the same texture as both SRV and RTV simultaneously.
 
+### GPU Particle System
+- **Compute shaders** for emit/update/reset — fully GPU-driven, no CPU readback
+- **Structured buffers**: particle pool (80 bytes), instance output (48 bytes), dead list, counters
+- **Indirect draw** — GPU writes draw args, CPU never reads alive count
+- **Flipbook atlas** — configurable columns/rows/frameCount/speed for animated sprites
+- **Two shader modes**: 0 = textured billboard (flipbook), 1 = ember glow (procedural)
+- **Per-emitter blend**: additive (fire/embers) or alpha blend (smoke)
+- **Billboard rotation**: fixed random angle per particle from seed
+- **Soft particles**: depth-fade near geometry intersections
+- **HDR colors**: values > 1.0 trigger bloom glow
+
 ## Current Milestone Roadmap
 
-### Completed (Phase 1–8 partial)
+### Completed (Phase 1–9 partial)
 M01–M55: Foundation, renderer bootstrap, input, lighting, scene, physics, advanced rendering (PBR, IBL, shadows, bloom, HDR, SSR, SSAO, alpha blending)
+M56: Spot lights (cone angle, inner/outer falloff, shadow map)
+M57: Cascaded Shadow Maps (4-cascade)
+M58: Emissive materials
+M59: FXAA
+M67: GPU compute particle system (replaces CPU)
+M68: Per-emitter blend mode, drag, flipbook fire, ember shader
+M69: Smoke particles with expanding billboard puffs
 
 ### Next Up
-- M56: Spot lights (cone angle, inner/outer falloff, shadow map)
-- M57: Cascaded Shadow Maps
-- M58: Emissive materials
-- M59: FXAA
+- M70: More particle effects (explosions, sparks/trails, dust)
+- M71: Particle asset serialization / presets
 - M60: Volumetric fog / god rays
 - M61: Decals
 - M62: TAA
-
-### Phase 9 — Particle Systems
-M63–M71: CPU emitter → billboard render → affectors → flipbook → GPU compute → soft particles → lit particles → trails → asset serialization
 
 ### Deferred
 - Phase 10: Animation (implement when needed)
