@@ -48,7 +48,7 @@ bool SpotLight::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t reso
     if (FAILED(hr)) { SE_LOG_ERROR("SpotLight: rasterizer state failed"); return false; }
 
     // Reuse the existing shadow depth shader
-    m_shadowPerm = shaders.Get(L"Shaders/ShadowDepth.hlsl");
+    m_shadowPerm = shaders.Get(L"Engine/Shaders/ShadowDepth.hlsl");
     if (!m_shadowPerm) { SE_LOG_ERROR("SpotLight: ShadowDepth.hlsl not found"); return false; }
 
     // Create input layout for shadow pass (must match MeshVertex stride)

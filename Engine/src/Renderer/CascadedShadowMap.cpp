@@ -46,7 +46,7 @@ bool CascadedShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint3
 {
     m_resolution = resolution;
 
-    m_perm = shaders.Get(L"Shaders/ShadowDepth.hlsl");
+    m_perm = shaders.Get(L"Engine/Shaders/ShadowDepth.hlsl");
     if (!m_perm) { SE_LOG_ERROR("CSM: failed to compile ShadowDepth.hlsl"); return false; }
 
     D3D11_INPUT_ELEMENT_DESC layoutDesc[] = {

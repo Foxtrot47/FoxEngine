@@ -5,7 +5,7 @@ namespace SE {
 
 bool ToneMap::Init(ID3D11Device* device, ShaderLibrary& shaders)
 {
-    m_perm = shaders.Get(L"Shaders/ToneMap.hlsl");
+    m_perm = shaders.Get(L"Engine/Shaders/ToneMap.hlsl");
     if (!m_perm) { SE_LOG_ERROR("ToneMap: failed to load shader"); return false; }
 
     if (!m_cb.Create(device))           return false;

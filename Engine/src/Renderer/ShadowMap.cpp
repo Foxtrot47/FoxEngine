@@ -42,7 +42,7 @@ bool ShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t reso
 {
     m_resolution = resolution;
 
-    m_perm = shaders.Get(L"Shaders/ShadowDepth.hlsl");
+    m_perm = shaders.Get(L"Engine/Shaders/ShadowDepth.hlsl");
     if (!m_perm)
     {
         SE_LOG_ERROR("ShadowMap: failed to compile ShadowDepth.hlsl");

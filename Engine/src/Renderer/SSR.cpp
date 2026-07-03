@@ -16,10 +16,10 @@ bool SSR::Init(ID3D11Device* device, ShaderLibrary& shaders,
         return false;
 
     // Compile shaders
-    m_ssrPerm = shaders.Get(L"Shaders/SSR.hlsl");
+    m_ssrPerm = shaders.Get(L"Engine/Shaders/SSR.hlsl");
     if (!m_ssrPerm) { SE_LOG_ERROR("SSR: failed to compile SSR.hlsl"); return false; }
 
-    m_compositePerm = shaders.Get(L"Shaders/SSRComposite.hlsl");
+    m_compositePerm = shaders.Get(L"Engine/Shaders/SSRComposite.hlsl");
     if (!m_compositePerm) { SE_LOG_ERROR("SSR: failed to compile SSRComposite.hlsl"); return false; }
 
     if (!m_cb.Create(device)) return false;

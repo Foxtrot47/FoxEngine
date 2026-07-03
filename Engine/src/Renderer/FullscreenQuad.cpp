@@ -38,7 +38,7 @@ bool FullscreenQuad::Init(ID3D11Device* device, ShaderLibrary& shaders)
     if (FAILED(hr)) { SE_LOG_ERROR("FullscreenQuad: IB creation failed"); return false; }
 
     // Compile passthrough shader
-    m_perm = shaders.Get(L"Shaders/Fullscreen.hlsl");
+    m_perm = shaders.Get(L"Engine/Shaders/Fullscreen.hlsl");
     if (!m_perm) { SE_LOG_ERROR("FullscreenQuad: failed to compile Fullscreen.hlsl"); return false; }
 
     D3D11_INPUT_ELEMENT_DESC layout[] = {

@@ -90,13 +90,13 @@ bool SSAO::Init(ID3D11Device* device, ShaderLibrary& shaders,
     if (!m_blurRT.Init(device, width, height, DXGI_FORMAT_R8_UNORM))
         return false;
 
-    m_ssaoPerm = shaders.Get(L"Shaders/SSAO.hlsl");
+    m_ssaoPerm = shaders.Get(L"Engine/Shaders/SSAO.hlsl");
     if (!m_ssaoPerm) { SE_LOG_ERROR("SSAO: failed to compile SSAO.hlsl"); return false; }
 
-    m_blurPerm = shaders.Get(L"Shaders/SSAOBlur.hlsl");
+    m_blurPerm = shaders.Get(L"Engine/Shaders/SSAOBlur.hlsl");
     if (!m_blurPerm) { SE_LOG_ERROR("SSAO: failed to compile SSAOBlur.hlsl"); return false; }
 
-    m_applyPerm = shaders.Get(L"Shaders/SSAOApply.hlsl");
+    m_applyPerm = shaders.Get(L"Engine/Shaders/SSAOApply.hlsl");
     if (!m_applyPerm) { SE_LOG_ERROR("SSAO: failed to compile SSAOApply.hlsl"); return false; }
 
     if (!m_cb.Create(device)) return false;

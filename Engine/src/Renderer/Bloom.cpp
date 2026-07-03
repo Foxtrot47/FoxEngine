@@ -7,10 +7,10 @@ namespace SE {
 bool Bloom::Init(ID3D11Device* device, ShaderLibrary& shaders,
                  uint32_t width, uint32_t height)
 {
-    m_thresholdPerm  = shaders.Get(L"Shaders/Bloom.hlsl", {{ "BLOOM_THRESHOLD",  "1" }});
-    m_downsamplePerm = shaders.Get(L"Shaders/Bloom.hlsl", {{ "BLOOM_DOWNSAMPLE", "1" }});
-    m_upsamplePerm   = shaders.Get(L"Shaders/Bloom.hlsl", {{ "BLOOM_UPSAMPLE",   "1" }});
-    m_compositePerm  = shaders.Get(L"Shaders/Bloom.hlsl", {{ "BLOOM_COMPOSITE",  "1" }});
+    m_thresholdPerm  = shaders.Get(L"Engine/Shaders/Bloom.hlsl", {{ "BLOOM_THRESHOLD",  "1" }});
+    m_downsamplePerm = shaders.Get(L"Engine/Shaders/Bloom.hlsl", {{ "BLOOM_DOWNSAMPLE", "1" }});
+    m_upsamplePerm   = shaders.Get(L"Engine/Shaders/Bloom.hlsl", {{ "BLOOM_UPSAMPLE",   "1" }});
+    m_compositePerm  = shaders.Get(L"Engine/Shaders/Bloom.hlsl", {{ "BLOOM_COMPOSITE",  "1" }});
 
     if (!m_thresholdPerm || !m_downsamplePerm || !m_upsamplePerm || !m_compositePerm)
     {
