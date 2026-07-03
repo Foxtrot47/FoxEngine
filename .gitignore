@@ -9,3 +9,6 @@ vcpkg_installed/
 *.VC.opendb
 CMakeSettings.json
 FoxEngine.log
+
+imgui.ini
+FoxEngine.log

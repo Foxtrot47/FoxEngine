@@ -112,7 +112,7 @@ void BuildSphereMesh(float radius, int rings, int segs,
 
 bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders)
 {
-    const ShaderPermutation* perm = shaders.Get(L"Shaders/Basic.hlsl");
+    const ShaderPermutation* perm = shaders.Get(L"Engine/Shaders/Basic.hlsl");
     if (!perm)
     {
         SE_LOG_ERROR("ForwardPipeline: failed to compile Basic.hlsl via ShaderLibrary");

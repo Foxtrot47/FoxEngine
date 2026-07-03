@@ -9,7 +9,7 @@ namespace SE {
 
 bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache, ShaderLibrary& shaders)
 {
-    const ShaderPermutation* perm = shaders.Get(L"Shaders/Skybox.hlsl");
+    const ShaderPermutation* perm = shaders.Get(L"Engine/Shaders/Skybox.hlsl");
     if (!perm)
     {
         SE_LOG_ERROR("SkyboxRenderer: failed to compile Skybox.hlsl via ShaderLibrary");

@@ -32,7 +32,7 @@ bool PointShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t
 {
     m_resolution = resolution;
 
-    m_perm = shaders.Get(L"Shaders/PointShadowDepth.hlsl");
+    m_perm = shaders.Get(L"Engine/Shaders/PointShadowDepth.hlsl");
     if (!m_perm) { SE_LOG_ERROR("PointShadowMap: PointShadowDepth.hlsl failed"); return false; }
 
     D3D11_INPUT_ELEMENT_DESC layoutDesc[] =

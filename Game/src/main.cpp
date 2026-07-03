@@ -1103,6 +1103,22 @@ private:
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR lpCmdLine, int)
 {
+    // Set working directory to project root (walk up from exe location until we find Engine/ and Assets/)
+    {
+        wchar_t exePath[MAX_PATH];
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        std::filesystem::path dir = std::filesystem::path(exePath).parent_path();
+        for (int i = 0; i < 5; ++i)
+        {
+            if (std::filesystem::exists(dir / "Engine") && std::filesystem::exists(dir / "Assets"))
+            {
+                SetCurrentDirectoryW(dir.c_str());
+                break;
+            }
+            dir = dir.parent_path();
+        }
+    }
+
     SE::WindowDesc desc;
     desc.title  = L"FoxEngine";
     desc.width  = 1280;

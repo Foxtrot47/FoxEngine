@@ -5,7 +5,7 @@ namespace SE {
 
 bool FXAA::Init(ID3D11Device* device, ShaderLibrary& shaders)
 {
-    m_perm = shaders.Get(L"Shaders/FXAA.hlsl");
+    m_perm = shaders.Get(L"Engine/Shaders/FXAA.hlsl");
     if (!m_perm) { SE_LOG_ERROR("FXAA: failed to load shader"); return false; }
 
     if (!m_cb.Create(device))           return false;

@@ -11,9 +11,9 @@ bool ParticleSystem::Init(ID3D11Device* device, ShaderLibrary& shaders, int maxP
     int maxParticles = config.maxParticles;
 
     // Compile compute shaders
-    m_csEmit = shaders.GetCS(L"Shaders/ParticleCompute.hlsl", "CS_Emit");
-    m_csUpdate = shaders.GetCS(L"Shaders/ParticleCompute.hlsl", "CS_Update");
-    m_csResetArgs = shaders.GetCS(L"Shaders/ParticleCompute.hlsl", "CS_ResetArgs");
+    m_csEmit = shaders.GetCS(L"Engine/Shaders/ParticleCompute.hlsl", "CS_Emit");
+    m_csUpdate = shaders.GetCS(L"Engine/Shaders/ParticleCompute.hlsl", "CS_Update");
+    m_csResetArgs = shaders.GetCS(L"Engine/Shaders/ParticleCompute.hlsl", "CS_ResetArgs");
 
     if (!m_csEmit || !m_csUpdate || !m_csResetArgs)
     {
@@ -22,7 +22,7 @@ bool ParticleSystem::Init(ID3D11Device* device, ShaderLibrary& shaders, int maxP
     }
 
     // Render shader
-    m_renderPerm = shaders.Get(L"Shaders/Particle.hlsl");
+    m_renderPerm = shaders.Get(L"Engine/Shaders/Particle.hlsl");
     if (!m_renderPerm) return false;
 
     // --- Create GPU buffers ---
