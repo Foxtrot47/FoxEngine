@@ -10,7 +10,8 @@ struct InstanceData
     float4 posAndSize;
     float4 color;
     float  normalizedAge;
-    float3 _pad;
+    float  seed;
+    float2 _pad;
 };
 
 StructuredBuffer<InstanceData> g_instances : register(t2);
@@ -29,7 +30,7 @@ cbuffer ParticleCameraCB : register(b0)
     float NearZ;
     float FarZ;
     float SoftDistance;
-    float _pad2;
+    float ShaderMode; // 0 = textured billboard, 1 = ember glow
 };
 
 struct VSInput
@@ -47,6 +48,8 @@ struct PSInput
     float  blend     : TEXCOORD2;
     float  linearZ   : TEXCOORD3;
     float4 color     : COLOR0;
+    float  age       : TEXCOORD4;
+    float  seed      : TEXCOORD5;
 };
 
 PSInput VS_Main(VSInput input)
@@ -57,13 +60,24 @@ PSInput VS_Main(VSInput input)
     float3 center = inst.posAndSize.xyz;
     float  size   = inst.posAndSize.w;
 
+    // Per-particle billboard rotation: fixed random angle from seed
+    float angle = inst.seed * 6.28318;
+    float cosA = cos(angle);
+    float sinA = sin(angle);
+    float2 rotated = float2(
+        input.cornerPos.x * cosA - input.cornerPos.y * sinA,
+        input.cornerPos.x * sinA + input.cornerPos.y * cosA
+    );
+
     float3 worldPos = center
-                    + CamRight * (input.cornerPos.x * size)
-                    + CamUp    * (input.cornerPos.y * size);
+                    + CamRight * (rotated.x * size)
+                    + CamUp    * (rotated.y * size);
 
     o.pos     = mul(float4(worldPos, 1.0f), ViewProj);
     o.linearZ = o.pos.w;
     o.color   = inst.color;
+    o.age     = inst.normalizedAge;
+    o.seed    = inst.seed;
 
     // Atlas UV calculation
     float cols = max(AtlasColumns, 1.0f);
@@ -96,11 +110,34 @@ PSInput VS_Main(VSInput input)
 
 float4 PS_Main(PSInput input) : SV_TARGET
 {
-    float4 tex0 = g_particleTex.Sample(g_sampler, input.uv);
-    float4 tex1 = g_particleTex.Sample(g_sampler, input.uvNext);
-    float4 tex  = lerp(tex0, tex1, input.blend);
-    float4 result = tex * input.color;
+    float4 result;
 
+    if (ShaderMode > 0.5)
+    {
+        // --- Mode 1: Ember/spark glow ---
+        float2 centered = input.uv - 0.5;
+        float dist = length(centered) * 2.0;
+
+        float glow = saturate(1.0 - dist);
+        glow = glow * glow;
+
+        float flicker = 0.85 + 0.15 * sin(input.seed * 43.7 + input.age * 6.28);
+
+        float3 col = input.color.rgb * glow * flicker;
+        float alpha = glow * input.color.a;
+
+        result = float4(col, alpha);
+    }
+    else
+    {
+        // --- Mode 0: Textured billboard (flipbook supported) ---
+        float4 tex0 = g_particleTex.Sample(g_sampler, input.uv);
+        float4 tex1 = g_particleTex.Sample(g_sampler, input.uvNext);
+        float4 tex  = lerp(tex0, tex1, input.blend);
+        result = tex * input.color;
+    }
+
+    // Soft particles
     if (SoftDistance > 0.0f)
     {
         float2 screenUV = input.pos.xy;

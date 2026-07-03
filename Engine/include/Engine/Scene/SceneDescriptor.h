@@ -136,6 +136,12 @@ struct SceneDescriptor
         float atlasSpeed      = 1.0f;
         // Soft particles
         float softDistance    = 0.5f;
+        // Blend mode: 0 = additive, 1 = alpha blend
+        int   blendMode       = 0;
+        // Velocity drag
+        float drag            = 0.0f;
+        // Shader mode: 0 = textured, 1 = ember
+        int   shaderMode      = 0;
     };
     std::vector<ParticleEmitterDesc> particles;
 };

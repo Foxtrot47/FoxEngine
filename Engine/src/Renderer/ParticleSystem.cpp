@@ -164,7 +164,7 @@ bool ParticleSystem::Init(ID3D11Device* device, ShaderLibrary& shaders, int maxP
     if (FAILED(device->CreateInputLayout(layout, 2, m_renderPerm->vsBlob->GetBufferPointer(),
             m_renderPerm->vsBlob->GetBufferSize(), &m_inputLayout))) return false;
 
-    // Blend state: additive alpha
+    // Blend state: additive
     D3D11_BLEND_DESC blendDesc = {};
     blendDesc.RenderTarget[0].BlendEnable = TRUE;
     blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
@@ -174,7 +174,14 @@ bool ParticleSystem::Init(ID3D11Device* device, ShaderLibrary& shaders, int maxP
     blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
     blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
     blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-    if (FAILED(device->CreateBlendState(&blendDesc, &m_blendState))) return false;
+    if (FAILED(device->CreateBlendState(&blendDesc, &m_blendAdditive))) return false;
+
+    // Blend state: alpha blend
+    blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+    blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+    blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+    blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+    if (FAILED(device->CreateBlendState(&blendDesc, &m_blendAlpha))) return false;
 
     // Depth: read only
     D3D11_DEPTH_STENCIL_DESC dsDesc = {};
@@ -273,6 +280,8 @@ void ParticleSystem::Update(ID3D11DeviceContext* ctx, float dt)
         ucb.deltaTime = dt;
         ucb.gravity = config.gravity;
         ucb.maxParticles = static_cast<uint32_t>(config.maxParticles);
+        ucb.drag = config.drag;
+        ucb.time = m_time;
         m_updateCB.Update(ctx, ucb);
         m_updateCB.BindCS(ctx, 0);
 
@@ -317,7 +326,7 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
     cb.nearZ = nearZ;
     cb.farZ = farZ;
     cb.softDistance = config.softDistance;
-    cb._pad2 = 0.0f;
+    cb.shaderMode = static_cast<float>(config.shaderMode);
     m_cameraCB.Update(ctx, cb);
     m_cameraCB.BindVS(ctx, 0);
     m_cameraCB.BindPS(ctx, 0);
@@ -357,7 +366,8 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
 
     // Render states
     float blendFactor[4] = { 0, 0, 0, 0 };
-    ctx->OMSetBlendState(m_blendState.Get(), blendFactor, 0xFFFFFFFF);
+    auto* blendState = (config.blendMode == 1) ? m_blendAlpha.Get() : m_blendAdditive.Get();
+    ctx->OMSetBlendState(blendState, blendFactor, 0xFFFFFFFF);
     ctx->OMSetDepthStencilState(m_depthState.Get(), 0);
     ctx->RSSetState(m_rasterState.Get());
 

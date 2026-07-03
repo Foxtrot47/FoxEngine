@@ -39,6 +39,15 @@ struct ParticleEmitterConfig
     float atlasSpeed      = 1.0f;
 
     float softDistance    = 0.5f;
+
+    // 0 = additive (fire/sparks), 1 = alpha blend (smoke/dust)
+    int   blendMode       = 0;
+
+    // Velocity drag — exponential decay (0 = no drag, higher = more drag)
+    float drag            = 0.0f;
+
+    // Render shader mode: 0 = textured billboard, 1 = ember glow
+    int   shaderMode      = 0;
 };
 
 class ParticleSystem
@@ -85,7 +94,10 @@ private:
         float deltaTime;
         DirectX::XMFLOAT3 gravity;
         uint32_t maxParticles;
-        DirectX::XMFLOAT3 _pad;
+        float drag;
+        float _pad0[2];
+        float time;
+        DirectX::XMFLOAT3 _pad1;
     };
 
     struct CameraCB
@@ -102,7 +114,7 @@ private:
         float nearZ;
         float farZ;
         float softDistance;
-        float _pad2;
+        float shaderMode; // 0 = default, 1 = procedural fire
     };
 
     DirectX::XMFLOAT3 m_worldPos = { 0, 0, 0 };
@@ -135,7 +147,8 @@ private:
     ComPtr<ID3D11Buffer>             m_quadVB;
     ComPtr<ID3D11Buffer>             m_quadIB;
     ComPtr<ID3D11InputLayout>        m_inputLayout;
-    ComPtr<ID3D11BlendState>         m_blendState;
+    ComPtr<ID3D11BlendState>         m_blendAdditive;
+    ComPtr<ID3D11BlendState>         m_blendAlpha;
     ComPtr<ID3D11DepthStencilState>  m_depthState;
     ComPtr<ID3D11RasterizerState>    m_rasterState;
     ComPtr<ID3D11SamplerState>       m_sampler;
