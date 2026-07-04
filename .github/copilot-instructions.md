@@ -126,6 +126,7 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 - **Per-emitter blend**: additive (fire/embers) or alpha blend (smoke)
 - **Billboard controls**: fixed angle, optional random rotation, and per-emitter UV texture rotation
 - **Tracer support**: velocity-aligned stretch for bullet/trail effects
+- **Preset defaults**: load emitter presets from JSON (`Assets/Particles/Presets/`)
 - **Soft particles**: depth-fade near geometry intersections
 - **HDR colors**: values > 1.0 trigger bloom glow
 

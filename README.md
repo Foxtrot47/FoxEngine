@@ -26,6 +26,7 @@ A from-scratch DirectX 11 rendering engine built on Windows with C++17. Features
 - **Billboard orientation** — Fixed angle with optional random rotation
 - **Texture rotation** — Per-emitter UV rotation to correct source texture orientation
 - **Tracer support** — Velocity-aligned billboard stretch for bullet tracers
+- **Preset defaults** — Load emitter default presets from JSON in `Assets/Particles/Presets/`
 
 ### Engine Systems
 - **Scene Management** — JSON scene descriptors with hot-reload, objects + particles + lights

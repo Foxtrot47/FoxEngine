@@ -1,0 +1,24 @@
+{
+  "type": "particle_preset",
+  "version": 1,
+  "emitter": {
+    "emit_rate": 15.0,
+    "max_particles": 60,
+    "lifetime_min": 0.5,
+    "lifetime_max": 1.2,
+    "velocity_min": [-0.1, 0.5, -0.1],
+    "velocity_max": [0.1, 1.5, 0.1],
+    "size_start": 1.0,
+    "size_end": 0.3,
+    "color_start": [3.0, 2.5, 1.5, 1.0],
+    "color_end": [2.0, 0.5, 0.0, 0.0],
+    "gravity": [0.0, 0.5, 0.0],
+    "spawn_radius": 0.15,
+    "texture": "Assets/Particles/flipbook_fire.dds",
+    "atlasColumns": 5,
+    "atlasRows": 5,
+    "softDistance": 0.3,
+    "drag": 0.5,
+    "shaderMode": 0
+  }
+}

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <memory>
 #include <filesystem>
+#include <cmath>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
@@ -91,6 +92,7 @@ public:
 
         // Scan available scenes
         m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
+        RefreshParticlePresets();
         if (m_sceneFiles.empty())
         {
             SE_LOG_ERROR("No scene files found in Assets/Scenes/");
@@ -242,6 +244,7 @@ public:
 
         // --- Particle emitters (from scene JSON) ---
         m_particleSystems.clear();
+        m_particleEmitterDescs.clear();
         for (auto& pe : desc.particles)
         {
             auto ps = std::make_unique<SE::ParticleSystem>();
@@ -283,6 +286,22 @@ public:
                 ps->SetTexture(GetAssets().GetTexture(toW(pe.texture)));
             }
             m_particleSystems.push_back(std::move(ps));
+            m_particleEmitterDescs.push_back(pe);
+        }
+        m_selectedParticlePreset.assign(m_particleSystems.size(), -1);
+        for (int i = 0; i < (int)m_particleSystems.size(); ++i)
+        {
+            for (int p = 0; p < (int)m_particlePresetFiles.size(); ++p)
+            {
+                SE::SceneDescriptor::ParticleEmitterDesc preset;
+                if (!SE::SceneLoader::LoadParticlePreset(m_particlePresetFiles[p], preset))
+                    continue;
+                if (IsSameParticlePreset(m_particleEmitterDescs[i], preset))
+                {
+                    m_selectedParticlePreset[i] = p;
+                    break;
+                }
+            }
         }
 
         // Update window title
@@ -290,6 +309,91 @@ public:
         SetWindowTextW(GetWindow().GetHandle(), title.c_str());
 
         return true;
+    }
+
+    static void ApplyParticleDescToSystem(const SE::SceneDescriptor::ParticleEmitterDesc& d, SE::ParticleSystem& ps)
+    {
+        ps.config.position = { d.position[0], d.position[1], d.position[2] };
+        ps.config.emitRate = d.emitRate;
+        ps.config.maxParticles = d.maxParticles;
+        ps.config.lifetimeMin = d.lifetimeMin;
+        ps.config.lifetimeMax = d.lifetimeMax;
+        ps.config.velocityMin = { d.velocityMin[0], d.velocityMin[1], d.velocityMin[2] };
+        ps.config.velocityMax = { d.velocityMax[0], d.velocityMax[1], d.velocityMax[2] };
+        ps.config.sizeStart = d.sizeStart;
+        ps.config.sizeEnd = d.sizeEnd;
+        ps.config.colorStart = { d.colorStart[0], d.colorStart[1], d.colorStart[2], d.colorStart[3] };
+        ps.config.colorEnd = { d.colorEnd[0], d.colorEnd[1], d.colorEnd[2], d.colorEnd[3] };
+        ps.config.gravity = { d.gravity[0], d.gravity[1], d.gravity[2] };
+        ps.config.spawnRadius = d.spawnRadius;
+        ps.config.atlasColumns = d.atlasColumns;
+        ps.config.atlasRows = d.atlasRows;
+        ps.config.atlasFrameCount = d.atlasFrameCount;
+        ps.config.atlasSpeed = d.atlasSpeed;
+        ps.config.textureRotationDegrees = d.textureRotationDegrees;
+        ps.config.softDistance = d.softDistance;
+        ps.config.aspectRatio = d.aspectRatio;
+        ps.config.blendMode = d.blendMode;
+        ps.config.drag = d.drag;
+        ps.config.shaderMode = d.shaderMode;
+        ps.config.emitMode = d.emitMode;
+        ps.config.rotationDegrees = d.rotationDegrees;
+        ps.config.randomRotation = d.randomRotation;
+        ps.config.tracerStretch = d.tracerStretch;
+    }
+
+    static bool NearlyEqual(float a, float b, float eps = 0.0001f)
+    {
+        return std::fabs(a - b) <= eps;
+    }
+
+    static bool EqualFloat3(const std::array<float, 3>& a, const std::array<float, 3>& b, float eps = 0.0001f)
+    {
+        return NearlyEqual(a[0], b[0], eps) && NearlyEqual(a[1], b[1], eps) && NearlyEqual(a[2], b[2], eps);
+    }
+
+    static bool EqualFloat4(const std::array<float, 4>& a, const std::array<float, 4>& b, float eps = 0.0001f)
+    {
+        return NearlyEqual(a[0], b[0], eps) && NearlyEqual(a[1], b[1], eps) &&
+               NearlyEqual(a[2], b[2], eps) && NearlyEqual(a[3], b[3], eps);
+    }
+
+    static bool IsSameParticlePreset(const SE::SceneDescriptor::ParticleEmitterDesc& a,
+                                     const SE::SceneDescriptor::ParticleEmitterDesc& b)
+    {
+        // Position is scene placement, not part of the preset's look — excluded from comparison.
+        return NearlyEqual(a.emitRate, b.emitRate) &&
+               a.maxParticles == b.maxParticles &&
+               NearlyEqual(a.lifetimeMin, b.lifetimeMin) &&
+               NearlyEqual(a.lifetimeMax, b.lifetimeMax) &&
+               EqualFloat3(a.velocityMin, b.velocityMin) &&
+               EqualFloat3(a.velocityMax, b.velocityMax) &&
+               NearlyEqual(a.sizeStart, b.sizeStart) &&
+               NearlyEqual(a.sizeEnd, b.sizeEnd) &&
+               EqualFloat4(a.colorStart, b.colorStart) &&
+               EqualFloat4(a.colorEnd, b.colorEnd) &&
+               EqualFloat3(a.gravity, b.gravity) &&
+               NearlyEqual(a.spawnRadius, b.spawnRadius) &&
+               a.texture == b.texture &&
+               a.atlasColumns == b.atlasColumns &&
+               a.atlasRows == b.atlasRows &&
+               a.atlasFrameCount == b.atlasFrameCount &&
+               NearlyEqual(a.atlasSpeed, b.atlasSpeed) &&
+               NearlyEqual(a.textureRotationDegrees, b.textureRotationDegrees) &&
+               NearlyEqual(a.softDistance, b.softDistance) &&
+               NearlyEqual(a.aspectRatio, b.aspectRatio) &&
+               a.blendMode == b.blendMode &&
+               NearlyEqual(a.drag, b.drag) &&
+               a.shaderMode == b.shaderMode &&
+               a.emitMode == b.emitMode &&
+               NearlyEqual(a.rotationDegrees, b.rotationDegrees) &&
+               a.randomRotation == b.randomRotation &&
+               NearlyEqual(a.tracerStretch, b.tracerStretch);
+    }
+
+    void RefreshParticlePresets()
+    {
+        m_particlePresetFiles = SE::SceneLoader::ScanParticlePresetDirectory("Assets/Particles/Presets");
     }
 
     void ResetBall()
@@ -723,7 +827,10 @@ private:
                 m_pendingSceneLoad = m_sceneFiles[m_selectedScene];
             ImGui::SameLine();
             if (ImGui::Button("Rescan"))
+            {
                 m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
+                RefreshParticlePresets();
+            }
         }
         ImGui::Text("Active: %s", m_currentDesc.name.c_str());
         ImGui::End();
@@ -933,6 +1040,9 @@ private:
         // --- Particles ---
         ImGui::Begin("Particles");
         ImGui::Text("Emitters: %d", (int)m_particleSystems.size());
+        ImGui::SameLine();
+        if (ImGui::Button("Rescan Presets"))
+            RefreshParticlePresets();
         if (ImGui::Button("Fire All Single Emitters"))
         {
             for (auto& emitter : m_particleSystems)
@@ -950,6 +1060,56 @@ private:
             sprintf_s(label, "Emitter %d", i);
             if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
             {
+                auto getFilename = [](const std::string& path) -> std::string {
+                    auto pos = path.find_last_of("\\/");
+                    return (pos != std::string::npos) ? path.substr(pos + 1) : path;
+                };
+
+                ImGui::Text("Preset");
+                if (!m_particlePresetFiles.empty())
+                {
+                    int& selected = m_selectedParticlePreset[i];
+                    std::string previewName = (selected >= 0 && selected < (int)m_particlePresetFiles.size())
+                        ? getFilename(m_particlePresetFiles[selected])
+                        : "Select preset...";
+                    if (ImGui::BeginCombo("Preset File", previewName.c_str()))
+                    {
+                        for (int p = 0; p < (int)m_particlePresetFiles.size(); ++p)
+                        {
+                            bool isSelected = (p == selected);
+                            if (ImGui::Selectable(getFilename(m_particlePresetFiles[p]).c_str(), isSelected))
+                                selected = p;
+                            if (isSelected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+                    if (selected >= 0 && selected < (int)m_particlePresetFiles.size())
+                    {
+                        if (ImGui::Button("Load Preset"))
+                        {
+                            SE::SceneDescriptor::ParticleEmitterDesc preset;
+                            if (SE::SceneLoader::LoadParticlePreset(m_particlePresetFiles[selected], preset))
+                            {
+                                int oldMax = ps.config.maxParticles;
+                                ApplyParticleDescToSystem(preset, ps);
+                                m_particleEmitterDescs[i] = preset;
+                                if (!preset.texture.empty())
+                                {
+                                    auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
+                                    ps.SetTexture(GetAssets().GetTexture(toW(preset.texture)));
+                                }
+                                if (oldMax != ps.config.maxParticles)
+                                    ps.Init(GetRenderer().GetDevice(), GetShaders());
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    ImGui::TextDisabled("No presets in Assets/Particles/Presets");
+                }
+                ImGui::Separator();
+
                 ImGui::Text("Emission");
                 ImGui::Checkbox("Enable", &ps.enabled);
                 ImGui::Combo("Mode", &ps.config.emitMode, "Continuous\0Single\0");
@@ -1143,6 +1303,9 @@ private:
     std::string              m_currentScenePath;
     SE::SceneDescriptor      m_currentDesc;
     std::string              m_pendingSceneLoad;
+    std::vector<std::string> m_particlePresetFiles;
+    std::vector<int>         m_selectedParticlePreset;
+    std::vector<SE::SceneDescriptor::ParticleEmitterDesc> m_particleEmitterDescs;
 };
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR lpCmdLine, int)
