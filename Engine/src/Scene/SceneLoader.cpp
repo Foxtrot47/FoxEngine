@@ -21,6 +21,38 @@ static std::array<float, 4> ReadFloat4(const json& j, const std::string& key, st
     return { j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>(), j[key][3].get<float>() };
 }
 
+static void ReadParticleEmitter(const json& p, SceneDescriptor::ParticleEmitterDesc& e)
+{
+    e.position     = ReadFloat3(p, "position", e.position);
+    e.velocityMin  = ReadFloat3(p, "velocity_min", e.velocityMin);
+    e.velocityMax  = ReadFloat3(p, "velocity_max", e.velocityMax);
+    e.gravity      = ReadFloat3(p, "gravity", e.gravity);
+    e.colorStart   = ReadFloat4(p, "color_start", e.colorStart);
+    e.colorEnd     = ReadFloat4(p, "color_end", e.colorEnd);
+    if (p.contains("emit_rate"))      e.emitRate     = p["emit_rate"].get<float>();
+    if (p.contains("max_particles"))  e.maxParticles = p["max_particles"].get<int>();
+    if (p.contains("lifetime_min"))   e.lifetimeMin  = p["lifetime_min"].get<float>();
+    if (p.contains("lifetime_max"))   e.lifetimeMax  = p["lifetime_max"].get<float>();
+    if (p.contains("size_start"))     e.sizeStart    = p["size_start"].get<float>();
+    if (p.contains("size_end"))       e.sizeEnd      = p["size_end"].get<float>();
+    if (p.contains("spawn_radius"))   e.spawnRadius  = p["spawn_radius"].get<float>();
+    if (p.contains("texture"))        e.texture      = p["texture"].get<std::string>();
+    if (p.contains("atlasColumns"))   e.atlasColumns    = p["atlasColumns"].get<int>();
+    if (p.contains("atlasRows"))      e.atlasRows       = p["atlasRows"].get<int>();
+    if (p.contains("atlasFrameCount"))e.atlasFrameCount = p["atlasFrameCount"].get<int>();
+    if (p.contains("atlasSpeed"))     e.atlasSpeed      = p["atlasSpeed"].get<float>();
+    if (p.contains("textureRotationDegrees")) e.textureRotationDegrees = p["textureRotationDegrees"].get<float>();
+    if (p.contains("softDistance"))   e.softDistance    = p["softDistance"].get<float>();
+    if (p.contains("aspectRatio"))    e.aspectRatio     = p["aspectRatio"].get<float>();
+    if (p.contains("blendMode"))      e.blendMode       = p["blendMode"].get<int>();
+    if (p.contains("drag"))           e.drag            = p["drag"].get<float>();
+    if (p.contains("shaderMode"))     e.shaderMode      = p["shaderMode"].get<int>();
+    if (p.contains("emitMode"))       e.emitMode        = p["emitMode"].get<int>();
+    if (p.contains("rotationDegrees"))e.rotationDegrees = p["rotationDegrees"].get<float>();
+    if (p.contains("randomRotation")) e.randomRotation  = p["randomRotation"].get<bool>();
+    if (p.contains("tracerStretch"))  e.tracerStretch   = p["tracerStretch"].get<float>();
+}
+
 bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
 {
     std::ifstream file(path);
@@ -184,34 +216,7 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
         for (auto& p : root["particles"])
         {
             SceneDescriptor::ParticleEmitterDesc e;
-            e.position     = ReadFloat3(p, "position", e.position);
-            e.velocityMin  = ReadFloat3(p, "velocity_min", e.velocityMin);
-            e.velocityMax  = ReadFloat3(p, "velocity_max", e.velocityMax);
-            e.gravity      = ReadFloat3(p, "gravity", e.gravity);
-            e.colorStart   = ReadFloat4(p, "color_start", e.colorStart);
-            e.colorEnd     = ReadFloat4(p, "color_end", e.colorEnd);
-            if (p.contains("emit_rate"))      e.emitRate     = p["emit_rate"].get<float>();
-            if (p.contains("max_particles"))  e.maxParticles = p["max_particles"].get<int>();
-            if (p.contains("lifetime_min"))   e.lifetimeMin  = p["lifetime_min"].get<float>();
-            if (p.contains("lifetime_max"))   e.lifetimeMax  = p["lifetime_max"].get<float>();
-            if (p.contains("size_start"))     e.sizeStart    = p["size_start"].get<float>();
-            if (p.contains("size_end"))       e.sizeEnd      = p["size_end"].get<float>();
-            if (p.contains("spawn_radius"))   e.spawnRadius  = p["spawn_radius"].get<float>();
-            if (p.contains("texture"))        e.texture      = p["texture"].get<std::string>();
-            if (p.contains("atlasColumns"))   e.atlasColumns    = p["atlasColumns"].get<int>();
-            if (p.contains("atlasRows"))      e.atlasRows       = p["atlasRows"].get<int>();
-            if (p.contains("atlasFrameCount"))e.atlasFrameCount = p["atlasFrameCount"].get<int>();
-            if (p.contains("atlasSpeed"))     e.atlasSpeed      = p["atlasSpeed"].get<float>();
-            if (p.contains("textureRotationDegrees")) e.textureRotationDegrees = p["textureRotationDegrees"].get<float>();
-            if (p.contains("softDistance"))   e.softDistance    = p["softDistance"].get<float>();
-            if (p.contains("aspectRatio"))    e.aspectRatio     = p["aspectRatio"].get<float>();
-            if (p.contains("blendMode"))      e.blendMode       = p["blendMode"].get<int>();
-            if (p.contains("drag"))           e.drag            = p["drag"].get<float>();
-            if (p.contains("shaderMode"))     e.shaderMode      = p["shaderMode"].get<int>();
-            if (p.contains("emitMode"))       e.emitMode        = p["emitMode"].get<int>();
-            if (p.contains("rotationDegrees"))e.rotationDegrees = p["rotationDegrees"].get<float>();
-            if (p.contains("randomRotation")) e.randomRotation  = p["randomRotation"].get<bool>();
-            if (p.contains("tracerStretch"))  e.tracerStretch   = p["tracerStretch"].get<float>();
+            ReadParticleEmitter(p, e);
             out.particles.push_back(e);
         }
     }
@@ -220,7 +225,53 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
     return true;
 }
 
+bool SceneLoader::LoadParticlePreset(const std::string& path, SceneDescriptor::ParticleEmitterDesc& out)
+{
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        SE_LOG_ERROR("SceneLoader: Failed to open particle preset '%s'", path.c_str());
+        return false;
+    }
+
+    json root;
+    try
+    {
+        root = json::parse(file);
+    }
+    catch (const json::parse_error& e)
+    {
+        SE_LOG_ERROR("SceneLoader: JSON parse error in preset '%s': %s", path.c_str(), e.what());
+        return false;
+    }
+
+    out = SceneDescriptor::ParticleEmitterDesc{};
+    if (root.contains("emitter") && root["emitter"].is_object())
+        ReadParticleEmitter(root["emitter"], out);
+    else
+        ReadParticleEmitter(root, out);
+    return true;
+}
+
 std::vector<std::string> SceneLoader::ScanSceneDirectory(const std::string& directory)
+{
+    std::vector<std::string> results;
+    namespace fs = std::filesystem;
+
+    std::error_code ec;
+    if (!fs::exists(directory, ec)) return results;
+
+    for (auto& entry : fs::directory_iterator(directory, ec))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".json")
+            results.push_back(entry.path().string());
+    }
+
+    std::sort(results.begin(), results.end());
+    return results;
+}
+
+std::vector<std::string> SceneLoader::ScanParticlePresetDirectory(const std::string& directory)
 {
     std::vector<std::string> results;
     namespace fs = std::filesystem;

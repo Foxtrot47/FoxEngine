@@ -1,0 +1,32 @@
+{
+  "type": "particle_preset",
+  "version": 1,
+  "emitter": {
+    "emit_rate": 20.0,
+    "emitMode": 1,
+    "max_particles": 32,
+    "lifetime_min": 0.06,
+    "lifetime_max": 0.12,
+    "velocity_min": [-20.0, 0.0, 0.0],
+    "velocity_max": [-30.0, 0.0, 0.0],
+    "size_start": 0.04,
+    "size_end": 0.02,
+    "color_start": [6.0, 5.0, 2.0, 0.9],
+    "color_end": [2.0, 1.0, 0.2, 0.0],
+    "gravity": [0.0, 0.0, 0.0],
+    "spawn_radius": 0.0,
+    "texture": "Assets/Particles/ptfx_bullet_tacer_heat.dds",
+    "atlasColumns": 1,
+    "atlasRows": 1,
+    "atlasFrameCount": 1,
+    "textureRotationDegrees": -90.0,
+    "aspectRatio": 1.0,
+    "softDistance": 0.0,
+    "blendMode": 0,
+    "drag": 0.0,
+    "shaderMode": 0,
+    "rotationDegrees": 0.0,
+    "randomRotation": false,
+    "tracerStretch": 0.08
+  }
+}
