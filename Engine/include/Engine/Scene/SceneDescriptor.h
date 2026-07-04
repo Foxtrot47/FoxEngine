@@ -136,12 +136,19 @@ struct SceneDescriptor
         float atlasSpeed      = 1.0f;
         // Soft particles
         float softDistance    = 0.5f;
+        // Billboard aspect ratio
+        float aspectRatio     = 1.0f;
         // Blend mode: 0 = additive, 1 = alpha blend
         int   blendMode       = 0;
         // Velocity drag
         float drag            = 0.0f;
         // Shader mode: 0 = textured, 1 = ember
         int   shaderMode      = 0;
+        // 0 = continuous auto-emit, 1 = single/manual
+        int   emitMode        = 0;
+        // Billboard orientation controls
+        float rotationDegrees = 0.0f;
+        bool  randomRotation  = true;
     };
     std::vector<ParticleEmitterDesc> particles;
 };

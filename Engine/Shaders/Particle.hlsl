@@ -20,9 +20,9 @@ cbuffer ParticleCameraCB : register(b0)
 {
     row_major float4x4 ViewProj;
     float3 CamRight;
-    float  _pad0;
+    float  AspectRatio;
     float3 CamUp;
-    float  _pad1;
+    float  RotationRadians;
     float AtlasColumns;
     float AtlasRows;
     float AtlasFrameCount;
@@ -31,6 +31,8 @@ cbuffer ParticleCameraCB : register(b0)
     float FarZ;
     float SoftDistance;
     float ShaderMode; // 0 = textured billboard, 1 = ember glow
+    float RandomRotation; // 0 = fixed angle, 1 = add per-particle random
+    float3 _pad2;
 };
 
 struct VSInput
@@ -60,13 +62,15 @@ PSInput VS_Main(VSInput input)
     float3 center = inst.posAndSize.xyz;
     float  size   = inst.posAndSize.w;
 
-    // Per-particle billboard rotation: fixed random angle from seed
-    float angle = inst.seed * 6.28318;
+    // Billboard rotation: user angle + optional per-particle random variation
+    float angle = RotationRadians + (inst.seed * 6.28318 * RandomRotation);
     float cosA = cos(angle);
     float sinA = sin(angle);
+    // Apply aspect ratio before rotation (stretch X)
+    float2 corner = float2(input.cornerPos.x * AspectRatio, input.cornerPos.y);
     float2 rotated = float2(
-        input.cornerPos.x * cosA - input.cornerPos.y * sinA,
-        input.cornerPos.x * sinA + input.cornerPos.y * cosA
+        corner.x * cosA - corner.y * sinA,
+        corner.x * sinA + corner.y * cosA
     );
 
     float3 worldPos = center

@@ -262,15 +262,19 @@ public:
             ps->config.atlasFrameCount = pe.atlasFrameCount;
             ps->config.atlasSpeed      = pe.atlasSpeed;
             ps->config.softDistance    = pe.softDistance;
+            ps->config.aspectRatio     = pe.aspectRatio;
             ps->config.blendMode       = pe.blendMode;
             ps->config.drag            = pe.drag;
             ps->config.shaderMode      = pe.shaderMode;
+            ps->config.emitMode        = pe.emitMode;
+            ps->config.rotationDegrees = pe.rotationDegrees;
+            ps->config.randomRotation  = pe.randomRotation;
+            ps->config.position        = { pe.position[0], pe.position[1], pe.position[2] };
             if (!ps->Init(device, GetShaders()))
             {
                 SE_LOG_WARN("Failed to init particle emitter");
                 continue;
             }
-            ps->SetPosition({ pe.position[0], pe.position[1], pe.position[2] });
             if (!pe.texture.empty())
             {
                 auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
@@ -935,30 +939,57 @@ private:
             sprintf_s(label, "Emitter %d", i);
             if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
             {
+                ImGui::Text("Emission");
                 ImGui::Checkbox("Enable", &ps.enabled);
-                ImGui::Text("Max: %d", ps.config.maxParticles);
-                ImGui::SliderFloat("Emit Rate",    &ps.config.emitRate,    1.0f, 500.0f);
+                ImGui::Combo("Mode", &ps.config.emitMode, "Continuous\0Single\0");
+                if (ps.config.emitMode == 0)
+                    ImGui::SliderFloat("Emit Rate", &ps.config.emitRate, 1.0f, 500.0f);
+                else
+                {
+                    ImGui::TextDisabled("Emit Rate");
+                    if (ImGui::Button("Press to Fire"))
+                        ps.Burst(8);
+                }
+                ImGui::Separator();
+
+                ImGui::Text("Transform");
+                ImGui::DragFloat3("Position", &ps.config.position.x, 0.1f, -50.0f, 50.0f);
+                ImGui::SliderFloat("Spawn Radius", &ps.config.spawnRadius, 0.0f, 5.0f);
+                ImGui::SliderFloat("Aspect Ratio", &ps.config.aspectRatio, 0.5f, 4.0f);
+                ImGui::SliderFloat("Rotation (deg)", &ps.config.rotationDegrees, -180.0f, 180.0f);
+                ImGui::Checkbox("Random Rotation", &ps.config.randomRotation);
+                ImGui::Separator();
+
+                ImGui::Text("Lifetime & Size");
                 ImGui::SliderFloat("Life Min",     &ps.config.lifetimeMin, 0.1f, 10.0f);
                 ImGui::SliderFloat("Life Max",     &ps.config.lifetimeMax, 0.1f, 10.0f);
-                ImGui::DragFloat3("Velocity Min",  &ps.config.velocityMin.x, 0.1f, -20.0f, 20.0f);
-                ImGui::DragFloat3("Velocity Max",  &ps.config.velocityMax.x, 0.1f, -20.0f, 20.0f);
                 ImGui::SliderFloat("Size Start",   &ps.config.sizeStart,   0.01f, 2.0f);
                 ImGui::SliderFloat("Size End",     &ps.config.sizeEnd,     0.0f, 2.0f);
+                ImGui::Separator();
+
+                ImGui::Text("Motion");
+                ImGui::DragFloat3("Velocity Min",  &ps.config.velocityMin.x, 0.1f, -20.0f, 20.0f);
+                ImGui::DragFloat3("Velocity Max",  &ps.config.velocityMax.x, 0.1f, -20.0f, 20.0f);
+                ImGui::DragFloat3("Gravity",       &ps.config.gravity.x, 0.1f, -20.0f, 20.0f);
+                ImGui::SliderFloat("Drag", &ps.config.drag, 0.0f, 5.0f);
+                ImGui::Separator();
+
+                ImGui::Text("Color");
                 ImGui::ColorEdit4("Color Start",   &ps.config.colorStart.x);
                 ImGui::ColorEdit4("Color End",     &ps.config.colorEnd.x);
-                ImGui::DragFloat3("Gravity",       &ps.config.gravity.x, 0.1f, -20.0f, 20.0f);
-                ImGui::SliderFloat("Spawn Radius", &ps.config.spawnRadius, 0.0f, 5.0f);
                 ImGui::Separator();
+
                 ImGui::Text("Atlas");
                 ImGui::InputInt("Columns", &ps.config.atlasColumns);
                 ImGui::InputInt("Rows",    &ps.config.atlasRows);
                 ImGui::InputInt("Frames",  &ps.config.atlasFrameCount);
                 ImGui::SliderFloat("Speed", &ps.config.atlasSpeed, 0.1f, 5.0f);
                 ImGui::Separator();
-                ImGui::SliderFloat("Soft Distance", &ps.config.softDistance, 0.0f, 3.0f);
+
+                ImGui::Text("Render");
                 ImGui::Combo("Blend Mode", &ps.config.blendMode, "Additive\0Alpha Blend\0");
-                ImGui::SliderFloat("Drag", &ps.config.drag, 0.0f, 5.0f);
                 ImGui::Combo("Shader Mode", &ps.config.shaderMode, "Textured\0Ember\0");
+                ImGui::SliderFloat("Soft Distance", &ps.config.softDistance, 0.0f, 3.0f);
             }
             ImGui::PopID();
         }
