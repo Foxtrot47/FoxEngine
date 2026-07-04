@@ -40,6 +40,9 @@ struct ParticleEmitterConfig
 
     float softDistance    = 0.5f;
 
+    // Billboard aspect ratio (width/height). 1.0 = square, 2.0 = twice as wide
+    float aspectRatio     = 1.0f;
+
     // 0 = additive (fire/sparks), 1 = alpha blend (smoke/dust)
     int   blendMode       = 0;
 
@@ -48,6 +51,16 @@ struct ParticleEmitterConfig
 
     // Render shader mode: 0 = textured billboard, 1 = ember glow
     int   shaderMode      = 0;
+
+    // 0 = continuous auto-emit, 1 = single/manual (Burst() only)
+    int   emitMode        = 0;
+
+    // Billboard orientation controls
+    float rotationDegrees = 0.0f;
+    bool  randomRotation  = true;
+
+    // World position (controlled via ImGui)
+    DirectX::XMFLOAT3 position = { 0.0f, 0.0f, 0.0f };
 };
 
 class ParticleSystem
@@ -57,6 +70,9 @@ public:
 
     void SetPosition(const DirectX::XMFLOAT3& pos) { m_worldPos = pos; }
     void SetTexture(AssetHandle<Texture2D> tex) { m_texture = tex; }
+
+    // Emit a burst of particles on next Update()
+    void Burst(int count) { m_emitAccum += static_cast<float>(count); }
 
     // GPU compute update — dispatches emit + simulate on the GPU
     void Update(ID3D11DeviceContext* ctx, float dt);
@@ -104,9 +120,9 @@ private:
     {
         DirectX::XMMATRIX viewProj;
         DirectX::XMFLOAT3 camRight;
-        float _pad0;
+        float aspectRatio;
         DirectX::XMFLOAT3 camUp;
-        float _pad1;
+        float rotationRadians;
         float atlasColumns;
         float atlasRows;
         float atlasFrameCount;
@@ -114,7 +130,9 @@ private:
         float nearZ;
         float farZ;
         float softDistance;
-        float shaderMode; // 0 = default, 1 = procedural fire
+        float shaderMode;
+        float randomRotation;
+        float _pad2[3];
     };
 
     DirectX::XMFLOAT3 m_worldPos = { 0, 0, 0 };

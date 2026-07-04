@@ -234,6 +234,7 @@ void ParticleSystem::Update(ID3D11DeviceContext* ctx, float dt)
     if (!enabled) return;
 
     m_time += dt;
+    m_worldPos = config.position;
 
     // 1) Reset draw args (instanceCount = 0)
     ctx->CSSetShader(m_csResetArgs, nullptr, 0);
@@ -242,8 +243,9 @@ void ParticleSystem::Update(ID3D11DeviceContext* ctx, float dt)
     ctx->CSSetUnorderedAccessViews(0, 5, resetUAVs, nullptr);
     ctx->Dispatch(1, 1, 1);
 
-    // 2) Emit new particles
-    m_emitAccum += config.emitRate * dt;
+    if (config.emitMode == 0)
+        m_emitAccum += config.emitRate * dt;
+
     int toEmit = static_cast<int>(m_emitAccum);
     if (toEmit > 0)
     {
@@ -316,7 +318,9 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
     CameraCB cb = {};
     cb.viewProj = view * proj;
     cb.camRight = { viewF._11, viewF._21, viewF._31 };
+    cb.aspectRatio = config.aspectRatio;
     cb.camUp = { viewF._12, viewF._22, viewF._32 };
+    cb.rotationRadians = XMConvertToRadians(config.rotationDegrees);
     cb.atlasColumns = static_cast<float>(config.atlasColumns);
     cb.atlasRows = static_cast<float>(config.atlasRows);
     cb.atlasFrameCount = static_cast<float>(config.atlasFrameCount > 0
@@ -327,6 +331,7 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
     cb.farZ = farZ;
     cb.softDistance = config.softDistance;
     cb.shaderMode = static_cast<float>(config.shaderMode);
+    cb.randomRotation = config.randomRotation ? 1.0f : 0.0f;
     m_cameraCB.Update(ctx, cb);
     m_cameraCB.BindVS(ctx, 0);
     m_cameraCB.BindPS(ctx, 0);
