@@ -22,7 +22,10 @@ A from-scratch DirectX 11 rendering engine built on Windows with C++17. Features
 - **Per-emitter blend** — Additive (fire/embers) or alpha blend (smoke)
 - **Soft particles** — Depth-fade near geometry intersections
 - **HDR particles** — Colors above 1.0 trigger bloom glow
-- **Billboard rotation** — Per-particle random angle for volume
+- **Emission mode** — Continuous or single/manual burst trigger
+- **Billboard orientation** — Fixed angle with optional random rotation
+- **Texture rotation** — Per-emitter UV rotation to correct source texture orientation
+- **Tracer support** — Velocity-aligned billboard stretch for bullet tracers
 
 ### Engine Systems
 - **Scene Management** — JSON scene descriptors with hot-reload, objects + particles + lights

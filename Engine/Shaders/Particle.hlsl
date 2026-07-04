@@ -11,7 +11,8 @@ struct InstanceData
     float4 color;
     float  normalizedAge;
     float  seed;
-    float2 _pad;
+    float3 velocity;
+    float _pad;
 };
 
 StructuredBuffer<InstanceData> g_instances : register(t2);
@@ -27,12 +28,14 @@ cbuffer ParticleCameraCB : register(b0)
     float AtlasRows;
     float AtlasFrameCount;
     float AtlasSpeed;
+    float TextureRotationRadians;
     float NearZ;
     float FarZ;
     float SoftDistance;
     float ShaderMode; // 0 = textured billboard, 1 = ember glow
     float RandomRotation; // 0 = fixed angle, 1 = add per-particle random
-    float3 _pad2;
+    float TracerStretch; // velocity-aligned stretch factor
+    float _pad2;
 };
 
 struct VSInput
@@ -73,6 +76,24 @@ PSInput VS_Main(VSInput input)
         corner.x * sinA + corner.y * cosA
     );
 
+    // Tracer mode: align billboard in camera-plane with particle velocity and stretch by speed.
+    if (TracerStretch > 0.0f)
+    {
+        float vx = dot(inst.velocity, CamRight);
+        float vy = dot(inst.velocity, CamUp);
+        float2 v2 = float2(vx, vy);
+        float speed2 = dot(v2, v2);
+        if (speed2 > 1e-6f)
+        {
+            float2 dir = normalize(v2);
+            float2 perp = float2(-dir.y, dir.x);
+            float speed = sqrt(speed2);
+            float stretch = 1.0f + speed * TracerStretch;
+            float2 baseCorner = float2(input.cornerPos.x * AspectRatio * stretch, input.cornerPos.y);
+            rotated = dir * baseCorner.x + perp * baseCorner.y;
+        }
+    }
+
     float3 worldPos = center
                     + CamRight * (rotated.x * size)
                     + CamUp    * (rotated.y * size);
@@ -99,15 +120,23 @@ PSInput VS_Main(VSInput input)
     float invCols = 1.0f / cols;
     float invRows = 1.0f / rows;
 
+    float texCos = cos(TextureRotationRadians);
+    float texSin = sin(TextureRotationRadians);
+    float2 uvLocal = input.uv - 0.5;
+    float2 uvRot = float2(
+        uvLocal.x * texCos - uvLocal.y * texSin,
+        uvLocal.x * texSin + uvLocal.y * texCos
+    ) + 0.5;
+
     float col0 = fmod(frame0, cols);
     float row0 = floor(frame0 / cols);
-    o.uv = float2((col0 + input.uv.x) * invCols,
-                  (row0 + input.uv.y) * invRows);
+    o.uv = float2((col0 + uvRot.x) * invCols,
+                  (row0 + uvRot.y) * invRows);
 
     float col1 = fmod(frame1, cols);
     float row1 = floor(frame1 / cols);
-    o.uvNext = float2((col1 + input.uv.x) * invCols,
-                      (row1 + input.uv.y) * invRows);
+    o.uvNext = float2((col1 + uvRot.x) * invCols,
+                      (row1 + uvRot.y) * invRows);
 
     return o;
 }

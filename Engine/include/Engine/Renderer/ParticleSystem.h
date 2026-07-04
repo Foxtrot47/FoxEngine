@@ -37,6 +37,7 @@ struct ParticleEmitterConfig
     int   atlasRows       = 1;
     int   atlasFrameCount = 0;
     float atlasSpeed      = 1.0f;
+    float textureRotationDegrees = 0.0f;
 
     float softDistance    = 0.5f;
 
@@ -58,6 +59,7 @@ struct ParticleEmitterConfig
     // Billboard orientation controls
     float rotationDegrees = 0.0f;
     bool  randomRotation  = true;
+    float tracerStretch   = 0.0f; // 0 = disabled, >0 = velocity-aligned stretch
 
     // World position (controlled via ImGui)
     DirectX::XMFLOAT3 position = { 0.0f, 0.0f, 0.0f };
@@ -127,12 +129,14 @@ private:
         float atlasRows;
         float atlasFrameCount;
         float atlasSpeed;
+        float textureRotationRadians;
         float nearZ;
         float farZ;
         float softDistance;
         float shaderMode;
         float randomRotation;
-        float _pad2[3];
+        float tracerStretch;
+        float _pad2;
     };
 
     DirectX::XMFLOAT3 m_worldPos = { 0, 0, 0 };

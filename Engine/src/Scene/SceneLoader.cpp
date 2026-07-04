@@ -202,6 +202,7 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
             if (p.contains("atlasRows"))      e.atlasRows       = p["atlasRows"].get<int>();
             if (p.contains("atlasFrameCount"))e.atlasFrameCount = p["atlasFrameCount"].get<int>();
             if (p.contains("atlasSpeed"))     e.atlasSpeed      = p["atlasSpeed"].get<float>();
+            if (p.contains("textureRotationDegrees")) e.textureRotationDegrees = p["textureRotationDegrees"].get<float>();
             if (p.contains("softDistance"))   e.softDistance    = p["softDistance"].get<float>();
             if (p.contains("aspectRatio"))    e.aspectRatio     = p["aspectRatio"].get<float>();
             if (p.contains("blendMode"))      e.blendMode       = p["blendMode"].get<int>();
@@ -210,6 +211,7 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
             if (p.contains("emitMode"))       e.emitMode        = p["emitMode"].get<int>();
             if (p.contains("rotationDegrees"))e.rotationDegrees = p["rotationDegrees"].get<float>();
             if (p.contains("randomRotation")) e.randomRotation  = p["randomRotation"].get<bool>();
+            if (p.contains("tracerStretch"))  e.tracerStretch   = p["tracerStretch"].get<float>();
             out.particles.push_back(e);
         }
     }

@@ -91,11 +91,11 @@ bool ParticleSystem::Init(ID3D11Device* device, ShaderLibrary& shaders, int maxP
     // Instance buffer for rendering — StructuredBuffer read by VS via SRV
     {
         D3D11_BUFFER_DESC bd = {};
-        bd.ByteWidth = maxParticles * 48;
+        bd.ByteWidth = maxParticles * 64;
         bd.Usage = D3D11_USAGE_DEFAULT;
         bd.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
         bd.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-        bd.StructureByteStride = 48;
+        bd.StructureByteStride = 64;
         if (FAILED(device->CreateBuffer(&bd, nullptr, &m_instanceBuffer))) return false;
 
         D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
@@ -327,11 +327,13 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
                             ? config.atlasFrameCount
                             : config.atlasColumns * config.atlasRows);
     cb.atlasSpeed = config.atlasSpeed;
+    cb.textureRotationRadians = XMConvertToRadians(config.textureRotationDegrees);
     cb.nearZ = nearZ;
     cb.farZ = farZ;
     cb.softDistance = config.softDistance;
     cb.shaderMode = static_cast<float>(config.shaderMode);
     cb.randomRotation = config.randomRotation ? 1.0f : 0.0f;
+    cb.tracerStretch = config.tracerStretch;
     m_cameraCB.Update(ctx, cb);
     m_cameraCB.BindVS(ctx, 0);
     m_cameraCB.BindPS(ctx, 0);
@@ -391,4 +393,3 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
 }
 
 } // namespace SE
-

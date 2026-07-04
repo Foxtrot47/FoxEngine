@@ -134,6 +134,7 @@ struct SceneDescriptor
         int   atlasRows       = 1;
         int   atlasFrameCount = 0;  // 0 = cols*rows
         float atlasSpeed      = 1.0f;
+        float textureRotationDegrees = 0.0f;
         // Soft particles
         float softDistance    = 0.5f;
         // Billboard aspect ratio
@@ -149,6 +150,7 @@ struct SceneDescriptor
         // Billboard orientation controls
         float rotationDegrees = 0.0f;
         bool  randomRotation  = true;
+        float tracerStretch   = 0.0f;
     };
     std::vector<ParticleEmitterDesc> particles;
 };
