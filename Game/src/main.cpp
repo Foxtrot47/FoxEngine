@@ -261,6 +261,7 @@ public:
             ps->config.atlasRows       = pe.atlasRows;
             ps->config.atlasFrameCount = pe.atlasFrameCount;
             ps->config.atlasSpeed      = pe.atlasSpeed;
+            ps->config.textureRotationDegrees = pe.textureRotationDegrees;
             ps->config.softDistance    = pe.softDistance;
             ps->config.aspectRatio     = pe.aspectRatio;
             ps->config.blendMode       = pe.blendMode;
@@ -269,6 +270,7 @@ public:
             ps->config.emitMode        = pe.emitMode;
             ps->config.rotationDegrees = pe.rotationDegrees;
             ps->config.randomRotation  = pe.randomRotation;
+            ps->config.tracerStretch   = pe.tracerStretch;
             ps->config.position        = { pe.position[0], pe.position[1], pe.position[2] };
             if (!ps->Init(device, GetShaders()))
             {
@@ -931,6 +933,15 @@ private:
         // --- Particles ---
         ImGui::Begin("Particles");
         ImGui::Text("Emitters: %d", (int)m_particleSystems.size());
+        if (ImGui::Button("Fire All Single Emitters"))
+        {
+            for (auto& emitter : m_particleSystems)
+            {
+                if (emitter->config.emitMode == 1)
+                    emitter->Burst(8);
+            }
+        }
+        ImGui::Separator();
         for (int i = 0; i < (int)m_particleSystems.size(); ++i)
         {
             auto& ps = *m_particleSystems[i];
@@ -984,12 +995,14 @@ private:
                 ImGui::InputInt("Rows",    &ps.config.atlasRows);
                 ImGui::InputInt("Frames",  &ps.config.atlasFrameCount);
                 ImGui::SliderFloat("Speed", &ps.config.atlasSpeed, 0.1f, 5.0f);
+                ImGui::SliderFloat("Texture Rotation (deg)", &ps.config.textureRotationDegrees, -180.0f, 180.0f);
                 ImGui::Separator();
 
                 ImGui::Text("Render");
                 ImGui::Combo("Blend Mode", &ps.config.blendMode, "Additive\0Alpha Blend\0");
                 ImGui::Combo("Shader Mode", &ps.config.shaderMode, "Textured\0Ember\0");
                 ImGui::SliderFloat("Soft Distance", &ps.config.softDistance, 0.0f, 3.0f);
+                ImGui::SliderFloat("Tracer Stretch", &ps.config.tracerStretch, 0.0f, 0.25f);
             }
             ImGui::PopID();
         }

@@ -30,7 +30,8 @@ struct InstanceOut
     float4 color;
     float  normalizedAge;
     float  seed;
-    float2 _instPad;
+    float3 velocity;
+    float  _instPad;
 };
 
 RWStructuredBuffer<InstanceOut> g_instances : register(u2);
@@ -170,7 +171,8 @@ void CS_Update(uint3 dtid : SV_DispatchThreadID)
     inst.color = color;
     inst.normalizedAge = t;
     inst.seed = frac((float)dtid.x * 0.6180339887); // golden ratio hash for well-distributed [0,1]
-    inst._instPad = float2(0, 0);
+    inst.velocity = p.velocity;
+    inst._instPad = 0.0f;
 
     // Atomically get render slot
     uint renderIdx;

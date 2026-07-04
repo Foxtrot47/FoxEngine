@@ -91,7 +91,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 1. **One milestone at a time.** Compile, run in test scene, commit before starting next.
 2. **Test scene is canonical.** `Game/` is the live integration target. Wire everything into it.
 3. **No premature abstraction.** Refactor only when duplication actually hurts (3+ occurrences).
-4. **Commit format**: `M##: <short description>` — e.g. `M54: Screen-space ambient occlusion`.
+4. **Commit format**: Follow Conventional Commits v1.0.0 (e.g., `feat(renderer): add SSAO pass`).
 5. **Dependencies are additive.** Add via vcpkg or `ThirdParty/`. Never inline library source.
 6. **Platform**: Windows 10+ x64 only. No cross-platform layers.
 7. **Debug-first**: Default config is Debug. RelWithDebInfo for profiling.
@@ -119,12 +119,13 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 
 ### GPU Particle System
 - **Compute shaders** for emit/update/reset — fully GPU-driven, no CPU readback
-- **Structured buffers**: particle pool (80 bytes), instance output (48 bytes), dead list, counters
+- **Structured buffers**: particle pool (80 bytes), instance output (64 bytes, includes velocity), dead list, counters
 - **Indirect draw** — GPU writes draw args, CPU never reads alive count
 - **Flipbook atlas** — configurable columns/rows/frameCount/speed for animated sprites
 - **Two shader modes**: 0 = textured billboard (flipbook), 1 = ember glow (procedural)
 - **Per-emitter blend**: additive (fire/embers) or alpha blend (smoke)
-- **Billboard rotation**: fixed random angle per particle from seed
+- **Billboard controls**: fixed angle, optional random rotation, and per-emitter UV texture rotation
+- **Tracer support**: velocity-aligned stretch for bullet/trail effects
 - **Soft particles**: depth-fade near geometry intersections
 - **HDR colors**: values > 1.0 trigger bloom glow
 
@@ -139,9 +140,9 @@ M59: FXAA
 M67: GPU compute particle system (replaces CPU)
 M68: Per-emitter blend mode, drag, flipbook fire, ember shader
 M69: Smoke particles with expanding billboard puffs
+M70: More particle effects (explosions, sparks/trails, dust)
 
 ### Next Up
-- M70: More particle effects (explosions, sparks/trails, dust)
 - M71: Particle asset serialization / presets
 - M60: Volumetric fog / god rays
 - M61: Decals
