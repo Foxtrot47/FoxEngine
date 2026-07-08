@@ -88,6 +88,24 @@ struct SceneDescriptor
     };
     BloomDesc bloom;
 
+    // Volumetric fog
+    struct FogDesc {
+        bool  enabled          = false;
+        float density          = 0.03f;
+        float anisotropy       = 0.76f;
+        float scatterIntensity = 1.0f;
+        int   steps            = 48;
+        float maxDistance      = 60.0f;
+        float ambientColor[3]  = { 1.0f, 1.0f, 1.0f };
+        float ambientIntensity = 0.10f;
+        float heightFalloff    = 0.0f;
+        float heightBase       = 0.0f;
+        float noiseStrength    = 0.35f;
+        float noiseScale       = 0.035f;
+        float noiseSpeed       = 0.0f;
+    };
+    FogDesc fog;
+
     // Optional array of scene objects with explicit geometry and PBR material paths.
     // Rendered in addition to the main mesh. Enables a fully JSON-driven PBR showcase.
     struct SceneObject

@@ -37,6 +37,13 @@ public:
     // For backwards compat with LightCB (uses cascade 0 as primary)
     DirectX::XMMATRIX GetLightViewProj() const { return m_cascadeVP[0]; }
 
+    // Accessors for post-process passes (e.g. volumetric fog) that need to sample
+    // the sun shadow outside the lit pass.
+    ID3D11ShaderResourceView* GetShadowSRV() const { return m_srv.Get(); }
+    ID3D11SamplerState*       GetShadowSampler() const { return m_shadowSampler.Get(); }
+    DirectX::XMMATRIX         GetCascadeVP(int i) const { return m_cascadeVP[i]; }
+    float                     GetSplitFar(int i) const { return m_splits[i + 1]; }
+
     // Public tuning parameters
     float splitLambda = 0.75f;  // PSSM lambda (0=linear, 1=logarithmic)
 
