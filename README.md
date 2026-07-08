@@ -8,7 +8,7 @@ A from-scratch DirectX 11 rendering engine built on Windows with C++17. Features
 - **PBR Forward Pipeline** — Cook-Torrance BRDF (GGX + Smith-Schlick + Fresnel)
 - **Image-Based Lighting** — Equirectangular HDR panorama sampling for diffuse irradiance + specular reflections
 - **Shadows** — Cascaded shadow maps (4-cascade), point light cube shadows, spot light shadow maps
-- **Post-Processing** — HDR rendering, ACES/Reinhard tone mapping, FXAA
+- **Post-Processing** — HDR rendering, ACES/Reinhard tone mapping, volumetric fog / god rays, FXAA
 - **Screen-Space Effects** — SSR, SSAO (hemisphere sampling + bilateral blur)
 - **Bloom** — Dual Kawase blur chain with threshold
 - **Emissive Materials** — Per-texture emissive with intensity/color
@@ -94,6 +94,21 @@ Scenes are defined as JSON files in `Assets/Scenes/`. Example:
   "camera": { "eye": [0, 5, -10], "yaw": 0, "pitch": 0 },
   "sun": { "elevation": 60, "azimuth": -135, "intensity": 1.0 },
   "bloom": { "enabled": true, "threshold": 1.0, "intensity": 0.1 },
+  "fog": {
+    "enabled": true,
+    "density": 0.03,
+    "anisotropy": 0.8,
+    "scatterIntensity": 1.2,
+    "steps": 48,
+    "maxDistance": 60.0,
+    "ambientColor": [1.0, 1.0, 1.0],
+    "ambientIntensity": 0.1,
+    "heightFalloff": 0.0,
+    "heightBase": 0.0,
+    "noiseStrength": 0.35,
+    "noiseScale": 0.035,
+    "noiseSpeed": 0.0
+  },
   "pointLights": [
     { "position": [5, 3, 0], "color": [1, 0.8, 0.5], "radius": 50, "castShadow": true }
   ],

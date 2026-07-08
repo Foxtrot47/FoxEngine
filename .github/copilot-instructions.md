@@ -30,7 +30,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 1. `ForwardPipeline::Begin()` → caches view/proj, extracts frustum
 2. `SubmitMesh()` → frustum cull, push to render queue
 3. `Flush()` → sort queue (opaque front-to-back, transparent back-to-front), bind per-draw state, draw
-4. Post-process chain: **SSAO → SSR → Bloom → FXAA → ToneMap → Present**
+4. Post-process chain: **SSAO → SSR → Volumetric Fog → Bloom → FXAA → ToneMap → Present**
 
 ### Key Classes
 
@@ -43,6 +43,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `PointShadowMap` | Cube depth map (6-face) for point lights |
 | `CascadedShadowMap` | 4-cascade directional shadow mapping |
 | `SpotLight` | Spot light with cone angle + shadow map |
+| `VolumetricFog` | Single-scattering fog, god rays, IBL ambient |
 | `Bloom` | Dual Kawase blur chain |
 | `ToneMap` | Reinhard/ACES, auto-exposure |
 | `SSR` | View-space ray march, MRT normals |
@@ -138,14 +139,15 @@ M56: Spot lights (cone angle, inner/outer falloff, shadow map)
 M57: Cascaded Shadow Maps (4-cascade)
 M58: Emissive materials
 M59: FXAA
-M67: GPU compute particle system (replaces CPU)
+M60: Volumetric fog / god rays
+M67: GPU compute particle system
 M68: Per-emitter blend mode, drag, flipbook fire, ember shader
 M69: Smoke particles with expanding billboard puffs
 M70: More particle effects (explosions, sparks/trails, dust)
+M71: Particle asset serialization / default presets
 
 ### Next Up
-- M71: Particle asset serialization / presets
-- M60: Volumetric fog / god rays
+
 - M61: Decals
 - M62: TAA
 

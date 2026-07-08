@@ -1,0 +1,208 @@
+#include "Engine/Renderer/VolumetricFog.h"
+#include "Engine/Core/Logger.h"
+
+using namespace DirectX;
+
+namespace SE {
+
+bool VolumetricFog::Init(ID3D11Device* device, ShaderLibrary& shaders,
+                         uint32_t width, uint32_t height)
+{
+    m_width  = width;
+    m_height = height;
+
+    // RGBA16F: RGB = accumulated in-scattered light (HDR), A = transmittance.
+    if (!m_fogRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
+        return false;
+    if (!m_blurRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
+        return false;
+
+    m_fogPerm = shaders.Get(L"Engine/Shaders/VolumetricFog.hlsl");
+    if (!m_fogPerm) { SE_LOG_ERROR("VolumetricFog: failed to compile VolumetricFog.hlsl"); return false; }
+
+    m_blurPerm = shaders.Get(L"Engine/Shaders/VolumetricFogBlur.hlsl");
+    if (!m_blurPerm) { SE_LOG_ERROR("VolumetricFog: failed to compile VolumetricFogBlur.hlsl"); return false; }
+
+    if (!m_cb.Create(device)) return false;
+    if (!m_blurCB.Create(device)) return false;
+    if (!m_quad.Init(device, shaders)) return false;
+
+    // Point-clamp sampler for exact depth, shadow, and blur taps (s0).
+    D3D11_SAMPLER_DESC sd = {};
+    sd.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    sd.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    HRESULT hr = device->CreateSamplerState(&sd, m_pointSampler.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("VolumetricFog: sampler failed"); return false; }
+
+    D3D11_SAMPLER_DESC skySd = {};
+    skySd.Filter   = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    skySd.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+    skySd.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    skySd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    skySd.MaxLOD   = D3D11_FLOAT32_MAX;
+    hr = device->CreateSamplerState(&skySd, m_skySampler.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("VolumetricFog: sky sampler failed"); return false; }
+
+    // Composite blend: Final = Src.rgb + Dest * Src.a
+    //   (Src = fog: in-scatter in rgb, transmittance in alpha)
+    D3D11_BLEND_DESC bd = {};
+    bd.RenderTarget[0].BlendEnable           = TRUE;
+    bd.RenderTarget[0].SrcBlend              = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlend             = D3D11_BLEND_SRC_ALPHA;
+    bd.RenderTarget[0].BlendOp               = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].SrcBlendAlpha         = D3D11_BLEND_ONE;
+    bd.RenderTarget[0].DestBlendAlpha        = D3D11_BLEND_ZERO;
+    bd.RenderTarget[0].BlendOpAlpha          = D3D11_BLEND_OP_ADD;
+    bd.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+    hr = device->CreateBlendState(&bd, m_compositeBlend.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("VolumetricFog: blend state failed"); return false; }
+
+    SE_LOG_INFO("VolumetricFog initialised — %ux%u", width, height);
+    return true;
+}
+
+void VolumetricFog::Resize(ID3D11Device* device, uint32_t width, uint32_t height)
+{
+    m_width  = width;
+    m_height = height;
+    m_fogRT.Shutdown();
+    m_fogRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    m_blurRT.Shutdown();
+    m_blurRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT);
+}
+
+void VolumetricFog::Shutdown()
+{
+    m_fogRT.Shutdown();
+    m_blurRT.Shutdown();
+    m_pointSampler.Reset();
+    m_skySampler.Reset();
+    m_compositeBlend.Reset();
+}
+
+void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
+                          RenderTarget& hdrRT,
+                          ID3D11ShaderResourceView* depthSRV,
+                          ID3D11ShaderResourceView* csmSRV,
+                          ID3D11SamplerState* csmSampler,
+                          ID3D11ShaderResourceView* skySRV,
+                          XMMATRIX view,
+                          XMMATRIX proj,
+                          XMFLOAT3 cameraPos,
+                          XMFLOAT3 lightDir,
+                          XMFLOAT3 lightColor,
+                          const XMMATRIX cascadeVP[3],
+                          const float splitFar[2])
+{
+    if (!enabled) return;
+
+    XMMATRIX viewProj    = XMMatrixMultiply(view, proj);
+    XMMATRIX invViewProj = XMMatrixInverse(nullptr, viewProj);
+
+    FogCBData cb = {};
+    XMStoreFloat4x4(&cb.invViewProj, invViewProj);
+    XMStoreFloat4x4(&cb.view, view);
+    for (int i = 0; i < 3; ++i)
+        XMStoreFloat4x4(&cb.cascadeVP[i], cascadeVP[i]);
+    cb.cascadeSplits    = { splitFar[0], splitFar[1], 0.0f, 0.0f };
+    cb.cameraPos        = cameraPos;
+    cb.density          = density;
+    cb.lightDir         = lightDir;
+    cb.anisotropy       = anisotropy;
+    cb.lightColor       = lightColor;
+    cb.stepCount        = (float)(steps < 1 ? 1 : steps);
+    cb.fogAmbient       = { ambientColor[0], ambientColor[1], ambientColor[2] };
+    cb.ambientIntensity = ambientIntensity;
+    cb.screenSize       = { (float)m_width, (float)m_height };
+    cb.maxDistance      = maxDistance;
+    cb.scatterIntensity = scatterIntensity;
+    cb.heightFalloff    = heightFalloff;
+    cb.heightBase       = heightBase;
+    cb.noiseStrength    = noiseStrength;
+    cb.noiseScale       = noiseScale;
+    cb.noiseTime        = m_noiseTime;
+    m_noiseTime += noiseSpeed * (1.0f / 60.0f);
+    m_cb.Update(ctx, cb);
+
+    // --- Pass 1: ray-march fog into m_fogRT ---
+    {
+        const float clear[4] = { 0.0f, 0.0f, 0.0f, 1.0f }; // transmittance starts at 1
+        m_fogRT.Begin(ctx, clear);
+
+        ctx->VSSetShader(m_fogPerm->vs.Get(), nullptr, 0);
+        ctx->PSSetShader(m_fogPerm->ps.Get(), nullptr, 0);
+
+        ID3D11ShaderResourceView* srvs[3] = { depthSRV, csmSRV, skySRV };
+        ctx->PSSetShaderResources(0, 3, srvs);
+        ID3D11SamplerState* samplers[3] = { m_pointSampler.Get(), csmSampler, m_skySampler.Get() };
+        ctx->PSSetSamplers(0, 3, samplers);
+
+        m_cb.BindPS(ctx, 0);
+        m_quad.DrawGeometryOnly(ctx);
+
+        ID3D11ShaderResourceView* nullSRVs[3] = { nullptr, nullptr, nullptr };
+        ctx->PSSetShaderResources(0, 3, nullSRVs);
+        m_fogRT.End(ctx);
+    }
+
+    // --- Pass 1.5: separable Gaussian blur to smooth the shafts ---
+    if (blur)
+    {
+        ctx->VSSetShader(m_blurPerm->vs.Get(), nullptr, 0);
+        ctx->PSSetShader(m_blurPerm->ps.Get(), nullptr, 0);
+        ctx->PSSetSamplers(0, 1, m_pointSampler.GetAddressOf());
+
+        // Horizontal: m_fogRT -> m_blurRT
+        {
+            m_blurRT.Begin(ctx, nullptr);
+            BlurCBData bd = { 1.0f / (float)m_width, 1.0f / (float)m_height, 1.0f, 0.0f };
+            m_blurCB.Update(ctx, bd);
+            m_blurCB.BindPS(ctx, 0);
+            ID3D11ShaderResourceView* srvs[2] = { m_fogRT.GetSRV(), depthSRV };
+            ctx->PSSetShaderResources(0, 2, srvs);
+            m_quad.DrawGeometryOnly(ctx);
+            ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+            ctx->PSSetShaderResources(0, 2, nullSRVs);
+            m_blurRT.End(ctx);
+        }
+        // Vertical: m_blurRT -> m_fogRT
+        {
+            m_fogRT.Begin(ctx, nullptr);
+            BlurCBData bd = { 1.0f / (float)m_width, 1.0f / (float)m_height, 0.0f, 1.0f };
+            m_blurCB.Update(ctx, bd);
+            m_blurCB.BindPS(ctx, 0);
+            ID3D11ShaderResourceView* srvs[2] = { m_blurRT.GetSRV(), depthSRV };
+            ctx->PSSetShaderResources(0, 2, srvs);
+            m_quad.DrawGeometryOnly(ctx);
+            ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+            ctx->PSSetShaderResources(0, 2, nullSRVs);
+            m_fogRT.End(ctx);
+        }
+    }
+
+    // --- Pass 2: composite fog into HDR buffer ---
+    {
+        ID3D11RenderTargetView* rtv = hdrRT.GetRTV();
+        ctx->OMSetRenderTargets(1, &rtv, nullptr);
+        D3D11_VIEWPORT vp = {};
+        vp.Width    = (float)hdrRT.GetWidth();
+        vp.Height   = (float)hdrRT.GetHeight();
+        vp.MaxDepth = 1.0f;
+        ctx->RSSetViewports(1, &vp);
+
+        float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        ctx->OMSetBlendState(m_compositeBlend.Get(), blendFactor, 0xFFFFFFFF);
+
+        ID3D11ShaderResourceView* fogSRV = m_fogRT.GetSRV();
+        ctx->PSSetShaderResources(0, 1, &fogSRV);
+        m_quad.Draw(ctx); // Fullscreen.hlsl passthrough samples t0 → blended into HDR
+
+        ID3D11ShaderResourceView* nullSRV = nullptr;
+        ctx->PSSetShaderResources(0, 1, &nullSRV);
+        ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
+    }
+}
+
+} // namespace SE

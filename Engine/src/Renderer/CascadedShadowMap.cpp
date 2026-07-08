@@ -183,8 +183,15 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
         }
         center = XMVectorScale(center, 1.0f / 8.0f);
 
-        // Light view matrix looking at frustum center
-        XMVECTOR eye = XMVectorSubtract(center, XMVectorScale(dir, 100.0f));
+        float radius = 0.0f;
+        for (int i = 0; i < 8; ++i)
+        {
+            XMVECTOR delta = XMVectorSubtract(XMLoadFloat3(&worldCorners[i]), center);
+            radius = (std::max)(radius, XMVectorGetX(XMVector3Length(delta)));
+        }
+
+        // LightDir points from the scene toward the sun; render shadows from that side.
+        XMVECTOR eye = XMVectorAdd(center, XMVectorScale(dir, radius * 2.0f));
         XMMATRIX lightView = XMMatrixLookAtLH(eye, center, up);
 
         // Find tight ortho bounds in light space
@@ -200,7 +207,7 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
             minZ = (std::min)(minZ, z); maxZ = (std::max)(maxZ, z);
         }
 
-        // Extend near/far to catch casters behind the frustum
+        // Extend toward the sun to catch casters before the camera frustum slice.
         float zRange = maxZ - minZ;
         minZ -= zRange * 2.0f;
 

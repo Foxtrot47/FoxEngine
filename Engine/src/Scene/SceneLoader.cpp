@@ -178,6 +178,25 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
         if (b.contains("scatter"))   out.bloom.scatter   = b["scatter"].get<float>();
     }
 
+    if (root.contains("fog"))
+    {
+        auto& f = root["fog"];
+        if (f.contains("enabled"))          out.fog.enabled          = f["enabled"].get<bool>();
+        if (f.contains("density"))          out.fog.density          = f["density"].get<float>();
+        if (f.contains("anisotropy"))       out.fog.anisotropy       = f["anisotropy"].get<float>();
+        if (f.contains("scatterIntensity")) out.fog.scatterIntensity = f["scatterIntensity"].get<float>();
+        if (f.contains("steps"))            out.fog.steps            = f["steps"].get<int>();
+        if (f.contains("maxDistance"))      out.fog.maxDistance      = f["maxDistance"].get<float>();
+        if (f.contains("ambientColor") && f["ambientColor"].is_array() && f["ambientColor"].size() == 3)
+            for (int i = 0; i < 3; ++i) out.fog.ambientColor[i] = f["ambientColor"][i].get<float>();
+        if (f.contains("ambientIntensity")) out.fog.ambientIntensity = f["ambientIntensity"].get<float>();
+        if (f.contains("heightFalloff"))    out.fog.heightFalloff    = f["heightFalloff"].get<float>();
+        if (f.contains("heightBase"))       out.fog.heightBase       = f["heightBase"].get<float>();
+        if (f.contains("noiseStrength"))    out.fog.noiseStrength    = f["noiseStrength"].get<float>();
+        if (f.contains("noiseScale"))       out.fog.noiseScale       = f["noiseScale"].get<float>();
+        if (f.contains("noiseSpeed"))       out.fog.noiseSpeed       = f["noiseSpeed"].get<float>();
+    }
+
     // Scene objects (PBR showcase or any extra geometry)
     if (root.contains("objects") && root["objects"].is_array())
     {

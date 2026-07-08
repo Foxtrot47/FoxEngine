@@ -31,6 +31,7 @@
 #include "Engine/Renderer/Bloom.h"
 #include "Engine/Renderer/SSR.h"
 #include "Engine/Renderer/SSAO.h"
+#include "Engine/Renderer/VolumetricFog.h"
 #include "Engine/Renderer/FXAA.h"
 #include "Engine/Renderer/ParticleSystem.h"
 #include "Engine/Renderer/SpotLight.h"
@@ -77,6 +78,10 @@ public:
 
         // Screen-Space Ambient Occlusion
         if (!m_ssao.Init(device, GetShaders(),
+                GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
+
+        // Volumetric fog / god rays
+        if (!m_volFog.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
 
         // FXAA
@@ -226,6 +231,22 @@ public:
         m_bloom.threshold      = desc.bloom.threshold;
         m_bloom.intensity      = desc.bloom.intensity;
         m_bloom.scatter        = desc.bloom.scatter;
+
+        m_volFog.enabled          = desc.fog.enabled;
+        m_volFog.density          = desc.fog.density;
+        m_volFog.anisotropy       = desc.fog.anisotropy;
+        m_volFog.scatterIntensity = desc.fog.scatterIntensity;
+        m_volFog.steps            = desc.fog.steps;
+        m_volFog.maxDistance      = desc.fog.maxDistance;
+        m_volFog.ambientColor[0]  = desc.fog.ambientColor[0];
+        m_volFog.ambientColor[1]  = desc.fog.ambientColor[1];
+        m_volFog.ambientColor[2]  = desc.fog.ambientColor[2];
+        m_volFog.ambientIntensity = desc.fog.ambientIntensity;
+        m_volFog.heightFalloff    = desc.fog.heightFalloff;
+        m_volFog.heightBase       = desc.fog.heightBase;
+        m_volFog.noiseStrength    = desc.fog.noiseStrength;
+        m_volFog.noiseScale       = desc.fog.noiseScale;
+        m_volFog.noiseSpeed       = desc.fog.noiseSpeed;
 
         // --- JSON scene objects (spheres / planes with explicit PBR textures) ---
         m_sceneObjects.clear();
@@ -482,6 +503,7 @@ protected:
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
         m_cachedProj = proj;  // Store for SSR in OnPostProcess
+        m_cachedView = view;  // Store for volumetric fog in OnPostProcess
 
         DrawUI(view, proj);
 
@@ -678,6 +700,7 @@ protected:
             m_bloom.Resize(dev, w, h);
             m_ssr.Resize(dev, w, h);
             m_ssao.Resize(dev, w, h);
+            m_volFog.Resize(dev, w, h);
             m_ldrRT.Shutdown();
             m_ldrRT.Init(dev, w, h, DXGI_FORMAT_R8G8B8A8_UNORM);
         }
@@ -697,6 +720,26 @@ protected:
         // Screen-Space Reflections (composites into hdrRT)
         if (m_ssr.enabled)
             m_ssr.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
+
+        // Volumetric fog / god rays (in-scatter into hdrRT before bloom picks up shafts)
+        if (m_volFog.enabled)
+        {
+            float er = DirectX::XMConvertToRadians(m_lights.elevDeg);
+            float ar = DirectX::XMConvertToRadians(m_lights.azimDeg);
+            XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
+            XMFLOAT3 lightColor = { m_lights.lightColor[0] * m_lights.lightIntensity,
+                                    m_lights.lightColor[1] * m_lights.lightIntensity,
+                                    m_lights.lightColor[2] * m_lights.lightIntensity };
+            XMMATRIX cascadeVP[3] = { m_shadowMap.GetCascadeVP(0),
+                                      m_shadowMap.GetCascadeVP(1),
+                                      m_shadowMap.GetCascadeVP(2) };
+            float splitFar[2] = { m_shadowMap.GetSplitFar(0), m_shadowMap.GetSplitFar(1) };
+            m_volFog.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(),
+                           m_shadowMap.GetShadowSRV(), m_shadowMap.GetShadowSampler(),
+                           m_skybox.GetPanoramaSRV(),
+                           m_cachedView, m_cachedProj, m_camera->eye,
+                           lightDir, lightColor, cascadeVP, splitFar);
+        }
 
         if (m_bloom.enabled)
             m_bloom.Apply(ctx, hdrRT);
@@ -1025,6 +1068,26 @@ private:
                 ImGui::SliderFloat("AO Power",  &m_ssao.power,  0.5f, 8.0f,   "%.1f");
             }
         }
+        if (ImGui::CollapsingHeader("Volumetric Fog"))
+        {
+            ImGui::Checkbox("Enable Fog", &m_volFog.enabled);
+            if (m_volFog.enabled)
+            {
+                ImGui::SliderFloat("Density",       &m_volFog.density,          0.0f, 0.5f,  "%.3f");
+                ImGui::SliderFloat("Anisotropy",    &m_volFog.anisotropy,      -0.9f, 0.95f, "%.2f");
+                ImGui::SliderFloat("Sun Scatter",   &m_volFog.scatterIntensity, 0.0f, 5.0f,  "%.2f");
+                ImGui::SliderInt("Steps",           &m_volFog.steps,            8, 128);
+                ImGui::SliderFloat("Max Distance",  &m_volFog.maxDistance,      5.0f, 300.0f, "%.0f");
+                ImGui::ColorEdit3("IBL Tint",       m_volFog.ambientColor);
+                ImGui::SliderFloat("IBL Fog",       &m_volFog.ambientIntensity, 0.0f, 2.0f,  "%.3f");
+                ImGui::SliderFloat("Height Falloff",&m_volFog.heightFalloff,    0.0f, 1.0f,  "%.3f");
+                ImGui::SliderFloat("Height Base",   &m_volFog.heightBase,      -10.0f, 20.0f, "%.1f");
+                ImGui::SliderFloat("Noise",         &m_volFog.noiseStrength,    0.0f, 1.0f,  "%.2f");
+                ImGui::SliderFloat("Noise Scale",   &m_volFog.noiseScale,       0.001f, 0.2f, "%.3f");
+                ImGui::SliderFloat("Noise Drift",   &m_volFog.noiseSpeed,       0.0f, 2.0f,  "%.2f");
+                ImGui::Checkbox("Blur Shafts",      &m_volFog.blur);
+            }
+        }
         if (ImGui::CollapsingHeader("FXAA"))
         {
             ImGui::Checkbox("Enable FXAA", &m_fxaa.enabled);
@@ -1287,11 +1350,13 @@ private:
     SE::Bloom                    m_bloom;
     SE::SSR                      m_ssr;
     SE::SSAO                     m_ssao;
+    SE::VolumetricFog            m_volFog;
     SE::FXAA                     m_fxaa;
     SE::RenderTarget             m_ldrRT;
     SE::SpotLight                m_spotLight;
     std::vector<std::unique_ptr<SE::ParticleSystem>> m_particleSystems;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
+    DirectX::XMMATRIX            m_cachedView = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
     float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
