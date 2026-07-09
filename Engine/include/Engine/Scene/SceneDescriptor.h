@@ -96,13 +96,15 @@ struct SceneDescriptor
         float scatterIntensity = 1.0f;
         int   steps            = 48;
         float maxDistance      = 60.0f;
-        float ambientColor[3]  = { 1.0f, 1.0f, 1.0f };
-        float ambientIntensity = 0.10f;
+        float ambientColor[3]  = { 0.42f, 0.44f, 0.42f };
+        float ambientIntensity = 0.45f;
         float heightFalloff    = 0.0f;
         float heightBase       = 0.0f;
         float noiseStrength    = 0.35f;
         float noiseScale       = 0.035f;
-        float noiseSpeed       = 0.0f;
+        float noiseSpeed       = 0.45f;
+        float nearClearDistance = 0.0f;
+        float distanceDensity   = 0.0f;
     };
     FogDesc fog;
 

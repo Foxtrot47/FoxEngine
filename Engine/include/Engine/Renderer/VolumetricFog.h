@@ -37,28 +37,40 @@ public:
                ID3D11ShaderResourceView* csmSRV,
                ID3D11SamplerState* csmSampler,
                ID3D11ShaderResourceView* skySRV,
+               ID3D11ShaderResourceView* spotShadowSRV,
                DirectX::XMMATRIX view,
                DirectX::XMMATRIX proj,
                DirectX::XMFLOAT3 cameraPos,
                DirectX::XMFLOAT3 lightDir,
                DirectX::XMFLOAT3 lightColor,
+               DirectX::XMFLOAT3 spotPosition,
+               DirectX::XMFLOAT3 spotDirection,
+               DirectX::XMFLOAT3 spotColor,
+               float spotRange,
+               float spotInnerCos,
+               float spotOuterCos,
+               float spotShadowBias,
+               float spotVolumetricIntensity,
+               int spotEnabled,
+               DirectX::XMMATRIX spotViewProj,
                const DirectX::XMMATRIX cascadeVP[3],
                const float splitFar[2]);
 
     bool  enabled          = true;
-    float density          = 0.03f;   // extinction / scattering coefficient
-    float anisotropy       = 0.76f;   // Henyey-Greenstein g (forward scattering)
-    float scatterIntensity = 1.0f;    // sun in-scatter strength
+    float density          = 0.05f;   // extinction / scattering coefficient
+    float anisotropy       = 0.4f;    // Henyey-Greenstein g (near-uniform scatter)
+    float scatterIntensity = 0.15f;   // sun in-scatter strength (subtle shafts)
     int   steps            = 48;      // ray-march samples
-    float maxDistance      = 60.0f;   // furthest march distance (world units)
-    float ambientColor[3]  = { 1.0f, 1.0f, 1.0f }; // IBL fog tint
-    float ambientIntensity = 0.10f;   // IBL fog strength
-    float heightFalloff    = 0.0f;    // exponential density falloff with height
+    float maxDistance      = 140.0f;  // furthest march distance (world units)
+    float ambientColor[3]  = { 0.66f, 0.68f, 0.70f }; // authored fog tint (grey)
+    float ambientIntensity = 1.25f;   // ambient fog strength
+    float heightFalloff    = 0.02f;   // exponential density falloff with height
     float heightBase       = 0.0f;    // world Y where full density begins
-    float noiseStrength    = 0.35f;   // density variation amount
-    float noiseScale       = 0.035f;  // world-space noise frequency
-    float noiseSpeed       = 0.0f;    // animated drift speed
-    bool  blur             = true;    // smooth shafts with a separable Gaussian
+    float noiseStrength    = 0.22f;   // density variation amount
+    float noiseScale       = 0.02f;   // world-space noise frequency
+    float noiseSpeed       = 0.35f;   // animated drift speed
+    float nearClearDistance = 0.0f;   // radius around camera kept fog-free (fog then ramps up to maxDistance)
+    float distanceDensity   = 0.0f;   // extra density multiplier reached at maxDistance (aerial perspective)
 
 private:
     struct alignas(16) FogCBData
@@ -73,16 +85,17 @@ private:
         DirectX::XMFLOAT3   fogAmbient;  float ambientIntensity; // 16
         DirectX::XMFLOAT2   screenSize;  float maxDistance; float scatterIntensity; // 16
         float heightFalloff; float heightBase; float noiseStrength; float noiseScale; // 16
-        float noiseTime; float _pad0; float _pad1; float _pad2;                      // 16
+        float noiseTime; float nearClearDistance; float distanceDensity; float _pad2; // 16
+        DirectX::XMFLOAT4X4 spotViewProj;                                            // 64
+        DirectX::XMFLOAT3 spotPosition; float spotRange;                             // 16
+        DirectX::XMFLOAT3 spotDirection; float spotOuterCos;                         // 16
+        DirectX::XMFLOAT3 spotColor; float spotInnerCos;                             // 16
+        float spotShadowBias; float spotVolumetricIntensity; int spotEnabled; float _pad3; // 16
     };
 
     RenderTarget               m_fogRT;   // RGB=in-scatter, A=transmittance
-    RenderTarget               m_blurRT;  // separable blur intermediate
     const ShaderPermutation*   m_fogPerm  = nullptr;
-    const ShaderPermutation*   m_blurPerm = nullptr;
     ConstantBuffer<FogCBData>  m_cb;
-    struct alignas(16) BlurCBData { float texelX, texelY, dirX, dirY; };
-    ConstantBuffer<BlurCBData> m_blurCB;
     FullscreenQuad             m_quad;
     ComPtr<ID3D11SamplerState> m_pointSampler;
     ComPtr<ID3D11SamplerState> m_skySampler;

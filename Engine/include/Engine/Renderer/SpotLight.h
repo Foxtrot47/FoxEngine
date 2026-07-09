@@ -36,6 +36,7 @@ public:
     float innerAngle  = 20.0f;  // degrees — full-intensity cone
     float outerAngle  = 35.0f;  // degrees — falloff to zero
     float intensity   = 5.0f;
+    float volumetricIntensity = 1.0f;
     float shadowBias  = 0.0005f;
 
     DirectX::XMMATRIX GetViewProj() const { return m_viewProj; }

@@ -195,6 +195,8 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
         if (f.contains("noiseStrength"))    out.fog.noiseStrength    = f["noiseStrength"].get<float>();
         if (f.contains("noiseScale"))       out.fog.noiseScale       = f["noiseScale"].get<float>();
         if (f.contains("noiseSpeed"))       out.fog.noiseSpeed       = f["noiseSpeed"].get<float>();
+        if (f.contains("nearClearDistance")) out.fog.nearClearDistance = f["nearClearDistance"].get<float>();
+        if (f.contains("distanceDensity"))   out.fog.distanceDensity   = f["distanceDensity"].get<float>();
     }
 
     // Scene objects (PBR showcase or any extra geometry)

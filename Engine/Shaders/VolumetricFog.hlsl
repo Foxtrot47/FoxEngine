@@ -6,6 +6,7 @@
 Texture2D                 g_depth     : register(t0);
 Texture2DArray            g_shadow    : register(t1);
 Texture2D                 g_sky       : register(t2);
+Texture2D                 g_spotShadow: register(t3);
 SamplerState              g_point     : register(s0);
 SamplerComparisonState    g_shadowCmp : register(s1);
 SamplerState              g_skySampler: register(s2);
@@ -24,7 +25,12 @@ cbuffer FogCB : register(b0)
     float3 FogAmbient;  float AmbientIntensity;
     float2 ScreenSize;  float MaxDistance; float ScatterIntensity;
     float  HeightFalloff; float HeightBase; float NoiseStrength; float NoiseScale;
-    float  NoiseTime; float _pad0; float _pad1; float _pad2;
+    float  NoiseTime; float NearClearDistance; float DistanceDensity; float _pad2;
+    row_major matrix SpotViewProj;
+    float3 SpotPosition; float SpotRange;
+    float3 SpotDirection; float SpotOuterCos;
+    float3 SpotColor; float SpotInnerCos;
+    float SpotShadowBias; float SpotVolumetricIntensity; int SpotEnabled; float _pad3;
 };
 
 struct VSOutput
@@ -76,7 +82,12 @@ float3 SampleSkyAmbient(float3 rayDir)
     float3 upColor = g_sky.SampleLevel(g_skySampler, DirToEnvUV(float3(0.0f, 1.0f, 0.0f)), mip).rgb;
     float3 rayColor = g_sky.SampleLevel(g_skySampler, DirToEnvUV(rayDir), mip).rgb;
     float horizon = 1.0f - abs(normalize(rayDir).y);
-    return lerp(upColor, rayColor, 0.35f + 0.35f * horizon);
+    float3 skyColor = lerp(upColor, rayColor, 0.35f + 0.35f * horizon);
+    skyColor = skyColor / (1.0f + max(max(skyColor.r, skyColor.g), skyColor.b));
+
+    // Use the skybox as an ambient energy estimate, not as the fog color.
+    float luminance = dot(skyColor, float3(0.2126f, 0.7152f, 0.0722f));
+    return float3(luminance, luminance, luminance);
 }
 
 // Interleaved gradient noise — per-pixel dither to break ray-march banding.
@@ -121,10 +132,22 @@ float FogNoise(float3 worldPos)
     if (NoiseStrength <= 0.001f || NoiseScale <= 0.0001f)
         return 1.0f;
 
-    float3 p = worldPos * NoiseScale + float3(NoiseTime * 0.07f, NoiseTime * 0.015f, -NoiseTime * 0.05f);
-    float n = ValueNoise(p) * 0.55f + ValueNoise(p * 2.13f + 19.7f) * 0.30f + ValueNoise(p * 4.03f - 7.1f) * 0.15f;
-    float contrast = smoothstep(0.18f, 0.92f, n);
-    return lerp(1.0f, lerp(0.35f, 1.65f, contrast), saturate(NoiseStrength));
+    float3 baseP = worldPos * NoiseScale;
+    float3 wind = float3(0.82f, 0.0f, -0.57f);
+
+    // Broad advected fog banks plus a faster curling layer. This keeps the
+    // pattern anchored in world space while making the volume visibly breathe.
+    float3 p0 = baseP * 0.55f + wind * (NoiseTime * 0.38f) + float3(0.0f, sin(NoiseTime * 0.19f) * 0.18f, 0.0f);
+    float3 p1 = baseP * 1.35f + wind.zxy * (NoiseTime * 0.74f) + 19.7f;
+    float3 p2 = baseP * 3.70f + float3(-NoiseTime * 1.25f, NoiseTime * 0.22f, NoiseTime * 0.86f) - 7.1f;
+
+    float n = ValueNoise(p0) * 0.50f + ValueNoise(p1) * 0.34f + ValueNoise(p2) * 0.16f;
+
+    float groundFog = saturate(1.0f - max(worldPos.y - HeightBase, 0.0f) * max(HeightFalloff, 0.015f) * 18.0f);
+    float rolling = smoothstep(0.34f, 0.88f, ValueNoise(baseP * float3(0.85f, 0.28f, 0.85f) + wind * (NoiseTime * 0.62f) + 41.3f));
+    float contrast = smoothstep(0.16f, 0.90f, n + rolling * groundFog * 0.22f);
+    float densityMod = lerp(0.28f, 1.82f, contrast);
+    return lerp(1.0f, densityMod, saturate(NoiseStrength));
 }
 
 // Reconstruct world position from screen UV + non-linear depth.
@@ -192,6 +215,57 @@ float SampleSunVisibility(float3 worldPos)
 
     return 0.0f;
 }
+float SampleSpotVisibility(float3 worldPos)
+{
+    float4 sc = mul(float4(worldPos, 1.0f), SpotViewProj);
+    if (abs(sc.w) < 1e-5f)
+        return 0.0f;
+
+    float3 ndc = sc.xyz / sc.w;
+    float2 uv = float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
+    float dref = ndc.z;
+
+    if (saturate(uv.x) != uv.x || saturate(uv.y) != uv.y || dref <= 0.0f || dref >= 1.0f)
+        return 0.0f;
+
+    float w, h;
+    g_spotShadow.GetDimensions(w, h);
+    float2 texel = 1.0f / float2(w, h);
+
+    float visibility = 0.0f;
+    [unroll] for (int dx = -1; dx <= 1; ++dx)
+    [unroll] for (int dy = -1; dy <= 1; ++dy)
+    {
+        visibility += g_spotShadow.SampleCmpLevelZero(
+            g_shadowCmp, uv + float2(dx, dy) * texel, dref - SpotShadowBias);
+    }
+
+    return visibility / 9.0f;
+}
+
+float3 SampleSpotScattering(float3 worldPos, float3 rayDir)
+{
+    if (SpotEnabled == 0 || SpotVolumetricIntensity <= 0.001f)
+        return float3(0, 0, 0);
+
+    float3 lightToSample = worldPos - SpotPosition;
+    float dist = length(lightToSample);
+    if (dist <= 1e-4f || dist >= SpotRange)
+        return float3(0, 0, 0);
+
+    float3 lightDir = lightToSample / dist;
+    float coneCos = dot(lightDir, normalize(SpotDirection));
+    float cone = smoothstep(SpotOuterCos, SpotInnerCos, coneCos);
+    if (cone <= 0.001f)
+        return float3(0, 0, 0);
+
+    float rangeAtten = saturate(1.0f - dist / SpotRange);
+    rangeAtten *= rangeAtten;
+
+    float vis = SampleSpotVisibility(worldPos);
+    float phase = PhaseHG(dot(normalize(SpotPosition - worldPos), rayDir), Anisotropy);
+    return SpotColor * (phase * SpotVolumetricIntensity) * cone * rangeAtten * vis;
+}
 
 float4 PS_Main(VSOutput input) : SV_TARGET
 {
@@ -213,7 +287,13 @@ float4 PS_Main(VSOutput input) : SV_TARGET
     float cosTheta = dot(LightDir, rayDir);
     float phase    = PhaseHG(cosTheta, Anisotropy);
 
-    float3 skyAmbient = SampleSkyAmbient(rayDir) * FogAmbient;
+    // Fog in-scatter is dominated by a bright, uniform grey — the Silent Hill
+    // "aerial perspective" look. The authored fog color acts as the scattering
+    // albedo, grounded by sky luminance but with a floor so the haze reads as a
+    // luminous overcast grey instead of collapsing to black away from the sun.
+    float  skyLum     = SampleSkyAmbient(rayDir).r;
+    float  ambLight   = lerp(0.7f, 1.0f, skyLum);
+    float3 skyAmbient = FogAmbient * ambLight;
 
     float3 inScatter    = float3(0, 0, 0);
     float  transmittance = 1.0f;
@@ -233,11 +313,23 @@ float4 PS_Main(VSOutput input) : SV_TARGET
         float farFog = DistanceFogWeight(dist, MaxDistance);
         float vis = SampleSunVisibility(pos);
 
+        // Aerial-perspective density ramp: fog fades to zero within NearClearDistance
+        // (genuinely clear right at the camera), reaches full base density at
+        // NearClearDistance, then grows further toward (1 + DistanceDensity)x out
+        // to MaxDistance. Exponential far-growth (not smoothstep) so density builds
+        // up quickly past the clear zone instead of easing in.
+        float nearFade = smoothstep(0.0f, max(NearClearDistance, 0.001f), dist);
+        float distT = saturate((dist - NearClearDistance) / max(MaxDistance - NearClearDistance, 1e-3f));
+        float farBoost = 1.0f + DistanceDensity * (1.0f - exp(-4.0f * distT));
+        float distMult = nearFade * farBoost;
+        stepOptical *= distMult;
+
         float3 ambientFog = skyAmbient * AmbientIntensity * lerp(0.65f, 1.35f, farFog);
         float shaftMask = smoothstep(0.15f, 0.95f, vis);
         float shaftFade = saturate(1.0f - farFog * 0.35f);
         float3 sunShaft = LightColor * (phase * ScatterIntensity) * shaftMask * shaftFade;
-        float3 lit = ambientFog + sunShaft;
+        float3 spotShaft = SampleSpotScattering(pos, rayDir);
+        float3 lit = ambientFog + sunShaft + spotShaft;
 
         inScatter += transmittance * lit * stepOptical;
         transmittance *= exp(-stepOptical);
