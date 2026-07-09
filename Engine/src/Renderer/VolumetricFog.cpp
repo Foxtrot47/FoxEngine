@@ -14,17 +14,11 @@ bool VolumetricFog::Init(ID3D11Device* device, ShaderLibrary& shaders,
     // RGBA16F: RGB = accumulated in-scattered light (HDR), A = transmittance.
     if (!m_fogRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
         return false;
-    if (!m_blurRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
-        return false;
 
     m_fogPerm = shaders.Get(L"Engine/Shaders/VolumetricFog.hlsl");
     if (!m_fogPerm) { SE_LOG_ERROR("VolumetricFog: failed to compile VolumetricFog.hlsl"); return false; }
 
-    m_blurPerm = shaders.Get(L"Engine/Shaders/VolumetricFogBlur.hlsl");
-    if (!m_blurPerm) { SE_LOG_ERROR("VolumetricFog: failed to compile VolumetricFogBlur.hlsl"); return false; }
-
     if (!m_cb.Create(device)) return false;
-    if (!m_blurCB.Create(device)) return false;
     if (!m_quad.Init(device, shaders)) return false;
 
     // Point-clamp sampler for exact depth, shadow, and blur taps (s0).
@@ -69,14 +63,11 @@ void VolumetricFog::Resize(ID3D11Device* device, uint32_t width, uint32_t height
     m_height = height;
     m_fogRT.Shutdown();
     m_fogRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    m_blurRT.Shutdown();
-    m_blurRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT);
 }
 
 void VolumetricFog::Shutdown()
 {
     m_fogRT.Shutdown();
-    m_blurRT.Shutdown();
     m_pointSampler.Reset();
     m_skySampler.Reset();
     m_compositeBlend.Reset();
@@ -88,11 +79,22 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
                           ID3D11ShaderResourceView* csmSRV,
                           ID3D11SamplerState* csmSampler,
                           ID3D11ShaderResourceView* skySRV,
+                          ID3D11ShaderResourceView* spotShadowSRV,
                           XMMATRIX view,
                           XMMATRIX proj,
                           XMFLOAT3 cameraPos,
                           XMFLOAT3 lightDir,
                           XMFLOAT3 lightColor,
+                          XMFLOAT3 spotPosition,
+                          XMFLOAT3 spotDirection,
+                          XMFLOAT3 spotColor,
+                          float spotRange,
+                          float spotInnerCos,
+                          float spotOuterCos,
+                          float spotShadowBias,
+                          float spotVolumetricIntensity,
+                          int spotEnabled,
+                          XMMATRIX spotViewProj,
                           const XMMATRIX cascadeVP[3],
                           const float splitFar[2])
 {
@@ -123,6 +125,18 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
     cb.noiseStrength    = noiseStrength;
     cb.noiseScale       = noiseScale;
     cb.noiseTime        = m_noiseTime;
+    cb.nearClearDistance = nearClearDistance;
+    cb.distanceDensity   = distanceDensity;
+    XMStoreFloat4x4(&cb.spotViewProj, spotViewProj);
+    cb.spotPosition    = spotPosition;
+    cb.spotRange       = spotRange;
+    cb.spotDirection   = spotDirection;
+    cb.spotOuterCos    = spotOuterCos;
+    cb.spotColor       = spotColor;
+    cb.spotInnerCos    = spotInnerCos;
+    cb.spotShadowBias  = spotShadowBias;
+    cb.spotVolumetricIntensity = spotVolumetricIntensity;
+    cb.spotEnabled     = spotEnabled;
     m_noiseTime += noiseSpeed * (1.0f / 60.0f);
     m_cb.Update(ctx, cb);
 
@@ -134,52 +148,17 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
         ctx->VSSetShader(m_fogPerm->vs.Get(), nullptr, 0);
         ctx->PSSetShader(m_fogPerm->ps.Get(), nullptr, 0);
 
-        ID3D11ShaderResourceView* srvs[3] = { depthSRV, csmSRV, skySRV };
-        ctx->PSSetShaderResources(0, 3, srvs);
+        ID3D11ShaderResourceView* srvs[4] = { depthSRV, csmSRV, skySRV, spotShadowSRV };
+        ctx->PSSetShaderResources(0, 4, srvs);
         ID3D11SamplerState* samplers[3] = { m_pointSampler.Get(), csmSampler, m_skySampler.Get() };
         ctx->PSSetSamplers(0, 3, samplers);
 
         m_cb.BindPS(ctx, 0);
         m_quad.DrawGeometryOnly(ctx);
 
-        ID3D11ShaderResourceView* nullSRVs[3] = { nullptr, nullptr, nullptr };
-        ctx->PSSetShaderResources(0, 3, nullSRVs);
+        ID3D11ShaderResourceView* nullSRVs[4] = { nullptr, nullptr, nullptr, nullptr };
+        ctx->PSSetShaderResources(0, 4, nullSRVs);
         m_fogRT.End(ctx);
-    }
-
-    // --- Pass 1.5: separable Gaussian blur to smooth the shafts ---
-    if (blur)
-    {
-        ctx->VSSetShader(m_blurPerm->vs.Get(), nullptr, 0);
-        ctx->PSSetShader(m_blurPerm->ps.Get(), nullptr, 0);
-        ctx->PSSetSamplers(0, 1, m_pointSampler.GetAddressOf());
-
-        // Horizontal: m_fogRT -> m_blurRT
-        {
-            m_blurRT.Begin(ctx, nullptr);
-            BlurCBData bd = { 1.0f / (float)m_width, 1.0f / (float)m_height, 1.0f, 0.0f };
-            m_blurCB.Update(ctx, bd);
-            m_blurCB.BindPS(ctx, 0);
-            ID3D11ShaderResourceView* srvs[2] = { m_fogRT.GetSRV(), depthSRV };
-            ctx->PSSetShaderResources(0, 2, srvs);
-            m_quad.DrawGeometryOnly(ctx);
-            ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
-            ctx->PSSetShaderResources(0, 2, nullSRVs);
-            m_blurRT.End(ctx);
-        }
-        // Vertical: m_blurRT -> m_fogRT
-        {
-            m_fogRT.Begin(ctx, nullptr);
-            BlurCBData bd = { 1.0f / (float)m_width, 1.0f / (float)m_height, 0.0f, 1.0f };
-            m_blurCB.Update(ctx, bd);
-            m_blurCB.BindPS(ctx, 0);
-            ID3D11ShaderResourceView* srvs[2] = { m_blurRT.GetSRV(), depthSRV };
-            ctx->PSSetShaderResources(0, 2, srvs);
-            m_quad.DrawGeometryOnly(ctx);
-            ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
-            ctx->PSSetShaderResources(0, 2, nullSRVs);
-            m_fogRT.End(ctx);
-        }
     }
 
     // --- Pass 2: composite fog into HDR buffer ---

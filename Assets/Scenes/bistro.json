@@ -56,18 +56,20 @@
     "scatter": 0.7
   },
   "fog": {
-    "enabled": false,
-    "density": 0.005,
+    "enabled": true,
+    "density": 0.010,
     "anisotropy": 0.62,
     "scatterIntensity": 0.18,
     "steps": 64,
-    "maxDistance": 260.0,
-    "ambientColor": [1, 1, 1],
-    "ambientIntensity": 1.15,
+    "maxDistance": 700.0,
+    "ambientColor": [1, 1,1],
+    "ambientIntensity": 0.65,
     "heightFalloff": 0.003,
     "heightBase": 30.0,
-    "noiseStrength": 0.45,
-    "noiseScale": 0.025,
-    "noiseSpeed": 0.08
+    "noiseStrength": 0.70,
+    "noiseScale": 0.014,
+    "noiseSpeed": 1.20,
+    "nearClearDistance": 100.0,
+    "distanceDensity": 3.5
   }
 }

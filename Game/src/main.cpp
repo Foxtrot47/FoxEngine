@@ -247,6 +247,8 @@ public:
         m_volFog.noiseStrength    = desc.fog.noiseStrength;
         m_volFog.noiseScale       = desc.fog.noiseScale;
         m_volFog.noiseSpeed       = desc.fog.noiseSpeed;
+        m_volFog.nearClearDistance = desc.fog.nearClearDistance;
+        m_volFog.distanceDensity   = desc.fog.distanceDensity;
 
         // --- JSON scene objects (spheres / planes with explicit PBR textures) ---
         m_sceneObjects.clear();
@@ -734,11 +736,21 @@ protected:
                                       m_shadowMap.GetCascadeVP(1),
                                       m_shadowMap.GetCascadeVP(2) };
             float splitFar[2] = { m_shadowMap.GetSplitFar(0), m_shadowMap.GetSplitFar(1) };
+            XMFLOAT3 spotColor = { m_spotLight.color.x * m_spotLight.intensity,
+                                       m_spotLight.color.y * m_spotLight.intensity,
+                                       m_spotLight.color.z * m_spotLight.intensity };
             m_volFog.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(),
                            m_shadowMap.GetShadowSRV(), m_shadowMap.GetShadowSampler(),
-                           m_skybox.GetPanoramaSRV(),
+                           m_skybox.GetPanoramaSRV(), m_spotLight.GetSRV(),
                            m_cachedView, m_cachedProj, m_camera->eye,
-                           lightDir, lightColor, cascadeVP, splitFar);
+                           lightDir, lightColor,
+                           m_spotLight.position, m_spotLight.direction, spotColor,
+                           m_spotLight.range,
+                           cosf(DirectX::XMConvertToRadians(m_spotLight.innerAngle)),
+                           cosf(DirectX::XMConvertToRadians(m_spotLight.outerAngle)),
+                           m_spotLight.shadowBias, m_spotLight.volumetricIntensity,
+                           m_spotLight.enabled ? 1 : 0, m_spotLight.GetViewProj(),
+                           cascadeVP, splitFar);
         }
 
         if (m_bloom.enabled)
@@ -982,6 +994,14 @@ private:
             ImGui::Checkbox("Enable Spot", &m_spotLight.enabled);
             if (m_spotLight.enabled)
             {
+                if (ImGui::Button("Aim From Camera"))
+                {
+                    XMVECTOR eye = XMLoadFloat3(&m_camera->eye);
+                    XMVECTOR target = XMLoadFloat3(&m_camera->target);
+                    XMVECTOR dir = XMVector3Normalize(XMVectorSubtract(target, eye));
+                    m_spotLight.position = m_camera->eye;
+                    XMStoreFloat3(&m_spotLight.direction, dir);
+                }
                 ImGui::DragFloat3("Spot Pos", &m_spotLight.position.x, 0.5f, -500.0f, 500.0f);
                 ImGui::DragFloat3("Spot Dir", &m_spotLight.direction.x, 0.01f, -1.0f, 1.0f);
                 ImGui::ColorEdit3("Spot Color", &m_spotLight.color.x);
@@ -989,6 +1009,7 @@ private:
                 ImGui::SliderFloat("Spot Inner", &m_spotLight.innerAngle, 1.0f, m_spotLight.outerAngle - 0.5f);
                 ImGui::SliderFloat("Spot Outer", &m_spotLight.outerAngle, m_spotLight.innerAngle + 0.5f, 89.0f);
                 ImGui::SliderFloat("Spot Intensity", &m_spotLight.intensity, 0.1f, 50.0f);
+                ImGui::SliderFloat("Spot Volumetric", &m_spotLight.volumetricIntensity, 0.0f, 10.0f, "%.2f");
                 ImGui::SliderFloat("Spot Bias", &m_spotLight.shadowBias, 0.0001f, 0.01f, "%.4f");
             }
         }
@@ -1078,14 +1099,15 @@ private:
                 ImGui::SliderFloat("Sun Scatter",   &m_volFog.scatterIntensity, 0.0f, 5.0f,  "%.2f");
                 ImGui::SliderInt("Steps",           &m_volFog.steps,            8, 128);
                 ImGui::SliderFloat("Max Distance",  &m_volFog.maxDistance,      5.0f, 300.0f, "%.0f");
-                ImGui::ColorEdit3("IBL Tint",       m_volFog.ambientColor);
-                ImGui::SliderFloat("IBL Fog",       &m_volFog.ambientIntensity, 0.0f, 2.0f,  "%.3f");
+                ImGui::ColorEdit3("Fog Tint",       m_volFog.ambientColor);
+                ImGui::SliderFloat("Ambient Fog",   &m_volFog.ambientIntensity, 0.0f, 2.0f,  "%.3f");
                 ImGui::SliderFloat("Height Falloff",&m_volFog.heightFalloff,    0.0f, 1.0f,  "%.3f");
                 ImGui::SliderFloat("Height Base",   &m_volFog.heightBase,      -10.0f, 20.0f, "%.1f");
                 ImGui::SliderFloat("Noise",         &m_volFog.noiseStrength,    0.0f, 1.0f,  "%.2f");
-                ImGui::SliderFloat("Noise Scale",   &m_volFog.noiseScale,       0.001f, 0.2f, "%.3f");
+                ImGui::SliderFloat("Noise Scale",   &m_volFog.noiseScale,       0.001f, 1.0f, "%.3f");
                 ImGui::SliderFloat("Noise Drift",   &m_volFog.noiseSpeed,       0.0f, 2.0f,  "%.2f");
-                ImGui::Checkbox("Blur Shafts",      &m_volFog.blur);
+                ImGui::SliderFloat("Near Clear Radius", &m_volFog.nearClearDistance, 0.0f, 1000.0f, "%.1f");
+                ImGui::SliderFloat("Distance Density", &m_volFog.distanceDensity, 0.0f, 8.0f, "%.2f");
             }
         }
         if (ImGui::CollapsingHeader("FXAA"))

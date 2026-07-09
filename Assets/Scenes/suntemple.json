@@ -55,12 +55,12 @@
     "scatterIntensity": 2.35,
     "steps": 64,
     "maxDistance": 90.0,
-    "ambientColor": [1.0, 0.95, 0.88],
+    "ambientColor": [0.82, 0.66, 0.46],
     "ambientIntensity": 0.10,
     "heightFalloff": 0.0,
     "heightBase": 0.0,
     "noiseStrength": 0.30,
     "noiseScale": 0.030,
-    "noiseSpeed": 0.03
+    "noiseSpeed": 0.35
   }
 }
