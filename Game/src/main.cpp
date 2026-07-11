@@ -6,6 +6,9 @@
 #include <memory>
 #include <filesystem>
 #include <cmath>
+#include <atomic>
+#include <chrono>
+#include <future>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
@@ -42,6 +45,19 @@ using namespace DirectX;
 class TestScene : public SE::Engine
 {
 public:
+    ~TestScene()
+    {
+        CancelSceneLoad();
+    }
+
+    void Shutdown()
+    {
+        // The worker may still be creating D3D resources. Join it before the
+        // renderer and device are released by the base engine shutdown.
+        CancelSceneLoad();
+        SE::Engine::Shutdown();
+    }
+
     bool Setup(const std::string& scenePath = "")
     {
         ID3D11Device* device = GetRenderer().GetDevice();
@@ -109,56 +125,75 @@ public:
         if (targetScene.empty() && !m_sceneFiles.empty())
             targetScene = m_sceneFiles[0];
 
-        if (!ApplyScene(targetScene))
-            return false;
-
-        SE_LOG_INFO("TestScene ready — %s", m_currentDesc.name.c_str());
+        // Queue the first load so the render loop can present loading feedback
+        // before potentially expensive asset import begins.
+        m_initialScenePath = targetScene;
+        m_pendingSceneLoad = targetScene;
+        m_initialSceneLoad = true;
+        SE_LOG_INFO("TestScene initial scene queued — %s", targetScene.c_str());
         return true;
     }
 
-    bool ApplyScene(const std::string& scenePath)
+    bool ApplyScene(const std::string& scenePath,
+                    const SE::SceneDescriptor* preparedDesc = nullptr,
+                    SE::AssetHandle<SE::Mesh> preparedMesh = {},
+                    std::vector<SE::ForwardPipeline::SubMat>* preparedMats = nullptr,
+                    bool environmentPrepared = false)
     {
         SE::SceneDescriptor desc;
-        if (!SE::SceneLoader::LoadFromFile(scenePath, desc))
+        if (preparedDesc)
+            desc = *preparedDesc;
+        else if (!SE::SceneLoader::LoadFromFile(scenePath, desc))
+        {
+            m_sceneLoadError = "Could not parse scene file";
             return false;
+        }
 
-        // Track current scene
-        m_currentScenePath = scenePath;
-        m_currentDesc      = desc;
-        for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
-            if (m_sceneFiles[i] == scenePath) { m_selectedScene = i; break; }
+        auto pumpLoadMessages = [this]() { return GetWindow().PumpMessages(); };
+        if (!pumpLoadMessages())
+            return false;
 
         ID3D11Device* device = GetRenderer().GetDevice();
 
         // --- Skybox ---
         std::wstring skyboxW(desc.skybox.begin(), desc.skybox.end());
-        if (!desc.skybox.empty())
+        if (!environmentPrepared && !desc.skybox.empty())
             m_skybox.LoadPanorama(device, skyboxW.c_str());
+        if (!pumpLoadMessages())
+            return false;
 
         // --- Mesh ---
-        m_mesh.reset();
-        m_subMats.clear();
+        // Keep the current mesh alive until the replacement has imported successfully.
+        SE::AssetHandle<SE::Mesh> newMesh;
+        std::vector<SE::ForwardPipeline::SubMat> newSubMats;
         if (!desc.mesh.path.empty())
         {
-            m_mesh = GetAssets().GetMesh(desc.mesh.path);
-            if (m_mesh)
+            newMesh = preparedMesh ? std::move(preparedMesh)
+                                   : GetAssets().GetMesh(desc.mesh.path);
+            if (!newMesh)
             {
-                m_subMats = m_pipeline.LoadMeshMaterials(GetAssets(), *m_mesh);
-                // Apply scene-level alpha cutoff override
-                if (desc.mesh.alphaCutoff > 0.0f)
+                m_sceneLoadError = "Mesh import failed or was cancelled";
+                SE_LOG_WARN("Failed to load mesh: %s", desc.mesh.path.c_str());
+                return false;
+            }
+
+            newSubMats = preparedMats ? std::move(*preparedMats)
+                                      : m_pipeline.LoadMeshMaterials(GetAssets(), *newMesh);
+            if (!pumpLoadMessages())
+                return false;
+
+            // Apply scene-level alpha cutoff override
+            if (desc.mesh.alphaCutoff > 0.0f)
+            {
+                for (auto& sm : newSubMats)
                 {
-                    for (auto& sm : m_subMats)
+                    if (sm.alphaMode == SE::AlphaMode::Opaque && sm.albedo && sm.albedo->HasAlpha())
                     {
-                        if (sm.alphaMode == SE::AlphaMode::Opaque && sm.albedo && sm.albedo->HasAlpha())
-                        {
-                            sm.alphaMode   = SE::AlphaMode::Cutout;
-                            sm.alphaCutoff = desc.mesh.alphaCutoff;
-                        }
+                        sm.alphaMode   = SE::AlphaMode::Cutout;
+                        sm.alphaCutoff = desc.mesh.alphaCutoff;
                     }
                 }
             }
-            else
-                SE_LOG_WARN("Failed to load mesh: %s", desc.mesh.path.c_str());
         }
 
         // --- Lights ---
@@ -254,6 +289,9 @@ public:
         m_sceneObjects.clear();
         for (auto& obj : desc.objects)
         {
+            if (!pumpLoadMessages())
+                return false;
+
             auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
             LoadedObject lo;
             lo.def           = obj;
@@ -270,6 +308,9 @@ public:
         m_particleEmitterDescs.clear();
         for (auto& pe : desc.particles)
         {
+            if (!pumpLoadMessages())
+                return false;
+
             auto ps = std::make_unique<SE::ParticleSystem>();
             ps->config.emitRate     = pe.emitRate;
             ps->config.maxParticles = pe.maxParticles;
@@ -326,6 +367,15 @@ public:
                 }
             }
         }
+
+        // Commit only after the replacement mesh has completed its import.
+        m_mesh             = std::move(newMesh);
+        m_subMats          = std::move(newSubMats);
+        m_currentScenePath = scenePath;
+        m_currentDesc      = desc;
+        m_sceneLoadError.clear();
+        for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
+            if (m_sceneFiles[i] == scenePath) { m_selectedScene = i; break; }
 
         // Update window title
         std::wstring title = L"FoxEngine " + std::wstring(desc.name.begin(), desc.name.end());
@@ -428,11 +478,122 @@ public:
 protected:
     void OnUpdate() override
     {
-        // Handle pending scene load (deferred to avoid mid-frame state issues)
-        if (!m_pendingSceneLoad.empty())
+        if (m_completeSceneLoadNextFrame)
         {
-            ApplyScene(m_pendingSceneLoad);
+            m_completeSceneLoadNextFrame = false;
+            m_initialSceneLoad = false;
+            m_loadingScenePath.clear();
+            SE_LOG_INFO("TestScene ready — %s", m_currentDesc.name.c_str());
+        }
+
+        bool startedLoadThisFrame = false;
+        if (m_loadingScenePath.empty() && !m_pendingSceneLoad.empty())
+        {
+            const std::string scenePath = std::move(m_pendingSceneLoad);
             m_pendingSceneLoad.clear();
+            BeginAsyncSceneLoad(scenePath);
+            startedLoadThisFrame = true;
+        }
+
+        if (!startedLoadThisFrame && !m_loadingScenePath.empty())
+        {
+            if (m_preparedMesh && m_materialLoadIndex < m_preparedMesh->GetSubMeshCount())
+            {
+                m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
+                const uint32_t count = m_preparedMesh->GetSubMeshCount();
+                for (; m_materialLoadIndex < count; ++m_materialLoadIndex)
+                    m_preparedSubMats.push_back(
+                        m_pipeline.LoadMeshMaterial(GetAssets(), *m_preparedMesh, m_materialLoadIndex));
+
+                m_loadProgress.store(0.78f + 0.17f * static_cast<float>(m_materialLoadIndex) /
+                                              static_cast<float>(count));
+                if (m_materialLoadIndex == count)
+                    m_prepareEnvironmentNextFrame = true;
+            }
+            else if (m_prepareEnvironmentNextFrame)
+            {
+                m_prepareEnvironmentNextFrame = false;
+                m_loadPhase.store(static_cast<int>(LoadPhase::LoadingEnvironment));
+                m_loadProgress.store(0.95f);
+                m_loadEnvironmentNextFrame = true;
+            }
+            else if (m_loadEnvironmentNextFrame)
+            {
+                m_loadEnvironmentNextFrame = false;
+                if (!m_loadingDesc.skybox.empty())
+                {
+                    const std::wstring skyboxW(m_loadingDesc.skybox.begin(),
+                                               m_loadingDesc.skybox.end());
+                    m_skybox.LoadPanorama(GetRenderer().GetDevice(), skyboxW.c_str());
+                }
+                m_loadProgress.store(0.98f);
+                m_finalizeSceneNextFrame = true;
+            }
+            else if (m_finalizeSceneNextFrame)
+            {
+                m_finalizeSceneNextFrame = false;
+                m_loadPhase.store(static_cast<int>(LoadPhase::Finalizing));
+                m_loadProgress.store(0.99f);
+
+                const bool loaded = ApplyScene(m_loadingScenePath, &m_loadingDesc,
+                                               std::move(m_preparedMesh), &m_preparedSubMats,
+                                               true);
+                if (!loaded)
+                {
+                    SE_LOG_WARN("Scene load failed; keeping the previous scene active");
+                    m_sceneLoadError = "LEVEL LOAD FAILED";
+                    m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
+                    m_loadingScenePath.clear();
+                }
+                else
+                {
+                    m_loadPhase.store(static_cast<int>(LoadPhase::Complete));
+                    m_loadProgress.store(1.0f);
+                    m_completeSceneLoadNextFrame = true;
+                }
+            }
+            else if (m_meshLoadFuture.valid() &&
+                     m_meshLoadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            {
+                m_preparedMesh = m_meshLoadFuture.get();
+                if (!m_loadingDesc.mesh.path.empty() && !m_preparedMesh)
+                {
+                    m_sceneLoadError = "GEOMETRY IMPORT FAILED";
+                    m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
+                    m_loadingScenePath.clear();
+                }
+                else if (m_preparedMesh)
+                {
+                    GetAssets().CacheMesh(m_loadingDesc.mesh.path, m_preparedMesh);
+                    m_preparedSubMats.clear();
+                    m_preparedSubMats.reserve(m_preparedMesh->GetSubMeshCount());
+                    m_materialLoadIndex = 0;
+                    m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
+                    m_loadProgress.store(0.78f);
+                    if (m_preparedMesh->GetSubMeshCount() == 0)
+                        m_prepareEnvironmentNextFrame = true;
+                }
+                else
+                {
+                    m_prepareEnvironmentNextFrame = true;
+                }
+            }
+        }
+
+        if (m_initialSceneLoad)
+        {
+            if (!m_sceneLoadError.empty())
+            {
+                if (GetInput().IsKeyPressed('R'))
+                {
+                    m_sceneLoadError.clear();
+                    m_pendingSceneLoad = m_initialScenePath;
+                }
+                if (GetInput().IsKeyPressed(VK_ESCAPE))
+                    PostMessageW(GetWindow().GetHandle(), WM_CLOSE, 0, 0);
+            }
+            DrawLoadingUI();
+            return;
         }
 
         ID3D11DeviceContext* ctx = GetRenderer().GetContext();
@@ -689,6 +850,14 @@ protected:
     void OnPostProcess() override
     {
         auto* ctx = GetRenderer().GetContext();
+        if (m_initialSceneLoad)
+        {
+            // BeginFrame clears the MSAA surface, not the swap chain. Resolve it so
+            // the loading UI is drawn over a known background before Present.
+            GetRenderer().ResolveToBackBuffer();
+            return;
+        }
+
         uint32_t w = GetWindow().GetWidth(), h = GetWindow().GetHeight();
 
         // Resize render targets when the window changes size.
@@ -775,6 +944,156 @@ protected:
     }
 
 private:
+    enum class LoadPhase { ReadingScene, ImportingGeometry, LoadingMaterials, LoadingEnvironment, Finalizing, Complete, Failed };
+
+    void CancelSceneLoad()
+    {
+        m_cancelSceneLoad.store(true);
+        if (m_meshLoadFuture.valid())
+        {
+            m_meshLoadFuture.wait();
+            m_meshLoadFuture = {};
+        }
+    }
+
+    void BeginAsyncSceneLoad(const std::string& scenePath)
+    {
+        m_sceneLoadError.clear();
+        m_cancelSceneLoad.store(false);
+        m_prepareEnvironmentNextFrame = false;
+        m_loadEnvironmentNextFrame = false;
+        m_finalizeSceneNextFrame = false;
+        m_completeSceneLoadNextFrame = false;
+        m_preparedMesh.reset();
+        m_preparedSubMats.clear();
+        m_materialLoadIndex = 0;
+        m_loadProgress.store(0.02f);
+        m_loadPhase.store(static_cast<int>(LoadPhase::ReadingScene));
+
+        SE::SceneDescriptor desc;
+        if (!SE::SceneLoader::LoadFromFile(scenePath, desc))
+        {
+            m_sceneLoadError = "SCENE FILE ERROR";
+            m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
+            return;
+        }
+
+        m_loadingScenePath = scenePath;
+        m_loadingDesc = std::move(desc);
+        m_loadPhase.store(static_cast<int>(LoadPhase::ImportingGeometry));
+        m_loadProgress.store(0.05f);
+
+        if (m_loadingDesc.mesh.path.empty())
+        {
+            m_prepareEnvironmentNextFrame = true;
+            return;
+        }
+
+        const std::string meshPath = m_loadingDesc.mesh.path;
+        if (auto cached = GetAssets().FindMesh(meshPath))
+        {
+            m_preparedMesh = std::move(cached);
+            m_preparedSubMats.reserve(m_preparedMesh->GetSubMeshCount());
+            m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
+            m_loadProgress.store(0.78f);
+            if (m_preparedMesh->GetSubMeshCount() == 0)
+                m_prepareEnvironmentNextFrame = true;
+            return;
+        }
+
+        ID3D11Device* device = GetRenderer().GetDevice();
+        m_meshLoadFuture = std::async(std::launch::async,
+            [this, device, meshPath]() -> SE::AssetHandle<SE::Mesh> {
+                auto mesh = std::make_shared<SE::Mesh>();
+                const bool loaded = mesh->Load(device, meshPath.c_str(),
+                    [this](float progress) {
+                        m_loadProgress.store(0.05f + progress * 0.73f,
+                                             std::memory_order_relaxed);
+                        return !m_cancelSceneLoad.load(std::memory_order_relaxed);
+                    });
+                return loaded ? mesh : SE::AssetHandle<SE::Mesh>{};
+            });
+    }
+
+    void DrawLoadingUI()
+    {
+        auto getFilename = [](const std::string& path) -> std::string {
+            auto pos = path.find_last_of("\\/");
+            return (pos != std::string::npos) ? path.substr(pos + 1) : path;
+        };
+
+        const LoadPhase phase = static_cast<LoadPhase>(m_loadPhase.load());
+        const char* phaseText = "READING LEVEL DATA";
+        switch (phase)
+        {
+        case LoadPhase::ImportingGeometry: phaseText = "IMPORTING WORLD GEOMETRY"; break;
+        case LoadPhase::LoadingMaterials:  phaseText = "STREAMING MATERIALS"; break;
+        case LoadPhase::LoadingEnvironment: phaseText = "PROCESSING SKY AND ENVIRONMENT"; break;
+        case LoadPhase::Finalizing:        phaseText = "BUILDING ENTITIES AND LIGHTING"; break;
+        case LoadPhase::Complete:          phaseText = "READY"; break;
+        case LoadPhase::Failed:            phaseText = "LOAD FAILED"; break;
+        default: break;
+        }
+
+        const float progress = std::clamp(m_loadProgress.load(), 0.0f, 1.0f);
+        const std::string& path = m_loadingScenePath.empty() ? m_initialScenePath
+                                                             : m_loadingScenePath;
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        constexpr float overlayHeight = 64.0f;
+        constexpr float barHeight = 6.0f;
+        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x,
+                                      viewport->Pos.y + viewport->Size.y - overlayHeight),
+                                ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, overlayHeight), ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 6.0f));
+        ImGui::Begin("##LevelLoadingStrip", nullptr,
+                     ImGuiWindowFlags_NoDecoration |
+                     ImGuiWindowFlags_NoBackground |
+                     ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoInputs);
+
+        // blue (#00A0DE), with a dark shadow so the
+        // borderless overlay remains legible over bright level backgrounds.
+        constexpr ImU32 blue = IM_COL32(0, 160, 222, 255);
+        constexpr ImU32 textShadow = IM_COL32(0, 18, 32, 230);
+        const ImVec4 blueFloat(0.0f, 160.0f / 255.0f, 222.0f / 255.0f, 1.0f);
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        auto drawShadow = [&](const char* text) {
+            const ImVec2 pos = ImGui::GetCursorScreenPos();
+            drawList->AddText(ImVec2(pos.x + 2.0f, pos.y + 2.0f), textShadow, text);
+        };
+
+        char levelText[256];
+        sprintf_s(levelText, "// LOADING LEVEL: %s", getFilename(path).c_str());
+        drawShadow(levelText);
+        ImGui::TextColored(blueFloat, "%s", levelText);
+        if (m_sceneLoadError.empty())
+        {
+            drawShadow(phaseText);
+            ImGui::TextColored(blueFloat, "%s", phaseText);
+        }
+        else
+        {
+            char errorText[256];
+            sprintf_s(errorText, "%s  //  [R] RETRY   [ESC] QUIT",
+                      m_sceneLoadError.c_str());
+            drawShadow(errorText);
+            ImGui::TextColored(ImVec4(1.0f, 0.18f, 0.08f, 1.0f), "%s", errorText);
+        }
+
+
+        const ImVec2 barMin(viewport->Pos.x,
+                            viewport->Pos.y + viewport->Size.y - barHeight);
+        const ImVec2 barMax(viewport->Pos.x + viewport->Size.x * progress,
+                            viewport->Pos.y + viewport->Size.y);
+        drawList->AddRectFilled(barMin, barMax, blue);
+
+        ImGui::End();
+        ImGui::PopStyleVar();
+    }
+
     void DrawUI(XMMATRIX view, XMMATRIX proj)
     {
         // Full-viewport dockspace
@@ -854,14 +1173,20 @@ private:
         }
 
         // --- Scene Picker ---
+        const bool sceneLoading = !m_loadingScenePath.empty();
+        auto getFilename = [](const std::string& path) -> std::string {
+            auto pos = path.find_last_of("\\/");
+            return (pos != std::string::npos) ? path.substr(pos + 1) : path;
+        };
+
+        if (sceneLoading)
+            DrawLoadingUI();
+
         ImGui::Begin("Scene");
+        if (sceneLoading)
+            ImGui::BeginDisabled();
         if (!m_sceneFiles.empty())
         {
-            auto getFilename = [](const std::string& path) -> std::string {
-                auto pos = path.find_last_of("\\/");
-                return (pos != std::string::npos) ? path.substr(pos + 1) : path;
-            };
-
             if (ImGui::BeginCombo("Scene File", getFilename(m_sceneFiles[m_selectedScene]).c_str()))
             {
                 for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
@@ -887,7 +1212,11 @@ private:
                 RefreshParticlePresets();
             }
         }
+        if (sceneLoading)
+            ImGui::EndDisabled();
         ImGui::Text("Active: %s", m_currentDesc.name.c_str());
+        if (!m_sceneLoadError.empty())
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", m_sceneLoadError.c_str());
         ImGui::End();
 
         // --- Camera ---
@@ -1145,11 +1474,6 @@ private:
             sprintf_s(label, "Emitter %d", i);
             if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
             {
-                auto getFilename = [](const std::string& path) -> std::string {
-                    auto pos = path.find_last_of("\\/");
-                    return (pos != std::string::npos) ? path.substr(pos + 1) : path;
-                };
-
                 ImGui::Text("Preset");
                 if (!m_particlePresetFiles.empty())
                 {
@@ -1390,6 +1714,22 @@ private:
     std::string              m_currentScenePath;
     SE::SceneDescriptor      m_currentDesc;
     std::string              m_pendingSceneLoad;
+    std::string              m_loadingScenePath;
+    std::string              m_initialScenePath;
+    std::string              m_sceneLoadError;
+    bool                     m_initialSceneLoad = false;
+    SE::SceneDescriptor      m_loadingDesc;
+    SE::AssetHandle<SE::Mesh> m_preparedMesh;
+    std::vector<SE::ForwardPipeline::SubMat> m_preparedSubMats;
+    uint32_t                 m_materialLoadIndex = 0;
+    std::future<SE::AssetHandle<SE::Mesh>> m_meshLoadFuture;
+    std::atomic<float>       m_loadProgress { 0.0f };
+    std::atomic<int>         m_loadPhase { static_cast<int>(LoadPhase::ReadingScene) };
+    std::atomic<bool>        m_cancelSceneLoad { false };
+    bool                     m_prepareEnvironmentNextFrame = false;
+    bool                     m_loadEnvironmentNextFrame = false;
+    bool                     m_finalizeSceneNextFrame = false;
+    bool                     m_completeSceneLoadNextFrame = false;
     std::vector<std::string> m_particlePresetFiles;
     std::vector<int>         m_selectedParticlePreset;
     std::vector<SE::SceneDescriptor::ParticleEmitterDesc> m_particleEmitterDescs;
