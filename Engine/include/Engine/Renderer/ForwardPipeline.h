@@ -32,6 +32,7 @@ public:
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
 
     // Build per-submesh texture handles from asset cache; falls back to default 1x1 textures.
+    SubMat LoadMeshMaterial(AssetManager& assets, const Mesh& mesh, uint32_t index);
     std::vector<SubMat> LoadMeshMaterials(AssetManager& assets, const Mesh& mesh);
 
     // Bind shaders + shared pipeline state; cache view/proj for this frame.

@@ -221,13 +221,13 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     return true;
 }
 
-std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetManager& assets, const Mesh& mesh)
+ForwardPipeline::SubMat ForwardPipeline::LoadMeshMaterial(AssetManager& assets,
+                                                           const Mesh& mesh,
+                                                           uint32_t index)
 {
     auto toWide = [](const std::string& s) -> std::wstring {
         return std::wstring(s.begin(), s.end());
     };
-
-    // Extract filename stem and force .dds extension, stripping any embedded directory.
     auto stemDDS = [](const std::string& raw) -> std::string {
         std::string p = raw;
         for (auto& c : p) if (c == '\\') c = '/';
@@ -238,39 +238,36 @@ std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetMan
     };
 
     const std::string& dir = mesh.GetDirectory();
-    std::vector<SubMat> mats(mesh.GetSubMeshCount());
+    const SubMeshInfo info = mesh.GetSubMeshInfo(index);
+    SubMat mat;
+    auto loadTex = [&](const std::string& rawPath) -> AssetHandle<Texture2D> {
+        if (rawPath.empty()) return nullptr;
+        const std::string dds = stemDDS(rawPath);
+        auto h = assets.GetTexture(toWide(dir + "Textures/" + dds));
+        if (!h) h = assets.GetTexture(toWide(dir + dds));
+        return h;
+    };
 
+    mat.albedo = loadTex(info.albedoPath);
+    if (!mat.albedo) mat.albedo = assets.GetDefaultWhite();
+    mat.normal = loadTex(info.normalPath);
+    if (!mat.normal) mat.normal = assets.GetDefaultNormal();
+    mat.roughness = loadTex(info.roughnessPath);
+    if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
+    mat.emissive = loadTex(info.emissivePath);
+    mat.metallic = assets.GetDefaultBlack();
+    mat.alphaMode = info.alphaMode;
+    mat.alphaCutoff = info.alphaCutoff;
+    return mat;
+}
+
+std::vector<ForwardPipeline::SubMat> ForwardPipeline::LoadMeshMaterials(AssetManager& assets,
+                                                                        const Mesh& mesh)
+{
+    std::vector<SubMat> mats;
+    mats.reserve(mesh.GetSubMeshCount());
     for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
-    {
-        SubMeshInfo info = mesh.GetSubMeshInfo(i);
-        SubMat& mat = mats[i];
-
-        auto loadTex = [&](const std::string& rawPath) -> AssetHandle<Texture2D> {
-            if (rawPath.empty()) return nullptr;
-            std::string dds = stemDDS(rawPath);
-            // Try mesh-local Textures/ subdir first, then mesh root dir.
-            auto h = assets.GetTexture(toWide(dir + "Textures/" + dds));
-            if (!h) h = assets.GetTexture(toWide(dir + dds));
-            return h;
-        };
-
-        mat.albedo    = loadTex(info.albedoPath);
-        if (!mat.albedo)    mat.albedo    = assets.GetDefaultWhite();
-
-        mat.normal    = loadTex(info.normalPath);
-        if (!mat.normal)    mat.normal    = assets.GetDefaultNormal();
-
-        mat.roughness = loadTex(info.roughnessPath);
-        if (!mat.roughness) mat.roughness = assets.GetDefaultWhite();
-
-        mat.emissive  = loadTex(info.emissivePath);
-        // emissive stays nullptr if no texture (shader uses default black)
-
-        mat.metallic    = assets.GetDefaultBlack();
-        mat.alphaMode   = info.alphaMode;
-        mat.alphaCutoff = info.alphaCutoff;
-    }
-
+        mats.push_back(LoadMeshMaterial(assets, mesh, i));
     return mats;
 }
 
