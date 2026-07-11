@@ -12,23 +12,71 @@ void AssetManager::Init(ID3D11Device* device, ID3D11DeviceContext* ctx)
 
 AssetHandle<Mesh> AssetManager::GetMesh(const std::string& path)
 {
-    auto it = m_meshes.find(path);
-    if (it != m_meshes.end())
-        if (auto h = it->second.lock()) return h;
+    if (m_importProgress && !m_importProgress(0.0f))
+        return nullptr;
+
+    if (auto cached = FindMesh(path))
+        return cached;
 
     auto mesh = std::make_shared<Mesh>();
-    if (!mesh->Load(m_device, path.c_str()))
+    if (!mesh->Load(m_device, path.c_str(), m_importProgress))
     {
         SE_LOG_ERROR("AssetManager: failed to load mesh '%s'", path.c_str());
         return nullptr;
     }
-    m_meshes[path] = mesh;
+    CacheMesh(path, mesh);
     SE_LOG_INFO("AssetManager: loaded mesh '%s'", path.c_str());
+    if (m_importProgress) m_importProgress(1.0f);
     return mesh;
+}
+
+AssetHandle<Mesh> AssetManager::FindMesh(const std::string& path)
+{
+    auto meshIt = m_meshes.find(path);
+    if (meshIt == m_meshes.end())
+        return {};
+
+    auto mesh = meshIt->second.lock();
+    if (!mesh)
+    {
+        m_meshes.erase(meshIt);
+        m_meshWriteTimes.erase(path);
+        return {};
+    }
+
+    std::error_code ec;
+    const auto currentWriteTime = std::filesystem::last_write_time(path, ec);
+    auto timeIt = m_meshWriteTimes.find(path);
+    if (ec || timeIt == m_meshWriteTimes.end() || timeIt->second != currentWriteTime)
+    {
+        SE_LOG_INFO("AssetManager: source mesh changed; invalidating '%s'", path.c_str());
+        m_meshes.erase(meshIt);
+        m_meshWriteTimes.erase(path);
+        return {};
+    }
+
+    return mesh;
+}
+
+void AssetManager::CacheMesh(const std::string& path, const AssetHandle<Mesh>& mesh)
+{
+    if (!mesh)
+        return;
+
+    m_meshes[path] = mesh;
+    std::error_code ec;
+    const auto writeTime = std::filesystem::last_write_time(path, ec);
+    if (!ec)
+        m_meshWriteTimes[path] = writeTime;
+    else
+        m_meshWriteTimes.erase(path);
 }
 
 AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
 {
+    if (m_importProgress && !m_importProgress(0.0f))
+        return nullptr;
+
     auto it = m_textures.find(path);
     if (it != m_textures.end())
         if (auto h = it->second.lock()) return h;
@@ -50,6 +98,7 @@ AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
         return nullptr;
     }
     m_textures[path] = tex;
+    if (m_importProgress) m_importProgress(1.0f);
     return tex;
 }
 

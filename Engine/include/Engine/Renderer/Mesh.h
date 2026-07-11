@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <functional>
 #include "Engine/Renderer/VertexBuffer.h"
 #include "Engine/Renderer/IndexBuffer.h"
 #include "Engine/Physics/AABB.h"
@@ -37,7 +38,11 @@ struct SubMeshInfo
 class Mesh
 {
 public:
-    bool Load(ID3D11Device* device, const char* path);
+    // Called periodically during import with normalized progress. Return false to cancel.
+    using ImportProgressCallback = std::function<bool(float)>;
+
+    bool Load(ID3D11Device* device, const char* path,
+              const ImportProgressCallback& progress = {});
     void Draw(ID3D11DeviceContext* ctx) const;
     void DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const;
 
