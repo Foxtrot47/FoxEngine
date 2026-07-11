@@ -5,13 +5,40 @@
 #include <assimp/postprocess.h>
 #include <assimp/material.h>
 #include <assimp/GltfMaterial.h>
+#include <assimp/ProgressHandler.hpp>
+#include <utility>
 #include <vector>
 
 namespace SE {
 
-bool Mesh::Load(ID3D11Device* device, const char* path)
+namespace {
+
+class ResponsiveProgressHandler final : public Assimp::ProgressHandler
 {
+public:
+    explicit ResponsiveProgressHandler(Mesh::ImportProgressCallback callback)
+        : m_callback(std::move(callback)) {}
+
+    bool Update(float percentage) override
+    {
+        return !m_callback || m_callback(percentage * 0.8f);
+    }
+
+private:
+    Mesh::ImportProgressCallback m_callback;
+};
+
+} // anonymous namespace
+
+bool Mesh::Load(ID3D11Device* device, const char* path,
+                const ImportProgressCallback& progress)
+{
+    if (progress && !progress(0.0f))
+        return false;
+
     Assimp::Importer importer;
+    if (progress)
+        importer.SetProgressHandler(new ResponsiveProgressHandler(progress));
 
     const aiScene* scene = importer.ReadFile(path,
         aiProcess_Triangulate          |
@@ -39,6 +66,10 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
 
     for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
     {
+        if (progress && !progress(0.8f + 0.2f * static_cast<float>(m) /
+                                 static_cast<float>(scene->mNumMeshes)))
+            return false;
+
         const aiMesh* mesh = scene->mMeshes[m];
 
         std::vector<MeshVertex> verts;
@@ -46,6 +77,12 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
 
         for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
         {
+            if ((v & 0x3ffu) == 0 && progress &&
+                !progress(0.8f + 0.2f * (static_cast<float>(m) +
+                          0.5f * static_cast<float>(v) / static_cast<float>(mesh->mNumVertices)) /
+                          static_cast<float>(scene->mNumMeshes)))
+                return false;
+
             MeshVertex vtx;
             vtx.x  = mesh->mVertices[v].x;
             vtx.y  = mesh->mVertices[v].y;
@@ -73,6 +110,12 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
         indices.reserve(mesh->mNumFaces * 3);
         for (uint32_t f = 0; f < mesh->mNumFaces; ++f)
         {
+            if ((f & 0x3ffu) == 0 && progress &&
+                !progress(0.8f + 0.2f * (static_cast<float>(m) + 0.5f +
+                          0.5f * static_cast<float>(f) / static_cast<float>(mesh->mNumFaces)) /
+                          static_cast<float>(scene->mNumMeshes)))
+                return false;
+
             const aiFace& face = mesh->mFaces[f];
             for (uint32_t i = 0; i < face.mNumIndices; ++i)
                 indices.push_back(face.mIndices[i]);
@@ -149,6 +192,8 @@ bool Mesh::Load(ID3D11Device* device, const char* path)
         m_subMeshes.push_back(std::move(sm));
     }
 
+    if (progress && !progress(1.0f))
+        return false;
     SE_LOG_INFO("Mesh loaded: '%s' — %u sub-mesh(es)", path, GetSubMeshCount());
     return true;
 }

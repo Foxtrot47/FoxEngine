@@ -11,6 +11,7 @@ Window::~Window()
 
 bool Window::Open(const WindowDesc& desc)
 {
+    m_quitRequested = false;
     m_width  = desc.width;
     m_height = desc.height;
 
@@ -63,7 +64,10 @@ bool Window::PumpMessages()
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
     {
         if (msg.message == WM_QUIT)
+        {
+            m_quitRequested = true;
             return false;
+        }
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
@@ -134,6 +138,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
 
     case WM_DESTROY:
+        if (self) self->m_quitRequested = true;
         PostQuitMessage(0);
         return 0;
 

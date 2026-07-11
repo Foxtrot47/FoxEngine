@@ -36,6 +36,7 @@ public:
     uint32_t GetWidth()       const { return m_width; }
     uint32_t GetHeight()      const { return m_height; }
     bool     IsOpen()         const { return m_hwnd != nullptr; }
+    bool     IsQuitRequested() const { return m_quitRequested; }
     bool     IsFullscreen()   const { return m_isFullscreen; }
 
     bool     IsSizeDirty()    const { return m_sizeDirty; }
@@ -52,6 +53,7 @@ private:
 
     bool      m_isFullscreen = false;
     bool      m_sizeDirty    = false;
+    bool      m_quitRequested = false;
     RECT      m_windowedRect = {};
     DWORD     m_windowedStyle= 0;
 };
