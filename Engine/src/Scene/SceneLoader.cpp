@@ -1,4 +1,5 @@
 #include "Engine/Scene/SceneLoader.h"
+#include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Core/Logger.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -53,44 +54,112 @@ static void ReadParticleEmitter(const json& p, SceneDescriptor::ParticleEmitterD
     if (p.contains("tracerStretch"))  e.tracerStretch   = p["tracerStretch"].get<float>();
 }
 
+static json BuildRuntimeJson(const LevelAsset& asset)
+{
+    json root = json::object();
+    root["name"] = asset.name;
+
+    if (asset.settings.contains("environment") && asset.settings["environment"].is_object())
+    {
+        const auto& environment = asset.settings["environment"];
+        for (const char* field : { "skybox", "reflectionPanorama", "iblIntensity" })
+            if (environment.contains(field))
+                root[field] = environment[field];
+    }
+    for (const char* field : { "physics", "toneMapping", "bloom", "fog" })
+        if (asset.settings.contains(field))
+            root[field] = asset.settings[field];
+
+    root["meshes"] = json::array();
+    root["pointLights"] = json::array();
+    root["objects"] = json::array();
+    root["particles"] = json::array();
+
+    for (const auto& entity : asset.entities)
+    {
+        if (!entity.active)
+            continue;
+
+        const auto transformIt = entity.components.find("transform");
+        const json transform = transformIt != entity.components.end()
+            ? transformIt->second : json::object();
+
+        if (const auto it = entity.components.find("meshRenderer"); it != entity.components.end())
+        {
+            json mesh = it->second;
+            mesh["name"] = entity.name;
+            mesh["path"] = mesh["mesh"];
+            mesh.erase("mesh");
+            mesh["transform"] = transform;
+            root["meshes"].push_back(std::move(mesh));
+        }
+        if (const auto it = entity.components.find("camera"); it != entity.components.end())
+            root["camera"] = it->second;
+        if (const auto it = entity.components.find("directionalLight"); it != entity.components.end())
+            root["sun"] = it->second;
+        if (const auto it = entity.components.find("pointLight"); it != entity.components.end())
+            root["pointLights"].push_back(it->second);
+        if (const auto it = entity.components.find("particleEmitter"); it != entity.components.end())
+            root["particles"].push_back(it->second);
+
+        for (const char* type : { "sphereRenderer", "planeRenderer" })
+        {
+            const auto it = entity.components.find(type);
+            if (it == entity.components.end())
+                continue;
+            json object = it->second;
+            object["type"] = type == std::string("planeRenderer") ? "plane" : "sphere";
+            if (object.contains("material") && object["material"].contains("metallic"))
+                object["material"]["metallic_map"] = object["material"]["metallic"];
+            root["objects"].push_back(std::move(object));
+        }
+    }
+    return root;
+}
+
 bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
 {
-    std::ifstream file(path);
-    if (!file.is_open())
+    const LevelAssetLoadResult levelResult = LevelAssetLoader::LoadFromFile(path);
+    if (!levelResult.Succeeded())
     {
-        SE_LOG_ERROR("SceneLoader: Failed to open '%s'", path.c_str());
+        for (const auto& diagnostic : levelResult.diagnostics)
+            if (diagnostic.severity == LevelDiagnosticSeverity::Error)
+                SE_LOG_ERROR("SceneLoader: %s: %s", diagnostic.path.c_str(), diagnostic.message.c_str());
         return false;
     }
-
-    json root;
-    try
-    {
-        root = json::parse(file);
-    }
-    catch (const json::parse_error& e)
-    {
-        SE_LOG_ERROR("SceneLoader: JSON parse error in '%s': %s", path.c_str(), e.what());
-        return false;
-    }
+    const json root = BuildRuntimeJson(levelResult.asset);
 
     out = SceneDescriptor{}; // reset to defaults
 
     // Name
     if (root.contains("name")) out.name = root["name"].get<std::string>();
 
-    // Mesh
-    if (root.contains("mesh"))
+    // Mesh entities
+    if (root.contains("meshes") && root["meshes"].is_array())
     {
-        auto& m = root["mesh"];
-        if (m.contains("path"))     out.mesh.path = m["path"].get<std::string>();
-        if (m.contains("transform"))
+        for (const auto& m : root["meshes"])
         {
-            auto& t = m["transform"];
-            out.mesh.position = ReadFloat3(t, "position", out.mesh.position);
-            out.mesh.rotation = ReadFloat3(t, "rotation", out.mesh.rotation);
-            if (t.contains("scale")) out.mesh.scale = t["scale"].get<float>();
+            SceneDescriptor::MeshEntry mesh;
+            if (m.contains("name")) mesh.name = m["name"].get<std::string>();
+            if (m.contains("path")) mesh.path = m["path"].get<std::string>();
+            if (m.contains("transform"))
+            {
+                const auto& t = m["transform"];
+                mesh.position = ReadFloat3(t, "position", mesh.position);
+                mesh.rotation = ReadFloat3(t, "rotationDegrees", mesh.rotation);
+                if (t.contains("scale"))
+                {
+                    if (t["scale"].is_array())
+                        mesh.scale = t["scale"][0].get<float>();
+                    else
+                        mesh.scale = t["scale"].get<float>();
+                }
+            }
+            if (m.contains("alphaCutoff")) mesh.alphaCutoff = m["alphaCutoff"].get<float>();
+            if (m.contains("castShadows")) mesh.castShadows = m["castShadows"].get<bool>();
+            if (m.contains("receiveShadows")) mesh.receiveShadows = m["receiveShadows"].get<bool>();
+            out.meshes.push_back(std::move(mesh));
         }
-        if (m.contains("alphaCutoff")) out.mesh.alphaCutoff = m["alphaCutoff"].get<float>();
     }
 
     // Skybox

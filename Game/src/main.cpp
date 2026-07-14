@@ -136,8 +136,8 @@ public:
 
     bool ApplyScene(const std::string& scenePath,
                     const SE::SceneDescriptor* preparedDesc = nullptr,
-                    SE::AssetHandle<SE::Mesh> preparedMesh = {},
-                    std::vector<SE::ForwardPipeline::SubMat>* preparedMats = nullptr,
+                    std::vector<SE::AssetHandle<SE::Mesh>> preparedMeshes = {},
+                    std::vector<std::vector<SE::ForwardPipeline::SubMat>>* preparedMats = nullptr,
                     bool environmentPrepared = false)
     {
         SE::SceneDescriptor desc;
@@ -162,38 +162,46 @@ public:
         if (!pumpLoadMessages())
             return false;
 
-        // --- Mesh ---
-        // Keep the current mesh alive until the replacement has imported successfully.
-        SE::AssetHandle<SE::Mesh> newMesh;
-        std::vector<SE::ForwardPipeline::SubMat> newSubMats;
-        if (!desc.mesh.path.empty())
+        // --- Mesh entities ---
+        // Keep the active level alive until every replacement mesh has imported successfully.
+        std::vector<LoadedMesh> newLoadedMeshes;
+        newLoadedMeshes.reserve(desc.meshes.size());
+        for (size_t meshIndex = 0; meshIndex < desc.meshes.size(); ++meshIndex)
         {
-            newMesh = preparedMesh ? std::move(preparedMesh)
-                                   : GetAssets().GetMesh(desc.mesh.path);
-            if (!newMesh)
+            const auto& meshDesc = desc.meshes[meshIndex];
+            if (meshDesc.path.empty())
+                continue;
+
+            LoadedMesh loaded;
+            loaded.def = meshDesc;
+            loaded.mesh = meshIndex < preparedMeshes.size() && preparedMeshes[meshIndex]
+                ? std::move(preparedMeshes[meshIndex])
+                : GetAssets().GetMesh(meshDesc.path);
+            if (!loaded.mesh)
             {
                 m_sceneLoadError = "Mesh import failed or was cancelled";
-                SE_LOG_WARN("Failed to load mesh: %s", desc.mesh.path.c_str());
+                SE_LOG_WARN("Failed to load mesh: %s", meshDesc.path.c_str());
                 return false;
             }
 
-            newSubMats = preparedMats ? std::move(*preparedMats)
-                                      : m_pipeline.LoadMeshMaterials(GetAssets(), *newMesh);
+            loaded.materials = preparedMats && meshIndex < preparedMats->size()
+                ? std::move((*preparedMats)[meshIndex])
+                : m_pipeline.LoadMeshMaterials(GetAssets(), *loaded.mesh);
             if (!pumpLoadMessages())
                 return false;
 
-            // Apply scene-level alpha cutoff override
-            if (desc.mesh.alphaCutoff > 0.0f)
+            if (meshDesc.alphaCutoff > 0.0f)
             {
-                for (auto& sm : newSubMats)
+                for (auto& sm : loaded.materials)
                 {
                     if (sm.alphaMode == SE::AlphaMode::Opaque && sm.albedo && sm.albedo->HasAlpha())
                     {
                         sm.alphaMode   = SE::AlphaMode::Cutout;
-                        sm.alphaCutoff = desc.mesh.alphaCutoff;
+                        sm.alphaCutoff = meshDesc.alphaCutoff;
                     }
                 }
             }
+            newLoadedMeshes.push_back(std::move(loaded));
         }
 
         // --- Lights ---
@@ -205,8 +213,9 @@ public:
         m_lights.lightColor[2]  = desc.sun.color[2];
         m_lights.iblIntensity   = desc.iblIntensity;
 
-        m_lights.numLights = (int)desc.pointLights.size();
-        for (int i = 0; i < m_lights.numLights && i < 8; ++i)
+        m_lights.numLights = (std::min)(static_cast<int>(desc.pointLights.size()), 8);
+        std::fill(std::begin(m_lightCastsShadow), std::end(m_lightCastsShadow), false);
+        for (int i = 0; i < m_lights.numLights; ++i)
         {
             auto& pl = desc.pointLights[i];
             m_lights.lights[i].position = { pl.position[0], pl.position[1], pl.position[2] };
@@ -226,12 +235,18 @@ public:
         m_camCtrl.freeFly.pitchDeg = desc.camera.pitch;
         m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
 
-        // Mesh entity with transform
-        SE::Entity* meshEnt = m_scene.CreateEntity("SceneMesh");
-        m_bistroTransform          = meshEnt->AddComponent<SE::TransformComponent>();
-        m_bistroTransform->position = { desc.mesh.position[0], desc.mesh.position[1], desc.mesh.position[2] };
-        m_bistroTransform->eulerDeg = { desc.mesh.rotation[0], desc.mesh.rotation[1], desc.mesh.rotation[2] };
-        m_bistroTransform->scale    = desc.mesh.scale;
+        for (auto& loaded : newLoadedMeshes)
+        {
+            SE::Entity* meshEnt = m_scene.CreateEntity(loaded.def.name);
+            loaded.transform = meshEnt->AddComponent<SE::TransformComponent>();
+            loaded.transform->position = {
+                loaded.def.position[0], loaded.def.position[1], loaded.def.position[2]
+            };
+            loaded.transform->eulerDeg = {
+                loaded.def.rotation[0], loaded.def.rotation[1], loaded.def.rotation[2]
+            };
+            loaded.transform->scale = loaded.def.scale;
+        }
 
         // Physics ball entity
         SE::Entity* ballEnt = m_scene.CreateEntity("PhysBall");
@@ -368,9 +383,8 @@ public:
             }
         }
 
-        // Commit only after the replacement mesh has completed its import.
-        m_mesh             = std::move(newMesh);
-        m_subMats          = std::move(newSubMats);
+        // Commit only after every replacement mesh has completed its import.
+        m_loadedMeshes     = std::move(newLoadedMeshes);
         m_currentScenePath = scenePath;
         m_currentDesc      = desc;
         m_sceneLoadError.clear();
@@ -497,17 +511,30 @@ protected:
 
         if (!startedLoadThisFrame && !m_loadingScenePath.empty())
         {
-            if (m_preparedMesh && m_materialLoadIndex < m_preparedMesh->GetSubMeshCount())
+            if (m_geometryPrepared && m_materialMeshIndex < m_preparedMeshes.size())
             {
                 m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
-                const uint32_t count = m_preparedMesh->GetSubMeshCount();
-                for (; m_materialLoadIndex < count; ++m_materialLoadIndex)
-                    m_preparedSubMats.push_back(
-                        m_pipeline.LoadMeshMaterial(GetAssets(), *m_preparedMesh, m_materialLoadIndex));
+                while (m_materialMeshIndex < m_preparedMeshes.size())
+                {
+                    auto& mesh = m_preparedMeshes[m_materialMeshIndex];
+                    const uint32_t count = mesh ? mesh->GetSubMeshCount() : 0;
+                    for (; m_materialSubMeshIndex < count; ++m_materialSubMeshIndex)
+                    {
+                        m_preparedSubMats[m_materialMeshIndex].push_back(
+                            m_pipeline.LoadMeshMaterial(
+                                GetAssets(), *mesh, m_materialSubMeshIndex));
+                        ++m_materialLoadedCount;
+                    }
+                    ++m_materialMeshIndex;
+                    m_materialSubMeshIndex = 0;
+                }
 
-                m_loadProgress.store(0.78f + 0.17f * static_cast<float>(m_materialLoadIndex) /
-                                              static_cast<float>(count));
-                if (m_materialLoadIndex == count)
+                const float materialProgress = m_materialTotalCount > 0
+                    ? static_cast<float>(m_materialLoadedCount) /
+                      static_cast<float>(m_materialTotalCount)
+                    : 1.0f;
+                m_loadProgress.store(0.78f + 0.17f * materialProgress);
+                if (m_materialMeshIndex == m_preparedMeshes.size())
                     m_prepareEnvironmentNextFrame = true;
             }
             else if (m_prepareEnvironmentNextFrame)
@@ -536,7 +563,7 @@ protected:
                 m_loadProgress.store(0.99f);
 
                 const bool loaded = ApplyScene(m_loadingScenePath, &m_loadingDesc,
-                                               std::move(m_preparedMesh), &m_preparedSubMats,
+                                               std::move(m_preparedMeshes), &m_preparedSubMats,
                                                true);
                 if (!loaded)
                 {
@@ -555,27 +582,23 @@ protected:
             else if (m_meshLoadFuture.valid() &&
                      m_meshLoadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
-                m_preparedMesh = m_meshLoadFuture.get();
-                if (!m_loadingDesc.mesh.path.empty() && !m_preparedMesh)
+                m_preparedMeshes = m_meshLoadFuture.get();
+                bool geometryFailed = m_preparedMeshes.size() != m_loadingDesc.meshes.size();
+                for (size_t i = 0; !geometryFailed && i < m_loadingDesc.meshes.size(); ++i)
+                    geometryFailed = !m_loadingDesc.meshes[i].path.empty() && !m_preparedMeshes[i];
+                if (geometryFailed)
                 {
                     m_sceneLoadError = "GEOMETRY IMPORT FAILED";
                     m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
                     m_loadingScenePath.clear();
                 }
-                else if (m_preparedMesh)
-                {
-                    GetAssets().CacheMesh(m_loadingDesc.mesh.path, m_preparedMesh);
-                    m_preparedSubMats.clear();
-                    m_preparedSubMats.reserve(m_preparedMesh->GetSubMeshCount());
-                    m_materialLoadIndex = 0;
-                    m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
-                    m_loadProgress.store(0.78f);
-                    if (m_preparedMesh->GetSubMeshCount() == 0)
-                        m_prepareEnvironmentNextFrame = true;
-                }
                 else
                 {
-                    m_prepareEnvironmentNextFrame = true;
+                    for (size_t i = 0; i < m_loadingDesc.meshes.size(); ++i)
+                        if (m_preparedMeshes[i])
+                            GetAssets().CacheMesh(
+                                m_loadingDesc.meshes[i].path, m_preparedMeshes[i]);
+                    StartMaterialPreparation();
                 }
             }
         }
@@ -670,9 +693,6 @@ protected:
 
         DrawUI(view, proj);
 
-        // Use bistro entity's transform for mesh world matrix
-        m_meshWorld = m_bistroTransform->GetLocalMatrix();
-
         // Cascaded shadow pass
         {
             float er = XMConvertToRadians(m_lights.elevDeg);
@@ -682,7 +702,9 @@ protected:
             for (int c = 0; c < SE::CSM_NUM_CASCADES; ++c)
             {
                 m_shadowMap.BeginCascade(ctx, c);
-                if (m_mesh) m_shadowMap.DrawMesh(ctx, *m_mesh, m_meshWorld);
+                for (const auto& loaded : m_loadedMeshes)
+                    if (loaded.def.castShadows && loaded.mesh && loaded.transform)
+                        m_shadowMap.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
                 m_shadowMap.DrawSphere(ctx, m_ballTransform->position, m_ballRadius);
                 m_shadowMap.EndCascade(ctx);
             }
@@ -699,7 +721,10 @@ protected:
                 for (int face = 0; face < 6; ++face)
                 {
                     m_pointShadowMaps[li].BeginFace(ctx, face, light.position, light.radius);
-                    if (m_mesh) m_pointShadowMaps[li].DrawMesh(ctx, *m_mesh, m_meshWorld);
+                    for (const auto& loaded : m_loadedMeshes)
+                        if (loaded.def.castShadows && loaded.mesh && loaded.transform)
+                            m_pointShadowMaps[li].DrawMesh(
+                                ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
                     m_pointShadowMaps[li].EndFace(ctx);
                 }
             }
@@ -709,7 +734,9 @@ protected:
         if (m_spotLight.enabled)
         {
             m_spotLight.BeginShadowPass(ctx);
-            if (m_mesh) m_spotLight.DrawMesh(ctx, *m_mesh, m_meshWorld);
+            for (const auto& loaded : m_loadedMeshes)
+                if (loaded.def.castShadows && loaded.mesh && loaded.transform)
+                    m_spotLight.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
             m_spotLight.EndShadowPass(ctx);
         }
 
@@ -749,11 +776,12 @@ protected:
         m_pipeline.SetMaterialParams(ctx,
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
             m_debugShadow ? 1.0f : 0.0f);
-        if (m_mesh)
-        {
-            m_pipeline.SubmitMesh(*m_mesh, m_meshWorld, m_subMats);
+        for (const auto& loaded : m_loadedMeshes)
+            if (loaded.mesh && loaded.transform)
+                m_pipeline.SubmitMesh(
+                    *loaded.mesh, loaded.transform->GetWorldMatrix(), loaded.materials);
+        if (!m_loadedMeshes.empty())
             m_pipeline.Flush(ctx);
-        }
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
 
         // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
@@ -956,6 +984,25 @@ private:
         }
     }
 
+    void StartMaterialPreparation()
+    {
+        m_geometryPrepared = true;
+        m_preparedSubMats.clear();
+        m_preparedSubMats.resize(m_preparedMeshes.size());
+        m_materialMeshIndex = 0;
+        m_materialSubMeshIndex = 0;
+        m_materialLoadedCount = 0;
+        m_materialTotalCount = 0;
+        for (const auto& mesh : m_preparedMeshes)
+            if (mesh)
+                m_materialTotalCount += mesh->GetSubMeshCount();
+
+        m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
+        m_loadProgress.store(0.78f);
+        if (m_preparedMeshes.empty())
+            m_prepareEnvironmentNextFrame = true;
+    }
+
     void BeginAsyncSceneLoad(const std::string& scenePath)
     {
         m_sceneLoadError.clear();
@@ -964,9 +1011,13 @@ private:
         m_loadEnvironmentNextFrame = false;
         m_finalizeSceneNextFrame = false;
         m_completeSceneLoadNextFrame = false;
-        m_preparedMesh.reset();
+        m_geometryPrepared = false;
+        m_preparedMeshes.clear();
         m_preparedSubMats.clear();
-        m_materialLoadIndex = 0;
+        m_materialMeshIndex = 0;
+        m_materialSubMeshIndex = 0;
+        m_materialLoadedCount = 0;
+        m_materialTotalCount = 0;
         m_loadProgress.store(0.02f);
         m_loadPhase.store(static_cast<int>(LoadPhase::ReadingScene));
 
@@ -983,35 +1034,51 @@ private:
         m_loadPhase.store(static_cast<int>(LoadPhase::ImportingGeometry));
         m_loadProgress.store(0.05f);
 
-        if (m_loadingDesc.mesh.path.empty())
+        if (m_loadingDesc.meshes.empty())
         {
             m_prepareEnvironmentNextFrame = true;
             return;
         }
 
-        const std::string meshPath = m_loadingDesc.mesh.path;
-        if (auto cached = GetAssets().FindMesh(meshPath))
+        std::vector<std::string> meshPaths;
+        meshPaths.reserve(m_loadingDesc.meshes.size());
+        m_preparedMeshes.resize(m_loadingDesc.meshes.size());
+        bool allCached = true;
+        for (size_t i = 0; i < m_loadingDesc.meshes.size(); ++i)
         {
-            m_preparedMesh = std::move(cached);
-            m_preparedSubMats.reserve(m_preparedMesh->GetSubMeshCount());
-            m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
-            m_loadProgress.store(0.78f);
-            if (m_preparedMesh->GetSubMeshCount() == 0)
-                m_prepareEnvironmentNextFrame = true;
+            meshPaths.push_back(m_loadingDesc.meshes[i].path);
+            if (!meshPaths.back().empty())
+                m_preparedMeshes[i] = GetAssets().FindMesh(meshPaths.back());
+            if (!meshPaths.back().empty() && !m_preparedMeshes[i])
+                allCached = false;
+        }
+        if (allCached)
+        {
+            StartMaterialPreparation();
             return;
         }
 
         ID3D11Device* device = GetRenderer().GetDevice();
         m_meshLoadFuture = std::async(std::launch::async,
-            [this, device, meshPath]() -> SE::AssetHandle<SE::Mesh> {
-                auto mesh = std::make_shared<SE::Mesh>();
-                const bool loaded = mesh->Load(device, meshPath.c_str(),
-                    [this](float progress) {
-                        m_loadProgress.store(0.05f + progress * 0.73f,
-                                             std::memory_order_relaxed);
-                        return !m_cancelSceneLoad.load(std::memory_order_relaxed);
-                    });
-                return loaded ? mesh : SE::AssetHandle<SE::Mesh>{};
+            [this, device, meshPaths, prepared = m_preparedMeshes]() mutable {
+                const float meshCount = static_cast<float>(meshPaths.size());
+                for (size_t i = 0; i < meshPaths.size(); ++i)
+                {
+                    if (meshPaths[i].empty() || prepared[i])
+                        continue;
+                    auto mesh = std::make_shared<SE::Mesh>();
+                    const bool loaded = mesh->Load(device, meshPaths[i].c_str(),
+                        [this, i, meshCount](float progress) {
+                            const float total = (static_cast<float>(i) + progress) / meshCount;
+                            m_loadProgress.store(0.05f + total * 0.73f,
+                                                 std::memory_order_relaxed);
+                            return !m_cancelSceneLoad.load(std::memory_order_relaxed);
+                        });
+                    if (!loaded)
+                        return std::vector<SE::AssetHandle<SE::Mesh>>{};
+                    prepared[i] = std::move(mesh);
+                }
+                return prepared;
             });
     }
 
@@ -1166,9 +1233,13 @@ private:
             sprintf_s(buf, "%.1f fps  |  %.2f ms",
                 GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
             dl->AddText(ImVec2(10.0f, 10.0f), IM_COL32(255, 255, 255, 220), buf);
+            uint32_t subMeshCount = 0;
+            for (const auto& loaded : m_loadedMeshes)
+                if (loaded.mesh)
+                    subMeshCount += loaded.mesh->GetSubMeshCount();
             sprintf_s(buf, "meshes:%u  textures:%u  submeshes:%u",
                 GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount(),
-                m_mesh ? m_mesh->GetSubMeshCount() : 0u);
+                subMeshCount);
             dl->AddText(ImVec2(10.0f, 26.0f), IM_COL32(200, 200, 200, 180), buf);
         }
 
@@ -1654,8 +1725,14 @@ private:
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;
     SE::CascadedShadowMap                    m_shadowMap;
-    SE::AssetHandle<SE::Mesh>                m_mesh;
-    std::vector<SE::ForwardPipeline::SubMat> m_subMats;
+    struct LoadedMesh
+    {
+        SE::SceneDescriptor::MeshEntry         def;
+        SE::AssetHandle<SE::Mesh>              mesh;
+        std::vector<SE::ForwardPipeline::SubMat> materials;
+        SE::TransformComponent*                transform = nullptr;
+    };
+    std::vector<LoadedMesh> m_loadedMeshes;
 
     struct LoadedObject
     {
@@ -1667,7 +1744,6 @@ private:
     SE::Scene            m_scene;
     SE::CameraComponent* m_camera  = nullptr;
     SE::CameraController m_camCtrl;
-    SE::TransformComponent* m_bistroTransform = nullptr;
 
     float m_matTint[3]     = { 1.0f, 1.0f, 1.0f };
     float m_roughnessScale = 1.0f;
@@ -1688,7 +1764,6 @@ private:
     bool                         m_debugShadow       = false;
     bool                         m_firstFrame        = true;
     int                          m_frameCount        = 0;
-    DirectX::XMMATRIX            m_meshWorld         = DirectX::XMMatrixIdentity();
     SE::RenderTarget             m_forwardHDR_RT;
     SE::RenderTarget             m_normalRT;
     SE::ToneMap                  m_toneMap;
@@ -1719,14 +1794,18 @@ private:
     std::string              m_sceneLoadError;
     bool                     m_initialSceneLoad = false;
     SE::SceneDescriptor      m_loadingDesc;
-    SE::AssetHandle<SE::Mesh> m_preparedMesh;
-    std::vector<SE::ForwardPipeline::SubMat> m_preparedSubMats;
-    uint32_t                 m_materialLoadIndex = 0;
-    std::future<SE::AssetHandle<SE::Mesh>> m_meshLoadFuture;
+    std::vector<SE::AssetHandle<SE::Mesh>> m_preparedMeshes;
+    std::vector<std::vector<SE::ForwardPipeline::SubMat>> m_preparedSubMats;
+    size_t                   m_materialMeshIndex = 0;
+    uint32_t                 m_materialSubMeshIndex = 0;
+    uint32_t                 m_materialLoadedCount = 0;
+    uint32_t                 m_materialTotalCount = 0;
+    std::future<std::vector<SE::AssetHandle<SE::Mesh>>> m_meshLoadFuture;
     std::atomic<float>       m_loadProgress { 0.0f };
     std::atomic<int>         m_loadPhase { static_cast<int>(LoadPhase::ReadingScene) };
     std::atomic<bool>        m_cancelSceneLoad { false };
     bool                     m_prepareEnvironmentNextFrame = false;
+    bool                     m_geometryPrepared = false;
     bool                     m_loadEnvironmentNextFrame = false;
     bool                     m_finalizeSceneNextFrame = false;
     bool                     m_completeSceneLoadNextFrame = false;
