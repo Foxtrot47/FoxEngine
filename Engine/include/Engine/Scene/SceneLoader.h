@@ -5,11 +5,14 @@
 
 namespace SE {
 
+struct LevelAsset;
+
 class SceneLoader
 {
 public:
     // Load a scene descriptor from a JSON file. Returns true on success.
     static bool LoadFromFile(const std::string& path, SceneDescriptor& out);
+    static bool BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out);
 
     // Load a single particle emitter preset as JSON.
     static bool LoadParticlePreset(const std::string& path, SceneDescriptor::ParticleEmitterDesc& out);

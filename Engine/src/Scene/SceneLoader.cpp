@@ -54,7 +54,7 @@ static void ReadParticleEmitter(const json& p, SceneDescriptor::ParticleEmitterD
     if (p.contains("tracerStretch"))  e.tracerStretch   = p["tracerStretch"].get<float>();
 }
 
-static json BuildRuntimeJson(const LevelAsset& asset)
+static json BuildSettingsJson(const LevelAsset& asset)
 {
     json root = json::object();
     root["name"] = asset.name;
@@ -70,50 +70,6 @@ static json BuildRuntimeJson(const LevelAsset& asset)
         if (asset.settings.contains(field))
             root[field] = asset.settings[field];
 
-    root["meshes"] = json::array();
-    root["pointLights"] = json::array();
-    root["objects"] = json::array();
-    root["particles"] = json::array();
-
-    for (const auto& entity : asset.entities)
-    {
-        if (!entity.active)
-            continue;
-
-        const auto transformIt = entity.components.find("transform");
-        const json transform = transformIt != entity.components.end()
-            ? transformIt->second : json::object();
-
-        if (const auto it = entity.components.find("meshRenderer"); it != entity.components.end())
-        {
-            json mesh = it->second;
-            mesh["name"] = entity.name;
-            mesh["path"] = mesh["mesh"];
-            mesh.erase("mesh");
-            mesh["transform"] = transform;
-            root["meshes"].push_back(std::move(mesh));
-        }
-        if (const auto it = entity.components.find("camera"); it != entity.components.end())
-            root["camera"] = it->second;
-        if (const auto it = entity.components.find("directionalLight"); it != entity.components.end())
-            root["sun"] = it->second;
-        if (const auto it = entity.components.find("pointLight"); it != entity.components.end())
-            root["pointLights"].push_back(it->second);
-        if (const auto it = entity.components.find("particleEmitter"); it != entity.components.end())
-            root["particles"].push_back(it->second);
-
-        for (const char* type : { "sphereRenderer", "planeRenderer" })
-        {
-            const auto it = entity.components.find(type);
-            if (it == entity.components.end())
-                continue;
-            json object = it->second;
-            object["type"] = type == std::string("planeRenderer") ? "plane" : "sphere";
-            if (object.contains("material") && object["material"].contains("metallic"))
-                object["material"]["metallic_map"] = object["material"]["metallic"];
-            root["objects"].push_back(std::move(object));
-        }
-    }
     return root;
 }
 
@@ -127,38 +83,71 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
                 SE_LOG_ERROR("SceneLoader: %s: %s", diagnostic.path.c_str(), diagnostic.message.c_str());
         return false;
     }
-    const json root = BuildRuntimeJson(levelResult.asset);
+    if (!BuildDescriptor(levelResult.asset, out))
+        return false;
+    SE_LOG_INFO("SceneLoader: Loaded '%s' (%s)", out.name.c_str(), path.c_str());
+    return true;
+}
+
+bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
+{
+    const json root = BuildSettingsJson(asset);
 
     out = SceneDescriptor{}; // reset to defaults
 
     // Name
     if (root.contains("name")) out.name = root["name"].get<std::string>();
 
-    // Mesh entities
-    if (root.contains("meshes") && root["meshes"].is_array())
+    for (const auto& entity : asset.entities)
     {
-        for (const auto& m : root["meshes"])
+        if (!entity.active)
+            continue;
+
+        if (entity.meshRenderer)
         {
             SceneDescriptor::MeshEntry mesh;
-            if (m.contains("name")) mesh.name = m["name"].get<std::string>();
-            if (m.contains("path")) mesh.path = m["path"].get<std::string>();
-            if (m.contains("transform"))
+            mesh.sourceEntityID = entity.id;
+            mesh.name = entity.name;
+            mesh.path = entity.meshRenderer->mesh;
+            mesh.alphaCutoff = entity.meshRenderer->alphaCutoff;
+            mesh.castShadows = entity.meshRenderer->castShadows;
+            mesh.receiveShadows = entity.meshRenderer->receiveShadows;
+            if (entity.transform)
             {
-                const auto& t = m["transform"];
-                mesh.position = ReadFloat3(t, "position", mesh.position);
-                mesh.rotation = ReadFloat3(t, "rotationDegrees", mesh.rotation);
-                if (t.contains("scale"))
-                {
-                    if (t["scale"].is_array())
-                        mesh.scale = t["scale"][0].get<float>();
-                    else
-                        mesh.scale = t["scale"].get<float>();
-                }
+                mesh.position = entity.transform->position;
+                mesh.rotation = entity.transform->rotationDegrees;
+                mesh.scale = entity.transform->scale;
             }
-            if (m.contains("alphaCutoff")) mesh.alphaCutoff = m["alphaCutoff"].get<float>();
-            if (m.contains("castShadows")) mesh.castShadows = m["castShadows"].get<bool>();
-            if (m.contains("receiveShadows")) mesh.receiveShadows = m["receiveShadows"].get<bool>();
             out.meshes.push_back(std::move(mesh));
+        }
+        if (entity.camera && entity.camera->primary)
+            out.camera = *entity.camera;
+        if (entity.directionalLight)
+            out.sun = *entity.directionalLight;
+        if (entity.pointLight)
+            out.pointLights.push_back(*entity.pointLight);
+        if (entity.particleEmitter)
+            out.particles.push_back(*entity.particleEmitter);
+        if (entity.primitiveRenderer)
+        {
+            const auto& source = *entity.primitiveRenderer;
+            SceneDescriptor::SceneObject object;
+            object.type = source.type == LevelPrimitiveType::Plane
+                ? SceneDescriptor::SceneObject::Type::Plane
+                : SceneDescriptor::SceneObject::Type::Sphere;
+            object.position = source.position;
+            object.radius = source.radius;
+            object.halfSizeX = source.halfSizeX;
+            object.halfSizeZ = source.halfSizeZ;
+            object.albedoPath = source.material.albedo;
+            object.normalPath = source.material.normal;
+            object.roughnessPath = source.material.roughness;
+            object.metallicPath = source.material.metallic;
+            object.emissivePath = source.material.emissive;
+            object.emissiveIntensity = source.material.emissiveIntensity;
+            object.emissiveColor = source.material.emissiveColor;
+            object.tint = source.material.tint;
+            out.objects.push_back(std::move(object));
         }
     }
 
@@ -168,43 +157,8 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
     // Reflection panorama (SSR fallback)
     if (root.contains("reflectionPanorama")) out.reflectionPanorama = root["reflectionPanorama"].get<std::string>();
 
-    // Camera
-    if (root.contains("camera"))
-    {
-        auto& c = root["camera"];
-        out.camera.eye = ReadFloat3(c, "eye", out.camera.eye);
-        if (c.contains("yaw"))   out.camera.yaw   = c["yaw"].get<float>();
-        if (c.contains("pitch")) out.camera.pitch  = c["pitch"].get<float>();
-        if (c.contains("nearZ")) out.camera.nearZ  = c["nearZ"].get<float>();
-        if (c.contains("farZ"))  out.camera.farZ   = c["farZ"].get<float>();
-    }
-
-    // Sun
-    if (root.contains("sun"))
-    {
-        auto& s = root["sun"];
-        if (s.contains("elevation")) out.sun.elevation = s["elevation"].get<float>();
-        if (s.contains("azimuth"))   out.sun.azimuth   = s["azimuth"].get<float>();
-        if (s.contains("intensity")) out.sun.intensity  = s["intensity"].get<float>();
-        out.sun.color = ReadFloat3(s, "color", out.sun.color);
-    }
-
     // IBL
     if (root.contains("iblIntensity")) out.iblIntensity = root["iblIntensity"].get<float>();
-
-    // Point lights
-    if (root.contains("pointLights") && root["pointLights"].is_array())
-    {
-        for (auto& pl : root["pointLights"])
-        {
-            SceneDescriptor::PointLightDesc desc;
-            desc.position   = ReadFloat3(pl, "position", desc.position);
-            desc.color      = ReadFloat3(pl, "color",    desc.color);
-            if (pl.contains("radius"))     desc.radius     = pl["radius"].get<float>();
-            if (pl.contains("castShadow")) desc.castShadow = pl["castShadow"].get<bool>();
-            out.pointLights.push_back(desc);
-        }
-    }
 
     // Physics
     if (root.contains("physics"))
@@ -268,50 +222,6 @@ bool SceneLoader::LoadFromFile(const std::string& path, SceneDescriptor& out)
         if (f.contains("distanceDensity"))   out.fog.distanceDensity   = f["distanceDensity"].get<float>();
     }
 
-    // Scene objects (PBR showcase or any extra geometry)
-    if (root.contains("objects") && root["objects"].is_array())
-    {
-        for (auto& obj : root["objects"])
-        {
-            SceneDescriptor::SceneObject o;
-
-            std::string type = "sphere";
-            if (obj.contains("type")) type = obj["type"].get<std::string>();
-            o.type = (type == "plane") ? SceneDescriptor::SceneObject::Type::Plane
-                                       : SceneDescriptor::SceneObject::Type::Sphere;
-
-            o.position = ReadFloat3(obj, "position", o.position);
-            if (obj.contains("radius"))    o.radius    = obj["radius"].get<float>();
-            if (obj.contains("halfSizeX")) o.halfSizeX = obj["halfSizeX"].get<float>();
-            if (obj.contains("halfSizeZ")) o.halfSizeZ = obj["halfSizeZ"].get<float>();
-
-            if (obj.contains("material"))
-            {
-                auto& m = obj["material"];
-                if (m.contains("albedo"))       o.albedoPath    = m["albedo"].get<std::string>();
-                if (m.contains("normal"))       o.normalPath    = m["normal"].get<std::string>();
-                if (m.contains("roughness"))    o.roughnessPath = m["roughness"].get<std::string>();
-                if (m.contains("metallic_map")) o.metallicPath  = m["metallic_map"].get<std::string>();
-                if (m.contains("emissive"))     o.emissivePath  = m["emissive"].get<std::string>();
-                if (m.contains("emissive_intensity")) o.emissiveIntensity = m["emissive_intensity"].get<float>();
-                if (m.contains("emissive_color")) o.emissiveColor = { m["emissive_color"][0].get<float>(), m["emissive_color"][1].get<float>(), m["emissive_color"][2].get<float>() };
-                o.tint = ReadFloat3(m, "tint", o.tint);
-            }
-            out.objects.push_back(o);
-        }
-    }
-    // Particles
-    if (root.contains("particles") && root["particles"].is_array())
-    {
-        for (auto& p : root["particles"])
-        {
-            SceneDescriptor::ParticleEmitterDesc e;
-            ReadParticleEmitter(p, e);
-            out.particles.push_back(e);
-        }
-    }
-
-    SE_LOG_INFO("SceneLoader: Loaded '%s' (%s)", out.name.c_str(), path.c_str());
     return true;
 }
 

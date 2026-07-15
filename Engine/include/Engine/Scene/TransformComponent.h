@@ -9,7 +9,7 @@ struct TransformComponent : Component
 {
     DirectX::XMFLOAT3 position = { 0.0f, 0.0f, 0.0f };
     DirectX::XMFLOAT3 eulerDeg = { 0.0f, 0.0f, 0.0f }; // pitch / yaw / roll in degrees
-    float             scale    = 1.0f;
+    DirectX::XMFLOAT3 scale    = { 1.0f, 1.0f, 1.0f };
 
     TransformComponent*              parent   = nullptr;
     std::vector<TransformComponent*> children;
@@ -20,7 +20,7 @@ struct TransformComponent : Component
     DirectX::XMMATRIX GetLocalMatrix() const
     {
         using namespace DirectX;
-        return XMMatrixScaling(scale, scale, scale)
+        return XMMatrixScaling(scale.x, scale.y, scale.z)
              * XMMatrixRotationRollPitchYaw(
                    XMConvertToRadians(eulerDeg.x),
                    XMConvertToRadians(eulerDeg.y),

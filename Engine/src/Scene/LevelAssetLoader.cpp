@@ -36,6 +36,129 @@ bool IsFloatArray(const json& value, size_t count)
     });
 }
 
+template<size_t N>
+std::array<float, N> ReadFloatArray(const json& object, const char* field,
+                                    std::array<float, N> fallback)
+{
+    if (!object.contains(field) || !IsFloatArray(object[field], N))
+        return fallback;
+    for (size_t i = 0; i < N; ++i)
+        fallback[i] = object[field][i].get<float>();
+    return fallback;
+}
+
+LevelParticleEmitterDefinition DecodeParticleEmitter(const json& value)
+{
+    LevelParticleEmitterDefinition out;
+    out.position = ReadFloatArray(value, "position", out.position);
+    out.velocityMin = ReadFloatArray(value, "velocity_min", out.velocityMin);
+    out.velocityMax = ReadFloatArray(value, "velocity_max", out.velocityMax);
+    out.colorStart = ReadFloatArray(value, "color_start", out.colorStart);
+    out.colorEnd = ReadFloatArray(value, "color_end", out.colorEnd);
+    out.gravity = ReadFloatArray(value, "gravity", out.gravity);
+
+    if (value.contains("emit_rate")) out.emitRate = value["emit_rate"].get<float>();
+    if (value.contains("max_particles")) out.maxParticles = value["max_particles"].get<int>();
+    if (value.contains("lifetime_min")) out.lifetimeMin = value["lifetime_min"].get<float>();
+    if (value.contains("lifetime_max")) out.lifetimeMax = value["lifetime_max"].get<float>();
+    if (value.contains("size_start")) out.sizeStart = value["size_start"].get<float>();
+    if (value.contains("size_end")) out.sizeEnd = value["size_end"].get<float>();
+    if (value.contains("spawn_radius")) out.spawnRadius = value["spawn_radius"].get<float>();
+    if (value.contains("texture")) out.texture = value["texture"].get<std::string>();
+    if (value.contains("atlasColumns")) out.atlasColumns = value["atlasColumns"].get<int>();
+    if (value.contains("atlasRows")) out.atlasRows = value["atlasRows"].get<int>();
+    if (value.contains("atlasFrameCount")) out.atlasFrameCount = value["atlasFrameCount"].get<int>();
+    if (value.contains("atlasSpeed")) out.atlasSpeed = value["atlasSpeed"].get<float>();
+    if (value.contains("textureRotationDegrees")) out.textureRotationDegrees = value["textureRotationDegrees"].get<float>();
+    if (value.contains("softDistance")) out.softDistance = value["softDistance"].get<float>();
+    if (value.contains("aspectRatio")) out.aspectRatio = value["aspectRatio"].get<float>();
+    if (value.contains("blendMode")) out.blendMode = value["blendMode"].get<int>();
+    if (value.contains("drag")) out.drag = value["drag"].get<float>();
+    if (value.contains("shaderMode")) out.shaderMode = value["shaderMode"].get<int>();
+    if (value.contains("emitMode")) out.emitMode = value["emitMode"].get<int>();
+    if (value.contains("rotationDegrees")) out.rotationDegrees = value["rotationDegrees"].get<float>();
+    if (value.contains("randomRotation")) out.randomRotation = value["randomRotation"].get<bool>();
+    if (value.contains("tracerStretch")) out.tracerStretch = value["tracerStretch"].get<float>();
+    return out;
+}
+
+void DecodeComponent(LevelEntityDefinition& entity, const std::string& type,
+                     const json& value)
+{
+    if (type == "transform")
+    {
+        LevelTransformDefinition out;
+        out.position = ReadFloatArray(value, "position", out.position);
+        out.rotationDegrees = ReadFloatArray(value, "rotationDegrees", out.rotationDegrees);
+        out.scale = ReadFloatArray(value, "scale", out.scale);
+        entity.transform = std::move(out);
+    }
+    else if (type == "meshRenderer")
+    {
+        LevelMeshRendererDefinition out;
+        if (value.contains("mesh")) out.mesh = value["mesh"].get<std::string>();
+        if (value.contains("alphaCutoff")) out.alphaCutoff = value["alphaCutoff"].get<float>();
+        if (value.contains("castShadows")) out.castShadows = value["castShadows"].get<bool>();
+        if (value.contains("receiveShadows")) out.receiveShadows = value["receiveShadows"].get<bool>();
+        entity.meshRenderer = std::move(out);
+    }
+    else if (type == "camera")
+    {
+        LevelCameraDefinition out;
+        out.eye = ReadFloatArray(value, "eye", out.eye);
+        if (value.contains("yaw")) out.yaw = value["yaw"].get<float>();
+        if (value.contains("pitch")) out.pitch = value["pitch"].get<float>();
+        if (value.contains("nearZ")) out.nearZ = value["nearZ"].get<float>();
+        if (value.contains("farZ")) out.farZ = value["farZ"].get<float>();
+        if (value.contains("primary")) out.primary = value["primary"].get<bool>();
+        entity.camera = std::move(out);
+    }
+    else if (type == "directionalLight")
+    {
+        LevelDirectionalLightDefinition out;
+        out.color = ReadFloatArray(value, "color", out.color);
+        if (value.contains("elevation")) out.elevation = value["elevation"].get<float>();
+        if (value.contains("azimuth")) out.azimuth = value["azimuth"].get<float>();
+        if (value.contains("intensity")) out.intensity = value["intensity"].get<float>();
+        entity.directionalLight = std::move(out);
+    }
+    else if (type == "pointLight")
+    {
+        LevelPointLightDefinition out;
+        out.position = ReadFloatArray(value, "position", out.position);
+        out.color = ReadFloatArray(value, "color", out.color);
+        if (value.contains("radius")) out.radius = value["radius"].get<float>();
+        if (value.contains("castShadow")) out.castShadow = value["castShadow"].get<bool>();
+        entity.pointLight = std::move(out);
+    }
+    else if (type == "particleEmitter")
+        entity.particleEmitter = DecodeParticleEmitter(value);
+    else if (type == "sphereRenderer" || type == "planeRenderer")
+    {
+        LevelPrimitiveRendererDefinition out;
+        out.type = type == "planeRenderer" ? LevelPrimitiveType::Plane : LevelPrimitiveType::Sphere;
+        out.position = ReadFloatArray(value, "position", out.position);
+        if (value.contains("radius")) out.radius = value["radius"].get<float>();
+        if (value.contains("halfSizeX")) out.halfSizeX = value["halfSizeX"].get<float>();
+        if (value.contains("halfSizeZ")) out.halfSizeZ = value["halfSizeZ"].get<float>();
+        if (value.contains("material") && value["material"].is_object())
+        {
+            const auto& material = value["material"];
+            for (const auto& [field, target] : std::initializer_list<std::pair<const char*, std::string*>>{
+                { "albedo", &out.material.albedo }, { "normal", &out.material.normal },
+                { "roughness", &out.material.roughness }, { "metallic", &out.material.metallic },
+                { "emissive", &out.material.emissive } })
+                if (material.contains(field)) *target = material[field].get<std::string>();
+            if (material.contains("emissive_intensity"))
+                out.material.emissiveIntensity = material["emissive_intensity"].get<float>();
+            out.material.emissiveColor = ReadFloatArray(
+                material, "emissive_color", out.material.emissiveColor);
+            out.material.tint = ReadFloatArray(material, "tint", out.material.tint);
+        }
+        entity.primitiveRenderer = std::move(out);
+    }
+}
+
 bool ParseEntityID(const json& value, LevelEntityID& out)
 {
     if (!value.is_string())
@@ -106,6 +229,35 @@ void ValidateTransform(LevelAssetLoadResult& result, const json& component,
     }
 }
 
+void ValidateNumber(LevelAssetLoadResult& result, const json& component,
+                    const char* field, const std::string& path)
+{
+    if (component.contains(field) && !component[field].is_number())
+        AddDiagnostic(result, Severity::Error, path + "/" + field, "expected a number");
+}
+
+void ValidateInteger(LevelAssetLoadResult& result, const json& component,
+                     const char* field, const std::string& path)
+{
+    if (component.contains(field) && !component[field].is_number_integer())
+        AddDiagnostic(result, Severity::Error, path + "/" + field, "expected an integer");
+}
+
+void ValidateBoolean(LevelAssetLoadResult& result, const json& component,
+                     const char* field, const std::string& path)
+{
+    if (component.contains(field) && !component[field].is_boolean())
+        AddDiagnostic(result, Severity::Error, path + "/" + field, "expected a boolean");
+}
+
+void ValidateVector(LevelAssetLoadResult& result, const json& component,
+                    const char* field, size_t count, const std::string& path)
+{
+    if (component.contains(field) && !IsFloatArray(component[field], count))
+        AddDiagnostic(result, Severity::Error, path + "/" + field,
+                      "expected an array of " + std::to_string(count) + " numbers");
+}
+
 void CollectMaterialDependencies(LevelAssetLoadResult& result, const json& component,
                                  const std::string& path)
 {
@@ -128,7 +280,7 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
 {
     static const std::unordered_set<std::string> kKnownComponents = {
         "transform", "meshRenderer", "camera", "directionalLight", "pointLight",
-        "spotLight", "particleEmitter", "rigidBody", "sphereRenderer", "planeRenderer"
+        "particleEmitter", "sphereRenderer", "planeRenderer"
     };
 
     if (kKnownComponents.find(type) == kKnownComponents.end())
@@ -150,6 +302,38 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
             AddDiagnostic(result, Severity::Error, path + "/mesh", "required field is missing");
         else
             AddDependency(result, component["mesh"], path + "/mesh");
+        ValidateNumber(result, component, "alphaCutoff", path);
+        ValidateBoolean(result, component, "castShadows", path);
+        ValidateBoolean(result, component, "receiveShadows", path);
+    }
+    else if (type == "camera")
+    {
+        ValidateVector(result, component, "eye", 3, path);
+        for (const char* field : { "yaw", "pitch", "nearZ", "farZ" })
+            ValidateNumber(result, component, field, path);
+        ValidateBoolean(result, component, "primary", path);
+        if (component.contains("nearZ") && component["nearZ"].is_number() &&
+            component["nearZ"].get<float>() <= 0.0f)
+            AddDiagnostic(result, Severity::Error, path + "/nearZ", "must be greater than zero");
+        if (component.contains("farZ") && component["farZ"].is_number() &&
+            component["farZ"].get<float>() <= 0.0f)
+            AddDiagnostic(result, Severity::Error, path + "/farZ", "must be greater than zero");
+    }
+    else if (type == "directionalLight")
+    {
+        ValidateVector(result, component, "color", 3, path);
+        for (const char* field : { "elevation", "azimuth", "intensity" })
+            ValidateNumber(result, component, field, path);
+    }
+    else if (type == "pointLight")
+    {
+        ValidateVector(result, component, "position", 3, path);
+        ValidateVector(result, component, "color", 3, path);
+        ValidateNumber(result, component, "radius", path);
+        ValidateBoolean(result, component, "castShadow", path);
+        if (component.contains("radius") && component["radius"].is_number() &&
+            component["radius"].get<float>() <= 0.0f)
+            AddDiagnostic(result, Severity::Error, path + "/radius", "must be greater than zero");
     }
     else if (type == "particleEmitter")
     {
@@ -157,9 +341,26 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
             AddDependency(result, component["preset"], path + "/preset");
         if (component.contains("texture"))
             AddDependency(result, component["texture"], path + "/texture");
+        for (const char* field : { "position", "velocity_min", "velocity_max", "gravity" })
+            ValidateVector(result, component, field, 3, path);
+        for (const char* field : { "color_start", "color_end" })
+            ValidateVector(result, component, field, 4, path);
+        for (const char* field : { "emit_rate", "lifetime_min", "lifetime_max", "size_start",
+                                  "size_end", "spawn_radius", "atlasSpeed", "softDistance",
+                                  "aspectRatio", "drag", "rotationDegrees", "tracerStretch" })
+            ValidateNumber(result, component, field, path);
+        for (const char* field : { "max_particles", "atlasColumns", "atlasRows",
+                                  "atlasFrameCount", "blendMode", "shaderMode", "emitMode" })
+            ValidateInteger(result, component, field, path);
+        ValidateBoolean(result, component, "randomRotation", path);
     }
     else if (type == "sphereRenderer" || type == "planeRenderer")
+    {
         CollectMaterialDependencies(result, component, path);
+        ValidateVector(result, component, "position", 3, path);
+        for (const char* field : { "radius", "halfSizeX", "halfSizeZ" })
+            ValidateNumber(result, component, field, path);
+    }
 }
 
 void ValidateHierarchy(LevelAssetLoadResult& result)
@@ -300,8 +501,10 @@ void ParseVersion2(LevelAssetLoadResult& result, const json& root)
         {
             for (auto it = source["components"].begin(); it != source["components"].end(); ++it)
             {
-                entity.components.emplace(it.key(), it.value());
+                const size_t diagnosticsBefore = result.diagnostics.size();
                 ValidateComponent(result, it.key(), it.value(), base + "/components/" + it.key());
+                if (it.value().is_object() && result.diagnostics.size() == diagnosticsBefore)
+                    DecodeComponent(entity, it.key(), it.value());
             }
         }
         result.asset.entities.push_back(std::move(entity));
@@ -314,40 +517,39 @@ void ParseVersion2(LevelAssetLoadResult& result, const json& root)
         result.asset.dependencies.end());
 }
 
-LevelEntityDefinition& AddLegacyEntity(LevelAsset& asset, LevelEntityID id,
-                                       const std::string& name)
-{
-    asset.entities.push_back({});
-    auto& entity = asset.entities.back();
-    entity.id = id;
-    entity.name = name;
-    return entity;
-}
-
 void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
 {
-    result.asset = LevelAsset{};
-    result.asset.convertedFromLegacy = true;
-    if (root.contains("name") && root["name"].is_string())
-        result.asset.name = root["name"].get<std::string>();
-
-    AddDiagnostic(result, Severity::Warning, "/",
-                  "legacy unversioned scene converted in memory; save it as FoxLevel version 2");
-
+    json settings = json::object();
     json environment = json::object();
     for (const char* field : { "skybox", "reflectionPanorama", "iblIntensity" })
         if (root.contains(field))
             environment[field] = root[field];
     if (!environment.empty())
-        result.asset.settings["environment"] = std::move(environment);
+        settings["environment"] = std::move(environment);
     for (const char* field : { "toneMapping", "bloom", "fog", "physics" })
         if (root.contains(field))
-            result.asset.settings[field] = root[field];
+            settings[field] = root[field];
+
+    json canonical = {
+        { "format", "FoxLevel" },
+        { "version", LevelAsset::kCurrentVersion },
+        { "name", root.value("name", "Untitled") },
+        { "settings", std::move(settings) },
+        { "entities", json::array() }
+    };
 
     LevelEntityID nextID = 1;
+    auto addEntity = [&](const std::string& name, json components) {
+        char id[17];
+        sprintf_s(id, "%016llx", static_cast<unsigned long long>(nextID++));
+        canonical["entities"].push_back({
+            { "id", id }, { "name", name }, { "active", true },
+            { "components", std::move(components) }
+        });
+    };
+
     if (root.contains("mesh") && root["mesh"].is_object())
     {
-        auto& entity = AddLegacyEntity(result.asset, nextID++, "SceneMesh");
         const auto& mesh = root["mesh"];
         json transform = mesh.value("transform", json::object());
         if (transform.contains("rotation"))
@@ -360,39 +562,30 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
             const float scale = transform["scale"].get<float>();
             transform["scale"] = { scale, scale, scale };
         }
-        entity.components["transform"] = std::move(transform);
         json renderer = json::object();
         if (mesh.contains("path")) renderer["mesh"] = mesh["path"];
         if (mesh.contains("alphaCutoff")) renderer["alphaCutoff"] = mesh["alphaCutoff"];
-        entity.components["meshRenderer"] = std::move(renderer);
+        addEntity("SceneMesh", {
+            { "transform", std::move(transform) },
+            { "meshRenderer", std::move(renderer) }
+        });
     }
 
     if (root.contains("camera"))
-    {
-        auto& entity = AddLegacyEntity(result.asset, nextID++, "Camera");
-        entity.components["camera"] = root["camera"];
-    }
+        addEntity("Camera", { { "camera", root["camera"] } });
     if (root.contains("sun"))
-    {
-        auto& entity = AddLegacyEntity(result.asset, nextID++, "Sun");
-        entity.components["directionalLight"] = root["sun"];
-    }
+        addEntity("Sun", { { "directionalLight", root["sun"] } });
     if (root.contains("pointLights") && root["pointLights"].is_array())
     {
         for (size_t i = 0; i < root["pointLights"].size(); ++i)
-        {
-            auto& entity = AddLegacyEntity(result.asset, nextID++,
-                                           "Point Light " + std::to_string(i + 1));
-            entity.components["pointLight"] = root["pointLights"][i];
-        }
+            addEntity("Point Light " + std::to_string(i + 1),
+                      { { "pointLight", root["pointLights"][i] } });
     }
     if (root.contains("objects") && root["objects"].is_array())
     {
         for (size_t i = 0; i < root["objects"].size(); ++i)
         {
             const auto& object = root["objects"][i];
-            auto& entity = AddLegacyEntity(result.asset, nextID++,
-                                           "Object " + std::to_string(i + 1));
             const std::string type = object.value("type", "sphere");
             json convertedObject = object;
             if (convertedObject.contains("material") &&
@@ -402,52 +595,25 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
                     convertedObject["material"]["metallic_map"];
                 convertedObject["material"].erase("metallic_map");
             }
-            entity.components[type == "plane" ? "planeRenderer" : "sphereRenderer"] =
+            json components = json::object();
+            components[type == "plane" ? "planeRenderer" : "sphereRenderer"] =
                 std::move(convertedObject);
+            addEntity("Object " + std::to_string(i + 1), std::move(components));
         }
     }
     if (root.contains("particles") && root["particles"].is_array())
     {
         for (size_t i = 0; i < root["particles"].size(); ++i)
-        {
-            auto& entity = AddLegacyEntity(result.asset, nextID++,
-                                           "Particle Emitter " + std::to_string(i + 1));
-            entity.components["particleEmitter"] = root["particles"][i];
-        }
+            addEntity("Particle Emitter " + std::to_string(i + 1),
+                      { { "particleEmitter", root["particles"][i] } });
     }
 
-    // Run the canonical validator over the converted representation so legacy files
-    // receive the same path and dependency checks as native v2 levels.
-    json canonical = {
-        { "format", result.asset.format },
-        { "version", result.asset.version },
-        { "name", result.asset.name },
-        { "settings", result.asset.settings },
-        { "entities", json::array() }
-    };
-    for (const auto& entity : result.asset.entities)
-    {
-        json components = json::object();
-        for (const auto& [type, component] : entity.components)
-            components[type] = component;
-        canonical["entities"].push_back({
-            { "id", [&]() {
-                char id[17];
-                sprintf_s(id, "%016llx", static_cast<unsigned long long>(entity.id));
-                return std::string(id);
-            }() },
-            { "name", entity.name },
-            { "active", entity.active },
-            { "components", std::move(components) }
-        });
-    }
-
-    const auto warning = result.diagnostics.front();
-    LevelAssetLoadResult validated;
-    ParseVersion2(validated, canonical);
-    validated.asset.convertedFromLegacy = true;
-    validated.diagnostics.insert(validated.diagnostics.begin(), warning);
-    result = std::move(validated);
+    ParseVersion2(result, canonical);
+    result.asset.convertedFromLegacy = true;
+    result.diagnostics.insert(result.diagnostics.begin(), {
+        Severity::Warning, "/",
+        "legacy unversioned scene converted in memory; save it as FoxLevel version 2"
+    });
 }
 
 } // namespace
