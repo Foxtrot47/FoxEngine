@@ -1,10 +1,11 @@
 #pragma once
 
 #include <cstdint>
-#include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include "Engine/Scene/LevelTypes.h"
 
 namespace SE {
 
@@ -30,8 +31,13 @@ struct LevelEntityDefinition
     std::string   name     = "Entity";
     bool          active   = true;
 
-    // Ordered for deterministic validation, cooking, and source-control output.
-    std::map<std::string, nlohmann::json> components;
+    std::optional<LevelTransformDefinition> transform;
+    std::optional<LevelMeshRendererDefinition> meshRenderer;
+    std::optional<LevelCameraDefinition> camera;
+    std::optional<LevelDirectionalLightDefinition> directionalLight;
+    std::optional<LevelPointLightDefinition> pointLight;
+    std::optional<LevelPrimitiveRendererDefinition> primitiveRenderer;
+    std::optional<LevelParticleEmitterDefinition> particleEmitter;
 };
 
 struct LevelAsset

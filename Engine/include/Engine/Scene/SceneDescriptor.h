@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <cstdint>
+#include "Engine/Scene/LevelTypes.h"
 
 namespace SE {
 
@@ -11,11 +13,12 @@ struct SceneDescriptor
 
     // Mesh
     struct MeshEntry {
+        uint64_t sourceEntityID = 0;
         std::string name = "Mesh";
         std::string path;
         std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
         std::array<float, 3> rotation = { 0.0f, 0.0f, 0.0f }; // euler degrees (pitch, yaw, roll)
-        float scale = 1.0f;
+        std::array<float, 3> scale = { 1.0f, 1.0f, 1.0f };
         float alphaCutoff = 0.0f; // if > 0, force alpha-test on submeshes with alpha textures
         bool castShadows = true;
         bool receiveShadows = true;
@@ -29,33 +32,17 @@ struct SceneDescriptor
     std::string reflectionPanorama;
 
     // Camera
-    struct CameraDesc {
-        std::array<float, 3> eye   = { 0.0f, 5.0f, -10.0f };
-        float yaw   = 0.0f;
-        float pitch = 0.0f;
-        float nearZ = 0.15f;
-        float farZ  = 4000.0f;
-    };
+    using CameraDesc = LevelCameraDefinition;
     CameraDesc camera;
 
     // Directional light (sun)
-    struct SunDesc {
-        float elevation = 63.0f;
-        float azimuth   = -134.6f;
-        float intensity = 1.0f;
-        std::array<float, 3> color = { 1.0f, 1.0f, 1.0f };
-    };
+    using SunDesc = LevelDirectionalLightDefinition;
     SunDesc sun;
 
     float iblIntensity = 1.0f;
 
     // Point lights
-    struct PointLightDesc {
-        std::array<float, 3> position = { 0.0f, 5.0f, 0.0f };
-        std::array<float, 3> color    = { 1.0f, 1.0f, 1.0f };
-        float radius      = 50.0f;
-        bool  castShadow  = false;
-    };
+    using PointLightDesc = LevelPointLightDefinition;
     std::vector<PointLightDesc> pointLights;
 
     // Physics
@@ -136,45 +123,7 @@ struct SceneDescriptor
     std::vector<SceneObject> objects;
 
     // Particle emitters
-    struct ParticleEmitterDesc
-    {
-        std::array<float, 3> position = { 0.f, 0.f, 0.f };
-        float emitRate     = 50.0f;
-        int   maxParticles = 1000;
-        float lifetimeMin  = 1.0f;
-        float lifetimeMax  = 3.0f;
-        std::array<float, 3> velocityMin = { -1.f, 1.f, -1.f };
-        std::array<float, 3> velocityMax = {  1.f, 5.f,  1.f };
-        float sizeStart    = 0.2f;
-        float sizeEnd      = 0.05f;
-        std::array<float, 4> colorStart = { 1.f, 0.8f, 0.2f, 1.f };
-        std::array<float, 4> colorEnd   = { 1.f, 0.2f, 0.0f, 0.f };
-        std::array<float, 3> gravity    = { 0.f, -2.f, 0.f };
-        float spawnRadius  = 0.0f;
-        std::string texture;  // optional DDS path
-        // Flipbook atlas
-        int   atlasColumns    = 1;
-        int   atlasRows       = 1;
-        int   atlasFrameCount = 0;  // 0 = cols*rows
-        float atlasSpeed      = 1.0f;
-        float textureRotationDegrees = 0.0f;
-        // Soft particles
-        float softDistance    = 0.5f;
-        // Billboard aspect ratio
-        float aspectRatio     = 1.0f;
-        // Blend mode: 0 = additive, 1 = alpha blend
-        int   blendMode       = 0;
-        // Velocity drag
-        float drag            = 0.0f;
-        // Shader mode: 0 = textured, 1 = ember
-        int   shaderMode      = 0;
-        // 0 = continuous auto-emit, 1 = single/manual
-        int   emitMode        = 0;
-        // Billboard orientation controls
-        float rotationDegrees = 0.0f;
-        bool  randomRotation  = true;
-        float tracerStretch   = 0.0f;
-    };
+    using ParticleEmitterDesc = LevelParticleEmitterDefinition;
     std::vector<ParticleEmitterDesc> particles;
 };
 

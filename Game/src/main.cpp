@@ -19,6 +19,8 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneDescriptor.h"
 #include "Engine/Scene/SceneLoader.h"
+#include "Engine/Scene/LevelAssetLoader.h"
+#include "Engine/Scene/LevelWorld.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
 #include "Engine/Scene/Camera/CameraController.h"
@@ -136,14 +138,29 @@ public:
 
     bool ApplyScene(const std::string& scenePath,
                     const SE::SceneDescriptor* preparedDesc = nullptr,
+                    const SE::LevelAsset* preparedLevel = nullptr,
                     std::vector<SE::AssetHandle<SE::Mesh>> preparedMeshes = {},
                     std::vector<std::vector<SE::ForwardPipeline::SubMat>>* preparedMats = nullptr,
                     bool environmentPrepared = false)
     {
+        SE::LevelAsset level;
         SE::SceneDescriptor desc;
+        if (preparedLevel)
+            level = *preparedLevel;
+        else
+        {
+            auto result = SE::LevelAssetLoader::LoadFromFile(scenePath);
+            if (!result.Succeeded())
+            {
+                m_sceneLoadError = "Could not parse level file";
+                return false;
+            }
+            level = std::move(result.asset);
+        }
+
         if (preparedDesc)
             desc = *preparedDesc;
-        else if (!SE::SceneLoader::LoadFromFile(scenePath, desc))
+        else if (!SE::SceneLoader::BuildDescriptor(level, desc))
         {
             m_sceneLoadError = "Could not parse scene file";
             return false;
@@ -224,54 +241,67 @@ public:
             m_lightCastsShadow[i]       = pl.castShadow;
         }
 
-        // --- Scene entities (rebuild) ---
-        m_scene = SE::Scene{};
-        SE::Entity* camEnt = m_scene.CreateEntity("Camera");
-        m_camera           = camEnt->AddComponent<SE::CameraComponent>();
-        m_camera->nearZ    = desc.camera.nearZ;
-        m_camera->farZ     = desc.camera.farZ;
-        m_camCtrl.freeFly.eye      = { desc.camera.eye[0], desc.camera.eye[1], desc.camera.eye[2] };
-        m_camCtrl.freeFly.yawDeg   = desc.camera.yaw;
-        m_camCtrl.freeFly.pitchDeg = desc.camera.pitch;
-        m_camCtrl.Update(0.0f, GetInput(), *m_camera, GetWindow().GetHandle());
+        // --- Runtime world (transactional rebuild) ---
+        SE::LevelWorld newWorld;
+        if (!newWorld.Instantiate(level))
+        {
+            m_sceneLoadError = "Could not instantiate level world";
+            return false;
+        }
+        SE::CameraComponent* newCamera = newWorld.GetPrimaryCamera();
+        if (!newCamera)
+        {
+            SE::Entity* cameraEntity = newWorld.GetScene().CreateEntity("Fallback Camera");
+            newCamera = cameraEntity->AddComponent<SE::CameraComponent>();
+            newCamera->nearZ = desc.camera.nearZ;
+            newCamera->farZ = desc.camera.farZ;
+        }
+        SE::CameraController newCameraController = m_camCtrl;
+        newCameraController.freeFly.eye      = { desc.camera.eye[0], desc.camera.eye[1], desc.camera.eye[2] };
+        newCameraController.freeFly.yawDeg   = desc.camera.yaw;
+        newCameraController.freeFly.pitchDeg = desc.camera.pitch;
+        newCameraController.Update(0.0f, GetInput(), *newCamera, GetWindow().GetHandle());
 
         for (auto& loaded : newLoadedMeshes)
         {
-            SE::Entity* meshEnt = m_scene.CreateEntity(loaded.def.name);
-            loaded.transform = meshEnt->AddComponent<SE::TransformComponent>();
-            loaded.transform->position = {
-                loaded.def.position[0], loaded.def.position[1], loaded.def.position[2]
-            };
-            loaded.transform->eulerDeg = {
-                loaded.def.rotation[0], loaded.def.rotation[1], loaded.def.rotation[2]
-            };
-            loaded.transform->scale = loaded.def.scale;
+            SE::Entity* meshEntity = newWorld.FindBySourceID(loaded.def.sourceEntityID);
+            if (!meshEntity || !(loaded.transform = meshEntity->GetComponent<SE::TransformComponent>()))
+            {
+                m_sceneLoadError = "Mesh entity was not instantiated";
+                return false;
+            }
         }
 
         // Physics ball entity
-        SE::Entity* ballEnt = m_scene.CreateEntity("PhysBall");
-        m_ballTransform     = ballEnt->AddComponent<SE::TransformComponent>();
-        m_ballRigidBody     = ballEnt->AddComponent<SE::RigidBodyComponent>();
-        m_ballRadius        = desc.physics.ballRadius;
-        m_ballTransform->scale = m_ballRadius;
-        m_ballSpawn = { desc.physics.ballSpawn[0], desc.physics.ballSpawn[1], desc.physics.ballSpawn[2] };
-        ResetBall();
+        SE::Entity* ballEnt = newWorld.GetScene().CreateEntity("PhysBall");
+        auto* newBallTransform = ballEnt->AddComponent<SE::TransformComponent>();
+        auto* newBallRigidBody = ballEnt->AddComponent<SE::RigidBodyComponent>();
+        const float newBallRadius = desc.physics.ballRadius;
+        const XMFLOAT3 newBallSpawn = {
+            desc.physics.ballSpawn[0], desc.physics.ballSpawn[1], desc.physics.ballSpawn[2]
+        };
+        newBallTransform->scale = { newBallRadius, newBallRadius, newBallRadius };
+        newBallTransform->position = newBallSpawn;
+        newBallRigidBody->velocity = { 0.0f, 0.0f, 0.0f };
 
         // --- Physics world (rebuild) ---
-        m_physicsWorld = SE::PhysicsWorld{};
-        m_physicsWorld.AddSphere(m_ballTransform, m_ballRigidBody, m_ballRadius);
-        m_floorY = desc.physics.floor.max[1];
-        m_obbFloor = SE::OBB::FromAABB(
+        SE::PhysicsWorld newPhysicsWorld;
+        newPhysicsWorld.AddSphere(newBallTransform, newBallRigidBody, newBallRadius);
+        const float newFloorY = desc.physics.floor.max[1];
+        const SE::OBB newFloor = SE::OBB::FromAABB(
             { desc.physics.floor.min[0], desc.physics.floor.min[1], desc.physics.floor.min[2] },
             { desc.physics.floor.max[0], desc.physics.floor.max[1], desc.physics.floor.max[2] });
-        m_physicsWorld.AddStaticOBB(m_obbFloor, desc.physics.floor.friction, desc.physics.floor.restitution);
+        newPhysicsWorld.AddStaticOBB(
+            newFloor, desc.physics.floor.friction, desc.physics.floor.restitution);
 
         // Character controller
-        m_cc = SE::CharacterController{};
-        m_cc.position = { desc.physics.characterSpawn[0], desc.physics.characterSpawn[1], desc.physics.characterSpawn[2] };
-        m_gravityEnabled        = desc.physics.gravity;
-        m_cc.gravityEnabled     = desc.physics.gravity;
-        m_ballRigidBody->useGravity = desc.physics.gravity;
+        SE::CharacterController newCharacterController;
+        newCharacterController.position = {
+            desc.physics.characterSpawn[0], desc.physics.characterSpawn[1],
+            desc.physics.characterSpawn[2]
+        };
+        newCharacterController.gravityEnabled = desc.physics.gravity;
+        newBallRigidBody->useGravity = desc.physics.gravity;
 
         // --- Post-process settings ---
         m_toneMap.op           = static_cast<SE::ToneMap::Operator>(desc.toneMapping.op);
@@ -301,7 +331,8 @@ public:
         m_volFog.distanceDensity   = desc.fog.distanceDensity;
 
         // --- JSON scene objects (spheres / planes with explicit PBR textures) ---
-        m_sceneObjects.clear();
+        std::vector<LoadedObject> newSceneObjects;
+        newSceneObjects.reserve(desc.objects.size());
         for (auto& obj : desc.objects)
         {
             if (!pumpLoadMessages())
@@ -315,12 +346,14 @@ public:
             lo.mat.roughness = obj.roughnessPath.empty() ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.roughnessPath));
             lo.mat.metallic  = obj.metallicPath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.metallicPath));
             lo.mat.emissive  = obj.emissivePath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.emissivePath));
-            m_sceneObjects.push_back(std::move(lo));
+            newSceneObjects.push_back(std::move(lo));
         }
 
         // --- Particle emitters (from scene JSON) ---
-        m_particleSystems.clear();
-        m_particleEmitterDescs.clear();
+        std::vector<std::unique_ptr<SE::ParticleSystem>> newParticleSystems;
+        std::vector<SE::SceneDescriptor::ParticleEmitterDesc> newParticleEmitterDescs;
+        newParticleSystems.reserve(desc.particles.size());
+        newParticleEmitterDescs.reserve(desc.particles.size());
         for (auto& pe : desc.particles)
         {
             if (!pumpLoadMessages())
@@ -364,26 +397,42 @@ public:
                 auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
                 ps->SetTexture(GetAssets().GetTexture(toW(pe.texture)));
             }
-            m_particleSystems.push_back(std::move(ps));
-            m_particleEmitterDescs.push_back(pe);
+            newParticleSystems.push_back(std::move(ps));
+            newParticleEmitterDescs.push_back(pe);
         }
-        m_selectedParticlePreset.assign(m_particleSystems.size(), -1);
-        for (int i = 0; i < (int)m_particleSystems.size(); ++i)
+        std::vector<int> newSelectedParticlePreset(newParticleSystems.size(), -1);
+        for (int i = 0; i < (int)newParticleSystems.size(); ++i)
         {
             for (int p = 0; p < (int)m_particlePresetFiles.size(); ++p)
             {
                 SE::SceneDescriptor::ParticleEmitterDesc preset;
                 if (!SE::SceneLoader::LoadParticlePreset(m_particlePresetFiles[p], preset))
                     continue;
-                if (IsSameParticlePreset(m_particleEmitterDescs[i], preset))
+                if (IsSameParticlePreset(newParticleEmitterDescs[i], preset))
                 {
-                    m_selectedParticlePreset[i] = p;
+                    newSelectedParticlePreset[i] = p;
                     break;
                 }
             }
         }
 
         // Commit only after every replacement mesh has completed its import.
+        m_world            = std::move(newWorld);
+        m_camera           = newCamera;
+        m_camCtrl          = std::move(newCameraController);
+        m_ballTransform    = newBallTransform;
+        m_ballRigidBody    = newBallRigidBody;
+        m_ballRadius       = newBallRadius;
+        m_ballSpawn        = newBallSpawn;
+        m_physicsWorld     = std::move(newPhysicsWorld);
+        m_floorY           = newFloorY;
+        m_obbFloor         = newFloor;
+        m_cc               = std::move(newCharacterController);
+        m_gravityEnabled   = desc.physics.gravity;
+        m_sceneObjects     = std::move(newSceneObjects);
+        m_particleSystems  = std::move(newParticleSystems);
+        m_particleEmitterDescs = std::move(newParticleEmitterDescs);
+        m_selectedParticlePreset = std::move(newSelectedParticlePreset);
         m_loadedMeshes     = std::move(newLoadedMeshes);
         m_currentScenePath = scenePath;
         m_currentDesc      = desc;
@@ -562,7 +611,7 @@ protected:
                 m_loadPhase.store(static_cast<int>(LoadPhase::Finalizing));
                 m_loadProgress.store(0.99f);
 
-                const bool loaded = ApplyScene(m_loadingScenePath, &m_loadingDesc,
+                const bool loaded = ApplyScene(m_loadingScenePath, &m_loadingDesc, &m_loadingLevel,
                                                std::move(m_preparedMeshes), &m_preparedSubMats,
                                                true);
                 if (!loaded)
@@ -681,7 +730,7 @@ protected:
             m_camera->up     = { 0.0f, 1.0f, 0.0f };
         }
 
-        m_scene.Update(dt);
+        m_world.GetScene().Update(dt);
         m_physicsWorld.Step(dt);
         for (auto& ps : m_particleSystems)
             ps->Update(GetRenderer().GetContext(), dt);
@@ -1021,8 +1070,10 @@ private:
         m_loadProgress.store(0.02f);
         m_loadPhase.store(static_cast<int>(LoadPhase::ReadingScene));
 
+        auto levelResult = SE::LevelAssetLoader::LoadFromFile(scenePath);
         SE::SceneDescriptor desc;
-        if (!SE::SceneLoader::LoadFromFile(scenePath, desc))
+        if (!levelResult.Succeeded() ||
+            !SE::SceneLoader::BuildDescriptor(levelResult.asset, desc))
         {
             m_sceneLoadError = "SCENE FILE ERROR";
             m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
@@ -1030,6 +1081,7 @@ private:
         }
 
         m_loadingScenePath = scenePath;
+        m_loadingLevel = std::move(levelResult.asset);
         m_loadingDesc = std::move(desc);
         m_loadPhase.store(static_cast<int>(LoadPhase::ImportingGeometry));
         m_loadProgress.store(0.05f);
@@ -1741,7 +1793,7 @@ private:
     };
     std::vector<LoadedObject> m_sceneObjects;
 
-    SE::Scene            m_scene;
+    SE::LevelWorld       m_world;
     SE::CameraComponent* m_camera  = nullptr;
     SE::CameraController m_camCtrl;
 
@@ -1794,6 +1846,7 @@ private:
     std::string              m_sceneLoadError;
     bool                     m_initialSceneLoad = false;
     SE::SceneDescriptor      m_loadingDesc;
+    SE::LevelAsset           m_loadingLevel;
     std::vector<SE::AssetHandle<SE::Mesh>> m_preparedMeshes;
     std::vector<std::vector<SE::ForwardPipeline::SubMat>> m_preparedSubMats;
     size_t                   m_materialMeshIndex = 0;
