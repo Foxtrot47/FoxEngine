@@ -157,6 +157,38 @@ static void TestPlanarReflectionMaterial()
             "planar reflection was not propagated to runtime descriptor");
 }
 
+static void TestAtmosphereSchema()
+{
+    const json level = {
+        { "format", "FoxLevel" }, { "version", 2 }, { "name", "Atmosphere" },
+        { "entities", json::array({
+            {
+                { "id", "0000000000000001" },
+                { "components", { { "pointLight", {
+                    { "flicker", true }, { "flickerAmplitude", 0.2f },
+                    { "flickerFrequency", 6.0f }, { "flickerSeed", 42 }
+                } } } }
+            },
+            {
+                { "id", "0000000000000002" },
+                { "components", { { "particleEmitter", {
+                    { "spawnShape", "box" },
+                    { "spawnBoxExtents", { 2.0f, 3.0f, 4.0f } },
+                    { "lightingInfluence", 0.75f }
+                } } } }
+            }
+        }) }
+    };
+    const auto result = LevelAssetLoader::Parse(level, "atmosphere");
+    Require(result.Succeeded(), "atmosphere components should parse");
+    const auto& light = *result.asset.entities[0].pointLight;
+    Require(light.flicker && light.flickerSeed == 42, "light flicker settings mismatch");
+    const auto& emitter = *result.asset.entities[1].particleEmitter;
+    Require(emitter.spawnShape == 1 && emitter.spawnBoxExtents[2] == 4.0f,
+            "box emitter settings mismatch");
+    Require(emitter.lightingInfluence == 0.75f, "particle lighting setting mismatch");
+}
+
 static void TestValidationFailures()
 {
     const json invalid = {
@@ -404,6 +436,7 @@ static void RunTests()
     TestValidationFailures();
     TestTypedFieldValidation();
     TestPlanarReflectionMaterial();
+    TestAtmosphereSchema();
     TestLegacyConversion();
     TestRepositoryScenes();
     TestBistroRuntimeDescriptor();

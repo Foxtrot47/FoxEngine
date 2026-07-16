@@ -32,6 +32,8 @@ struct ParticleEmitterConfig
 
     DirectX::XMFLOAT3 spawnOffset = { 0.0f, 0.0f, 0.0f };
     float spawnRadius     = 0.0f;
+    int spawnShape        = 0;
+    DirectX::XMFLOAT3 spawnBoxExtents = { 1.0f, 1.0f, 1.0f };
 
     int   atlasColumns    = 1;
     int   atlasRows       = 1;
@@ -60,6 +62,7 @@ struct ParticleEmitterConfig
     float rotationDegrees = 0.0f;
     bool  randomRotation  = true;
     float tracerStretch   = 0.0f; // 0 = disabled, >0 = velocity-aligned stretch
+    float lightingInfluence = 0.0f;
 
     // World position (controlled via ImGui)
     DirectX::XMFLOAT3 position = { 0.0f, 0.0f, 0.0f };
@@ -85,7 +88,10 @@ public:
                 const DirectX::XMMATRIX& proj,
                 uint32_t screenWidth, uint32_t screenHeight,
                 ID3D11ShaderResourceView* depthSRV = nullptr,
-                float nearZ = 0.1f, float farZ = 500.0f);
+                float nearZ = 0.1f, float farZ = 500.0f,
+                DirectX::XMFLOAT3 lightDirection = { 0.0f, 1.0f, 0.0f },
+                DirectX::XMFLOAT3 lightColor = { 1.0f, 1.0f, 1.0f },
+                float ambientIntensity = 0.25f);
 
     ParticleEmitterConfig config;
     bool enabled = true;
@@ -105,6 +111,8 @@ private:
         float sizeEnd;
         uint32_t emitCount;
         float randomSeed;
+        DirectX::XMFLOAT3 spawnBoxExtents;
+        uint32_t spawnShape;
     };
 
     struct UpdateCB
@@ -137,6 +145,10 @@ private:
         float randomRotation;
         float tracerStretch;
         float _pad2;
+        DirectX::XMFLOAT3 lightDirection;
+        float lightingInfluence;
+        DirectX::XMFLOAT3 lightColor;
+        float ambientIntensity;
     };
 
     DirectX::XMFLOAT3 m_worldPos = { 0, 0, 0 };

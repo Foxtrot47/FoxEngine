@@ -55,6 +55,8 @@ cbuffer EmitCB : register(b0)
     float  SizeEnd;
     uint   EmitCount;
     float  RandomSeed;
+    float3 SpawnBoxExtents;
+    uint   SpawnShape;
 };
 
 float hash(float n) { return frac(sin(n) * 43758.5453123f); }
@@ -92,7 +94,17 @@ void CS_Emit(uint3 dtid : SV_DispatchThreadID)
     float seed = RandomSeed + dtid.x * 3.14159f;
 
     GPUParticle p;
-    float3 offset = randomDir(seed) * SpawnRadius * hash(seed + 0.3f);
+    float3 offset;
+    if (SpawnShape == 1)
+    {
+        offset = float3(hash(seed + 0.3f) * 2.0f - 1.0f,
+                        hash(seed + 0.7f) * 2.0f - 1.0f,
+                        hash(seed + 1.1f) * 2.0f - 1.0f) * SpawnBoxExtents;
+    }
+    else
+    {
+        offset = randomDir(seed) * SpawnRadius * hash(seed + 0.3f);
+    }
     p.position   = EmitterPos + offset;
     p.velocity.x = randomRange(VelocityMin.x, VelocityMax.x, seed + 1.0f);
     p.velocity.y = randomRange(VelocityMin.y, VelocityMax.y, seed + 2.0f);

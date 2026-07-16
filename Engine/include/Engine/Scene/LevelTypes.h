@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <string>
 
 namespace SE {
@@ -44,6 +45,10 @@ struct LevelPointLightDefinition
     std::array<float, 3> color = { 1.0f, 1.0f, 1.0f };
     float radius = 50.0f;
     bool castShadow = false;
+    bool flicker = false;
+    float flickerAmplitude = 0.15f;
+    float flickerFrequency = 7.0f;
+    uint32_t flickerSeed = 0;
 };
 
 struct LevelMaterialDefinition
@@ -88,6 +93,8 @@ struct LevelParticleEmitterDefinition
     std::array<float, 4> colorEnd = { 1.0f, 0.2f, 0.0f, 0.0f };
     std::array<float, 3> gravity = { 0.0f, -2.0f, 0.0f };
     float spawnRadius = 0.0f;
+    int spawnShape = 0; // 0=sphere, 1=box
+    std::array<float, 3> spawnBoxExtents = { 1.0f, 1.0f, 1.0f };
     std::string texture;
     int atlasColumns = 1;
     int atlasRows = 1;
@@ -103,6 +110,7 @@ struct LevelParticleEmitterDefinition
     float rotationDegrees = 0.0f;
     bool randomRotation = true;
     float tracerStretch = 0.0f;
+    float lightingInfluence = 0.0f;
 };
 
 } // namespace SE

@@ -28,6 +28,7 @@ static void ReadParticleEmitter(const json& p, SceneDescriptor::ParticleEmitterD
     e.velocityMin  = ReadFloat3(p, "velocity_min", e.velocityMin);
     e.velocityMax  = ReadFloat3(p, "velocity_max", e.velocityMax);
     e.gravity      = ReadFloat3(p, "gravity", e.gravity);
+    e.spawnBoxExtents = ReadFloat3(p, "spawnBoxExtents", e.spawnBoxExtents);
     e.colorStart   = ReadFloat4(p, "color_start", e.colorStart);
     e.colorEnd     = ReadFloat4(p, "color_end", e.colorEnd);
     if (p.contains("emit_rate"))      e.emitRate     = p["emit_rate"].get<float>();
@@ -37,6 +38,7 @@ static void ReadParticleEmitter(const json& p, SceneDescriptor::ParticleEmitterD
     if (p.contains("size_start"))     e.sizeStart    = p["size_start"].get<float>();
     if (p.contains("size_end"))       e.sizeEnd      = p["size_end"].get<float>();
     if (p.contains("spawn_radius"))   e.spawnRadius  = p["spawn_radius"].get<float>();
+    if (p.contains("spawnShape"))     e.spawnShape = p["spawnShape"].get<std::string>() == "box" ? 1 : 0;
     if (p.contains("texture"))        e.texture      = p["texture"].get<std::string>();
     if (p.contains("atlasColumns"))   e.atlasColumns    = p["atlasColumns"].get<int>();
     if (p.contains("atlasRows"))      e.atlasRows       = p["atlasRows"].get<int>();
@@ -52,6 +54,7 @@ static void ReadParticleEmitter(const json& p, SceneDescriptor::ParticleEmitterD
     if (p.contains("rotationDegrees"))e.rotationDegrees = p["rotationDegrees"].get<float>();
     if (p.contains("randomRotation")) e.randomRotation  = p["randomRotation"].get<bool>();
     if (p.contains("tracerStretch"))  e.tracerStretch   = p["tracerStretch"].get<float>();
+    if (p.contains("lightingInfluence")) e.lightingInfluence = p["lightingInfluence"].get<float>();
 }
 
 static json BuildSettingsJson(const LevelAsset& asset)

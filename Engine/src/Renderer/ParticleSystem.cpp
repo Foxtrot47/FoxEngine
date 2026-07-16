@@ -264,6 +264,8 @@ void ParticleSystem::Update(ID3D11DeviceContext* ctx, float dt)
         ecb.sizeEnd = config.sizeEnd;
         ecb.emitCount = static_cast<uint32_t>(toEmit);
         ecb.randomSeed = m_time * 1000.0f;
+        ecb.spawnBoxExtents = config.spawnBoxExtents;
+        ecb.spawnShape = static_cast<uint32_t>(config.spawnShape);
         m_emitCB.Update(ctx, ecb);
         m_emitCB.BindCS(ctx, 0);
 
@@ -308,7 +310,9 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
                                const XMMATRIX& proj,
                                uint32_t screenWidth, uint32_t screenHeight,
                                ID3D11ShaderResourceView* depthSRV,
-                               float nearZ, float farZ)
+                               float nearZ, float farZ,
+                               XMFLOAT3 lightDirection, XMFLOAT3 lightColor,
+                               float ambientIntensity)
 {
     if (!enabled) return;
 
@@ -334,6 +338,10 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
     cb.shaderMode = static_cast<float>(config.shaderMode);
     cb.randomRotation = config.randomRotation ? 1.0f : 0.0f;
     cb.tracerStretch = config.tracerStretch;
+    cb.lightDirection = lightDirection;
+    cb.lightingInfluence = config.lightingInfluence;
+    cb.lightColor = lightColor;
+    cb.ambientIntensity = ambientIntensity;
     m_cameraCB.Update(ctx, cb);
     m_cameraCB.BindVS(ctx, 0);
     m_cameraCB.BindPS(ctx, 0);

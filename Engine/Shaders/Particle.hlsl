@@ -36,6 +36,10 @@ cbuffer ParticleCameraCB : register(b0)
     float RandomRotation; // 0 = fixed angle, 1 = add per-particle random
     float TracerStretch; // velocity-aligned stretch factor
     float _pad2;
+    float3 LightDirection;
+    float LightingInfluence;
+    float3 LightColor;
+    float AmbientIntensity;
 };
 
 struct VSInput
@@ -55,6 +59,7 @@ struct PSInput
     float4 color     : COLOR0;
     float  age       : TEXCOORD4;
     float  seed      : TEXCOORD5;
+    float3 normal    : TEXCOORD6;
 };
 
 PSInput VS_Main(VSInput input)
@@ -103,6 +108,10 @@ PSInput VS_Main(VSInput input)
     o.color   = inst.color;
     o.age     = inst.normalizedAge;
     o.seed    = inst.seed;
+    float2 local = input.uv * 2.0f - 1.0f;
+    float localZ = sqrt(saturate(1.0f - dot(local, local)));
+    float3 camForward = normalize(cross(CamRight, CamUp));
+    o.normal = normalize(CamRight * local.x - CamUp * local.y - camForward * localZ);
 
     // Atlas UV calculation
     float cols = max(AtlasColumns, 1.0f);
@@ -185,6 +194,13 @@ float4 PS_Main(PSInput input) : SV_TARGET
         float depthDiff = sceneLinear - particleLinear;
         float fade = saturate(depthDiff / SoftDistance);
         result.a *= fade;
+    }
+
+    if (LightingInfluence > 0.0f)
+    {
+        float ndotl = saturate(dot(normalize(input.normal), normalize(LightDirection)));
+        float3 lighting = AmbientIntensity.xxx + LightColor * ndotl;
+        result.rgb *= lerp(1.0f.xxx, lighting, saturate(LightingInfluence));
     }
 
     return result;
