@@ -111,7 +111,8 @@ float4 PS_Main(VSOutput input) : SV_TARGET
             float cosTheta = sqrt(1.0 - xi.y);
             float sinTheta = sqrt(xi.y);
             float3 l = TangentSampleToWorld(float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta), n);
-            sum += Source.SampleLevel(LinearSampler, DirectionToUV(l), SourceMipCount - 1.0).rgb;
+            float sourceLod = min(2.0, SourceMipCount - 1.0);
+            sum += Source.SampleLevel(LinearSampler, DirectionToUV(l), sourceLod).rgb;
         }
         return float4(sum / SampleCount, 1);
     }
