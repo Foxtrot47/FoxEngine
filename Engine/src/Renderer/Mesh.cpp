@@ -30,9 +30,10 @@ private:
 
 } // anonymous namespace
 
-bool Mesh::Load(ID3D11Device* device, const char* path,
-                const ImportProgressCallback& progress)
+bool Mesh::Import(const char* path, MeshSourceData& output,
+                  const ImportProgressCallback& progress, std::string* error)
 {
+    output = {};
     if (progress && !progress(0.0f))
         return false;
 
@@ -50,6 +51,7 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
 
     if (!scene || (scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) || !scene->mRootNode)
     {
+        if (error) *error = importer.GetErrorString();
         SE_LOG_ERROR("Mesh::Load '%s': %s", path, importer.GetErrorString());
         return false;
     }
@@ -58,11 +60,11 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
     {
         std::string p(path);
         auto pos = p.find_last_of("/\\");
-        m_directory = (pos != std::string::npos) ? p.substr(0, pos + 1) : "";
+        output.directory = (pos != std::string::npos) ? p.substr(0, pos + 1) : "";
     }
 
-    m_subMeshes.reserve(scene->mNumMeshes);
-    m_bounds = AABB{}; // reset to invalid
+    output.subMeshes.reserve(scene->mNumMeshes);
+    output.bounds = AABB{};
 
     for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
     {
@@ -72,8 +74,8 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
 
         const aiMesh* mesh = scene->mMeshes[m];
 
-        std::vector<MeshVertex> verts;
-        verts.reserve(mesh->mNumVertices);
+        MeshSubMeshSource source;
+        source.vertices.reserve(mesh->mNumVertices);
 
         for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
         {
@@ -102,12 +104,11 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
             vtx.bx = mesh->mBitangents ? mesh->mBitangents[v].x : 0.0f;
             vtx.by = mesh->mBitangents ? mesh->mBitangents[v].y : 1.0f;
             vtx.bz = mesh->mBitangents ? mesh->mBitangents[v].z : 0.0f;
-            verts.push_back(vtx);
-            m_bounds.Expand({ vtx.x, vtx.y, vtx.z });
+            source.vertices.push_back(vtx);
+            output.bounds.Expand({ vtx.x, vtx.y, vtx.z });
         }
 
-        std::vector<uint32_t> indices;
-        indices.reserve(mesh->mNumFaces * 3);
+        source.indices.reserve(mesh->mNumFaces * 3);
         for (uint32_t f = 0; f < mesh->mNumFaces; ++f)
         {
             if ((f & 0x3ffu) == 0 && progress &&
@@ -118,17 +119,8 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
 
             const aiFace& face = mesh->mFaces[f];
             for (uint32_t i = 0; i < face.mNumIndices; ++i)
-                indices.push_back(face.mIndices[i]);
+                source.indices.push_back(face.mIndices[i]);
         }
-
-        SubMesh sm;
-        if (!sm.vb.Create(device, verts.data(),
-                          static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)),
-                          sizeof(MeshVertex)))
-            return false;
-        if (!sm.ib.Create(device, indices.data(),
-                          static_cast<uint32_t>(indices.size())))
-            return false;
 
         // Extract material texture paths (glTF PBR slots).
         if (mesh->mMaterialIndex < scene->mNumMaterials)
@@ -144,31 +136,31 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
             };
 
             // Base color: prefer PBR slot, fall back to legacy diffuse.
-            sm.albedoPath = tryGet(aiTextureType_BASE_COLOR);
-            if (sm.albedoPath.empty())
-                sm.albedoPath = tryGet(aiTextureType_DIFFUSE);
+            source.material.albedoPath = tryGet(aiTextureType_BASE_COLOR);
+            if (source.material.albedoPath.empty())
+                source.material.albedoPath = tryGet(aiTextureType_DIFFUSE);
 
             // Normal map.
-            sm.normalPath = tryGet(aiTextureType_NORMALS);
+            source.material.normalPath = tryGet(aiTextureType_NORMALS);
 
             // Roughness: glTF metallic-roughness texture (G = roughness).
-            sm.roughnessPath = tryGet(aiTextureType_DIFFUSE_ROUGHNESS);
-            if (sm.roughnessPath.empty())
-                sm.roughnessPath = tryGet(aiTextureType_UNKNOWN);
+            source.material.roughnessPath = tryGet(aiTextureType_DIFFUSE_ROUGHNESS);
+            if (source.material.roughnessPath.empty())
+                source.material.roughnessPath = tryGet(aiTextureType_UNKNOWN);
 
             // Emissive map
-            sm.emissivePath = tryGet(aiTextureType_EMISSIVE);
-            if (sm.emissivePath.empty())
-                sm.emissivePath = tryGet(aiTextureType_EMISSION_COLOR);
+            source.material.emissivePath = tryGet(aiTextureType_EMISSIVE);
+            if (source.material.emissivePath.empty())
+                source.material.emissivePath = tryGet(aiTextureType_EMISSION_COLOR);
 
             // Alpha mode detection
             aiString alphaStr;
             if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaStr) == AI_SUCCESS)
             {
                 if (strcmp(alphaStr.C_Str(), "MASK") == 0)
-                    sm.alphaMode = AlphaMode::Cutout;
+                    source.material.alphaMode = AlphaMode::Cutout;
                 else if (strcmp(alphaStr.C_Str(), "BLEND") == 0)
-                    sm.alphaMode = AlphaMode::Transparent;
+                    source.material.alphaMode = AlphaMode::Transparent;
             }
             else
             {
@@ -178,23 +170,49 @@ bool Mesh::Load(ID3D11Device* device, const char* path,
                 mat->Get(AI_MATKEY_OPACITY, opacity);
 
                 if (mat->GetTexture(aiTextureType_OPACITY, 0, &opacityTex) == AI_SUCCESS)
-                    sm.alphaMode = AlphaMode::Cutout;
+                    source.material.alphaMode = AlphaMode::Cutout;
                 else if (opacity < 0.99f)
-                    sm.alphaMode = AlphaMode::Transparent;
+                    source.material.alphaMode = AlphaMode::Transparent;
             }
 
             // Alpha cutoff (glTF ALPHACUTOFF property)
             float cutoff = 0.5f;
             if (mat->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS)
-                sm.alphaCutoff = cutoff;
+                source.material.alphaCutoff = cutoff;
         }
 
-        m_subMeshes.push_back(std::move(sm));
+        output.subMeshes.push_back(std::move(source));
     }
 
     if (progress && !progress(1.0f))
         return false;
-    SE_LOG_INFO("Mesh loaded: '%s' — %u sub-mesh(es)", path, GetSubMeshCount());
+    SE_LOG_INFO("Mesh imported: '%s' — %zu sub-mesh(es)", path, output.subMeshes.size());
+    return true;
+}
+
+bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)
+{
+    m_subMeshes.clear();
+    m_subMeshes.reserve(source.subMeshes.size());
+    for (auto& input : source.subMeshes)
+    {
+        SubMesh sm;
+        if (input.vertices.empty() || input.indices.empty() ||
+            !sm.vb.Create(device, input.vertices.data(),
+                          static_cast<uint32_t>(input.vertices.size() * sizeof(MeshVertex)),
+                          sizeof(MeshVertex)) ||
+            !sm.ib.Create(device, input.indices.data(), static_cast<uint32_t>(input.indices.size())))
+            return false;
+        sm.albedoPath = std::move(input.material.albedoPath);
+        sm.normalPath = std::move(input.material.normalPath);
+        sm.roughnessPath = std::move(input.material.roughnessPath);
+        sm.emissivePath = std::move(input.material.emissivePath);
+        sm.alphaMode = input.material.alphaMode;
+        sm.alphaCutoff = input.material.alphaCutoff;
+        m_subMeshes.push_back(std::move(sm));
+    }
+    m_directory = std::move(source.directory);
+    m_bounds = source.bounds;
     return true;
 }
 

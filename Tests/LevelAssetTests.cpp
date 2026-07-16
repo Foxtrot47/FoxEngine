@@ -3,9 +3,15 @@
 #include "Engine/Scene/LevelWorld.h"
 #include "Engine/Scene/LevelRuntimeComponents.h"
 #include "Engine/Scene/TransformComponent.h"
+#include "Engine/Scene/LevelDependencyPlan.h"
+#include "Engine/Scene/LevelLoadOperation.h"
+#include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/Texture2D.h"
 
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 #include <nlohmann/json.hpp>
 
 using SE::LevelAssetLoader;
@@ -211,14 +217,143 @@ static void TestBistroRuntimeDescriptor()
             "Bistro interior path mismatch");
 }
 
-int main()
+static void TestDependencyPlan()
 {
+    SE::LevelAsset level;
+    SE::LevelEntityDefinition meshA;
+    meshA.id = 1;
+    meshA.meshRenderer = SE::LevelMeshRendererDefinition{ "Assets\\Models\\..\\Models\\ship.obj" };
+    SE::LevelEntityDefinition meshB = meshA;
+    meshB.id = 2;
+    meshB.meshRenderer->mesh = "Assets/Models/ship.obj";
+    SE::LevelEntityDefinition particle;
+    particle.id = 3;
+    particle.particleEmitter = SE::LevelParticleEmitterDefinition{};
+    particle.particleEmitter->texture = "Assets/Particles/soft_circle.png";
+    level.entities = { meshA, meshB, particle };
+    level.settings["environment"]["skybox"] = "Assets/Environment/sky.dds";
+
+    const auto plan = SE::LevelDependencyPlan::Build(level);
+    Require(plan.Find("Assets/Models/ship.obj", SE::LevelDependencyKind::Mesh) != nullptr,
+            "normalized mesh dependency missing");
+    Require(plan.Find("Assets/Models/ship.obj", SE::LevelDependencyKind::Mesh)->required,
+            "geometry dependency should be required");
+    size_t meshCount = 0;
+    for (const auto& dependency : plan.dependencies)
+        if (dependency.kind == SE::LevelDependencyKind::Mesh) ++meshCount;
+    Require(meshCount == 1, "mesh dependencies were not deduplicated");
+    Require(plan.Find("Assets/Particles/soft_circle.png",
+                      SE::LevelDependencyKind::ParticleTexture) != nullptr,
+            "particle texture dependency missing");
+}
+
+static void TestCpuMeshImport()
+{
+    SE::MeshSourceData source;
+    float lastProgress = 0.0f;
+    Require(SE::Mesh::Import("Assets/TestFixtures/tiny.obj", source,
+        [&](float progress) {
+            Require(progress >= lastProgress, "mesh import progress regressed");
+            lastProgress = progress;
+            return true;
+        }), "tiny OBJ CPU import failed");
+    Require(source.subMeshes.size() == 1, "tiny OBJ submesh count mismatch");
+    Require(source.subMeshes[0].vertices.size() == 3, "tiny OBJ vertex count mismatch");
+    Require(source.subMeshes[0].material.albedoPath == "missing_albedo.png",
+            "material texture dependency was not discovered");
+
+    SE::MeshSourceData cancelled;
+    Require(!SE::Mesh::Import("Assets/TestFixtures/tiny.obj", cancelled,
+        [](float) { return false; }), "cancelled mesh import unexpectedly succeeded");
+}
+
+static void TestCpuTextureDecode()
+{
+    SE::TextureSourceData png;
+    Require(SE::Texture2D::Decode(L"Assets/Particles/soft_circle.png", png),
+            "PNG CPU decode failed");
+    Require(png.width > 0 && png.height > 0 && !png.subresources.empty(),
+            "PNG decode returned no image data");
+    SE::TextureSourceData dds;
+    Require(SE::Texture2D::Decode(L"Assets/Particles/soft_circle.dds", dds),
+            "DDS CPU decode failed");
+    Require(dds.width > 0 && dds.height > 0 && !dds.subresources.empty(),
+            "DDS decode returned no image data");
+}
+
+static SE::LevelLoadStatus WaitForCpuPreparation(SE::LevelLoadOperation& operation)
+{
+    float progress = 0.0f;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        const auto status = operation.GetStatus();
+        Require(status.progress >= progress, "level load progress regressed");
+        progress = status.progress;
+        if (status.state != SE::LevelLoadState::Preparing) return status;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    throw std::runtime_error("level CPU preparation timed out");
+}
+
+static void TestOperationFailuresAndCancellation()
+{
+    {
+        SE::LevelLoadOperation operation;
+        operation.Start("Tests/Fixtures/async_level.json");
+        const auto status = WaitForCpuPreparation(operation);
+        Require(status.state == SE::LevelLoadState::Uploading,
+                "optional failures should not reject level preparation");
+        Require(!status.warnings.empty(), "optional dependency warning missing");
+        Require(status.dependencyCount == 2,
+                "dynamic material dependency was not added to the operation");
+        operation.Cancel();
+        Require(operation.GetStatus().state == SE::LevelLoadState::Cancelled,
+                "operation cancellation state mismatch");
+    }
+    {
+        SE::LevelLoadOperation operation;
+        operation.Start("Tests/Fixtures/missing_geometry.json");
+        const auto status = WaitForCpuPreparation(operation);
+        Require(status.state == SE::LevelLoadState::Failed,
+                "required geometry failure did not reject preparation");
+        Require(status.requiredFailures == 1, "required failure count mismatch");
+    }
+    {
+        SE::LevelLoadOperation operation;
+        operation.Start("Tests/Fixtures/async_level.json");
+        operation.Cancel();
+        Require(operation.GetStatus().state == SE::LevelLoadState::Cancelled,
+                "active operation did not cancel cleanly");
+    }
+    {
+        SE::LevelLoadOperation operation;
+        operation.Start("Tests/Fixtures/async_level.json");
+    }
+}
+
+static void RunTests()
+{
+    TestOperationFailuresAndCancellation();
     TestValidV2();
     TestValidationFailures();
     TestTypedFieldValidation();
     TestLegacyConversion();
     TestRepositoryScenes();
     TestBistroRuntimeDescriptor();
+    TestDependencyPlan();
+    TestCpuMeshImport();
+    TestCpuTextureDecode();
     std::cout << "LevelAssetTests: all tests passed\n";
+}
+
+int main()
+{
+    try { RunTests(); }
+    catch (const std::exception& exception)
+    {
+        std::cerr << "FAILED: " << exception.what() << "\n";
+        return 1;
+    }
     return 0;
 }

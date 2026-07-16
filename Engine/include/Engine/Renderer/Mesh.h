@@ -35,14 +35,30 @@ struct SubMeshInfo
     float       alphaCutoff = 0.5f;
 };
 
+struct MeshSubMeshSource
+{
+    std::vector<MeshVertex> vertices;
+    std::vector<uint32_t> indices;
+    SubMeshInfo material;
+};
+
+struct MeshSourceData
+{
+    std::vector<MeshSubMeshSource> subMeshes;
+    std::string directory;
+    AABB bounds;
+};
+
 class Mesh
 {
 public:
     // Called periodically during import with normalized progress. Return false to cancel.
     using ImportProgressCallback = std::function<bool(float)>;
 
-    bool Load(ID3D11Device* device, const char* path,
-              const ImportProgressCallback& progress = {});
+    static bool Import(const char* path, MeshSourceData& output,
+                       const ImportProgressCallback& progress = {},
+                       std::string* error = nullptr);
+    bool Upload(ID3D11Device* device, MeshSourceData&& source);
     void Draw(ID3D11DeviceContext* ctx) const;
     void DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const;
 

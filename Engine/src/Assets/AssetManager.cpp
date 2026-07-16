@@ -10,26 +10,6 @@ void AssetManager::Init(ID3D11Device* device, ID3D11DeviceContext* ctx)
     SE_LOG_INFO("AssetManager initialised");
 }
 
-AssetHandle<Mesh> AssetManager::GetMesh(const std::string& path)
-{
-    if (m_importProgress && !m_importProgress(0.0f))
-        return nullptr;
-
-    if (auto cached = FindMesh(path))
-        return cached;
-
-    auto mesh = std::make_shared<Mesh>();
-    if (!mesh->Load(m_device, path.c_str(), m_importProgress))
-    {
-        SE_LOG_ERROR("AssetManager: failed to load mesh '%s'", path.c_str());
-        return nullptr;
-    }
-    CacheMesh(path, mesh);
-    SE_LOG_INFO("AssetManager: loaded mesh '%s'", path.c_str());
-    if (m_importProgress) m_importProgress(1.0f);
-    return mesh;
-}
-
 AssetHandle<Mesh> AssetManager::FindMesh(const std::string& path)
 {
     auto meshIt = m_meshes.find(path);
@@ -72,34 +52,18 @@ void AssetManager::CacheMesh(const std::string& path, const AssetHandle<Mesh>& m
         m_meshWriteTimes.erase(path);
 }
 
-AssetHandle<Texture2D> AssetManager::GetTexture(const std::wstring& path)
+AssetHandle<Texture2D> AssetManager::FindTexture(const std::wstring& path)
 {
-    if (m_importProgress && !m_importProgress(0.0f))
-        return nullptr;
-
     auto it = m_textures.find(path);
     if (it != m_textures.end())
         if (auto h = it->second.lock()) return h;
+    if (it != m_textures.end()) m_textures.erase(it);
+    return {};
+}
 
-    auto tex = std::make_shared<Texture2D>();
-    bool ok  = false;
-
-    // Route by extension — .dds via DirectXTex, everything else via WIC.
-    bool isDDS = path.size() >= 4 &&
-                 _wcsicmp(path.c_str() + path.size() - 4, L".dds") == 0;
-    if (isDDS)
-        ok = tex->LoadFromDDS(m_device, path.c_str());
-    else
-        ok = tex->LoadFromFile(m_device, m_context, path.c_str());
-
-    if (!ok)
-    {
-        SE_LOG_ERROR("AssetManager: failed to load texture");
-        return nullptr;
-    }
-    m_textures[path] = tex;
-    if (m_importProgress) m_importProgress(1.0f);
-    return tex;
+void AssetManager::CacheTexture(const std::wstring& path, const AssetHandle<Texture2D>& texture)
+{
+    if (texture) m_textures[path] = texture;
 }
 
 AssetHandle<Texture2D> AssetManager::GetDefaultWhite()

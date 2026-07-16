@@ -1,0 +1,14 @@
+{
+  "format": "FoxLevel",
+  "version": 2,
+  "name": "Missing Geometry",
+  "settings": {},
+  "entities": [
+    {
+      "id": "0000000000000001",
+      "components": {
+        "meshRenderer": { "mesh": "Assets/TestFixtures/not_here.obj" }
+      }
+    }
+  ]
+}

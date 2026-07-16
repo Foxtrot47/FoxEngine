@@ -6,9 +6,6 @@
 #include <memory>
 #include <filesystem>
 #include <cmath>
-#include <atomic>
-#include <chrono>
-#include <future>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Assets/AssetManager.h"
@@ -19,8 +16,8 @@
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneDescriptor.h"
 #include "Engine/Scene/SceneLoader.h"
-#include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/LevelWorld.h"
+#include "Engine/Scene/LevelLoadOperation.h"
 #include "Engine/Scene/TransformComponent.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
 #include "Engine/Scene/Camera/CameraController.h"
@@ -136,48 +133,16 @@ public:
         return true;
     }
 
-    bool ApplyScene(const std::string& scenePath,
-                    const SE::SceneDescriptor* preparedDesc = nullptr,
-                    const SE::LevelAsset* preparedLevel = nullptr,
-                    std::vector<SE::AssetHandle<SE::Mesh>> preparedMeshes = {},
-                    std::vector<std::vector<SE::ForwardPipeline::SubMat>>* preparedMats = nullptr,
-                    bool environmentPrepared = false)
+    bool ApplyScene(const std::string& scenePath, SE::PreparedLevel&& prepared)
     {
-        SE::LevelAsset level;
-        SE::SceneDescriptor desc;
-        if (preparedLevel)
-            level = *preparedLevel;
-        else
-        {
-            auto result = SE::LevelAssetLoader::LoadFromFile(scenePath);
-            if (!result.Succeeded())
-            {
-                m_sceneLoadError = "Could not parse level file";
-                return false;
-            }
-            level = std::move(result.asset);
-        }
-
-        if (preparedDesc)
-            desc = *preparedDesc;
-        else if (!SE::SceneLoader::BuildDescriptor(level, desc))
-        {
-            m_sceneLoadError = "Could not parse scene file";
-            return false;
-        }
+        SE::LevelAsset level = std::move(prepared.level);
+        SE::SceneDescriptor desc = std::move(prepared.descriptor);
 
         auto pumpLoadMessages = [this]() { return GetWindow().PumpMessages(); };
         if (!pumpLoadMessages())
             return false;
 
         ID3D11Device* device = GetRenderer().GetDevice();
-
-        // --- Skybox ---
-        std::wstring skyboxW(desc.skybox.begin(), desc.skybox.end());
-        if (!environmentPrepared && !desc.skybox.empty())
-            m_skybox.LoadPanorama(device, skyboxW.c_str());
-        if (!pumpLoadMessages())
-            return false;
 
         // --- Mesh entities ---
         // Keep the active level alive until every replacement mesh has imported successfully.
@@ -191,9 +156,8 @@ public:
 
             LoadedMesh loaded;
             loaded.def = meshDesc;
-            loaded.mesh = meshIndex < preparedMeshes.size() && preparedMeshes[meshIndex]
-                ? std::move(preparedMeshes[meshIndex])
-                : GetAssets().GetMesh(meshDesc.path);
+            loaded.mesh = meshIndex < prepared.meshes.size()
+                ? std::move(prepared.meshes[meshIndex]) : nullptr;
             if (!loaded.mesh)
             {
                 m_sceneLoadError = "Mesh import failed or was cancelled";
@@ -201,9 +165,9 @@ public:
                 return false;
             }
 
-            loaded.materials = preparedMats && meshIndex < preparedMats->size()
-                ? std::move((*preparedMats)[meshIndex])
-                : m_pipeline.LoadMeshMaterials(GetAssets(), *loaded.mesh);
+            loaded.materials = meshIndex < prepared.materials.size()
+                ? std::move(prepared.materials[meshIndex])
+                : std::vector<SE::ForwardPipeline::SubMat>{};
             if (!pumpLoadMessages())
                 return false;
 
@@ -219,26 +183,6 @@ public:
                 }
             }
             newLoadedMeshes.push_back(std::move(loaded));
-        }
-
-        // --- Lights ---
-        m_lights.elevDeg        = desc.sun.elevation;
-        m_lights.azimDeg        = desc.sun.azimuth;
-        m_lights.lightIntensity = desc.sun.intensity;
-        m_lights.lightColor[0]  = desc.sun.color[0];
-        m_lights.lightColor[1]  = desc.sun.color[1];
-        m_lights.lightColor[2]  = desc.sun.color[2];
-        m_lights.iblIntensity   = desc.iblIntensity;
-
-        m_lights.numLights = (std::min)(static_cast<int>(desc.pointLights.size()), 8);
-        std::fill(std::begin(m_lightCastsShadow), std::end(m_lightCastsShadow), false);
-        for (int i = 0; i < m_lights.numLights; ++i)
-        {
-            auto& pl = desc.pointLights[i];
-            m_lights.lights[i].position = { pl.position[0], pl.position[1], pl.position[2] };
-            m_lights.lights[i].color    = { pl.color[0], pl.color[1], pl.color[2] };
-            m_lights.lights[i].radius   = pl.radius;
-            m_lightCastsShadow[i]       = pl.castShadow;
         }
 
         // --- Runtime world (transactional rebuild) ---
@@ -303,49 +247,18 @@ public:
         newCharacterController.gravityEnabled = desc.physics.gravity;
         newBallRigidBody->useGravity = desc.physics.gravity;
 
-        // --- Post-process settings ---
-        m_toneMap.op           = static_cast<SE::ToneMap::Operator>(desc.toneMapping.op);
-        m_toneMap.exposure     = desc.toneMapping.exposure;
-        m_toneMap.gammaCorrect = desc.toneMapping.gammaCorrect;
-        m_bloom.enabled        = desc.bloom.enabled;
-        m_bloom.threshold      = desc.bloom.threshold;
-        m_bloom.intensity      = desc.bloom.intensity;
-        m_bloom.scatter        = desc.bloom.scatter;
-
-        m_volFog.enabled          = desc.fog.enabled;
-        m_volFog.density          = desc.fog.density;
-        m_volFog.anisotropy       = desc.fog.anisotropy;
-        m_volFog.scatterIntensity = desc.fog.scatterIntensity;
-        m_volFog.steps            = desc.fog.steps;
-        m_volFog.maxDistance      = desc.fog.maxDistance;
-        m_volFog.ambientColor[0]  = desc.fog.ambientColor[0];
-        m_volFog.ambientColor[1]  = desc.fog.ambientColor[1];
-        m_volFog.ambientColor[2]  = desc.fog.ambientColor[2];
-        m_volFog.ambientIntensity = desc.fog.ambientIntensity;
-        m_volFog.heightFalloff    = desc.fog.heightFalloff;
-        m_volFog.heightBase       = desc.fog.heightBase;
-        m_volFog.noiseStrength    = desc.fog.noiseStrength;
-        m_volFog.noiseScale       = desc.fog.noiseScale;
-        m_volFog.noiseSpeed       = desc.fog.noiseSpeed;
-        m_volFog.nearClearDistance = desc.fog.nearClearDistance;
-        m_volFog.distanceDensity   = desc.fog.distanceDensity;
-
         // --- JSON scene objects (spheres / planes with explicit PBR textures) ---
         std::vector<LoadedObject> newSceneObjects;
         newSceneObjects.reserve(desc.objects.size());
-        for (auto& obj : desc.objects)
+        for (size_t objectIndex = 0; objectIndex < desc.objects.size(); ++objectIndex)
         {
             if (!pumpLoadMessages())
                 return false;
 
-            auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
             LoadedObject lo;
-            lo.def           = obj;
-            lo.mat.albedo    = obj.albedoPath.empty()    ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.albedoPath));
-            lo.mat.normal    = obj.normalPath.empty()    ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.normalPath));
-            lo.mat.roughness = obj.roughnessPath.empty() ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.roughnessPath));
-            lo.mat.metallic  = obj.metallicPath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.metallicPath));
-            lo.mat.emissive  = obj.emissivePath.empty()  ? SE::AssetHandle<SE::Texture2D>{} : GetAssets().GetTexture(toW(obj.emissivePath));
+            lo.def = desc.objects[objectIndex];
+            if (objectIndex < prepared.objectMaterials.size())
+                lo.mat = std::move(prepared.objectMaterials[objectIndex]);
             newSceneObjects.push_back(std::move(lo));
         }
 
@@ -354,8 +267,9 @@ public:
         std::vector<SE::SceneDescriptor::ParticleEmitterDesc> newParticleEmitterDescs;
         newParticleSystems.reserve(desc.particles.size());
         newParticleEmitterDescs.reserve(desc.particles.size());
-        for (auto& pe : desc.particles)
+        for (size_t particleIndex = 0; particleIndex < desc.particles.size(); ++particleIndex)
         {
+            auto& pe = desc.particles[particleIndex];
             if (!pumpLoadMessages())
                 return false;
 
@@ -389,14 +303,11 @@ public:
             ps->config.position        = { pe.position[0], pe.position[1], pe.position[2] };
             if (!ps->Init(device, GetShaders()))
             {
-                SE_LOG_WARN("Failed to init particle emitter");
-                continue;
+                m_sceneLoadError = "Could not initialize particle emitter";
+                return false;
             }
-            if (!pe.texture.empty())
-            {
-                auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
-                ps->SetTexture(GetAssets().GetTexture(toW(pe.texture)));
-            }
+            if (particleIndex < prepared.particleTextures.size())
+                ps->SetTexture(prepared.particleTextures[particleIndex]);
             newParticleSystems.push_back(std::move(ps));
             newParticleEmitterDescs.push_back(pe);
         }
@@ -434,6 +345,48 @@ public:
         m_particleEmitterDescs = std::move(newParticleEmitterDescs);
         m_selectedParticlePreset = std::move(newSelectedParticlePreset);
         m_loadedMeshes     = std::move(newLoadedMeshes);
+        m_environmentTexture = std::move(prepared.environment);
+        m_levelDiagnostics = std::move(prepared.diagnostics);
+        m_skybox.SetPanorama(m_environmentTexture ? m_environmentTexture->GetSRV() : nullptr);
+        m_lights.elevDeg = desc.sun.elevation;
+        m_lights.azimDeg = desc.sun.azimuth;
+        m_lights.lightIntensity = desc.sun.intensity;
+        m_lights.lightColor[0] = desc.sun.color[0];
+        m_lights.lightColor[1] = desc.sun.color[1];
+        m_lights.lightColor[2] = desc.sun.color[2];
+        m_lights.iblIntensity = desc.iblIntensity;
+        m_lights.numLights = (std::min)(static_cast<int>(desc.pointLights.size()), 8);
+        std::fill(std::begin(m_lightCastsShadow), std::end(m_lightCastsShadow), false);
+        for (int i = 0; i < m_lights.numLights; ++i)
+        {
+            const auto& light = desc.pointLights[i];
+            m_lights.lights[i].position = { light.position[0], light.position[1], light.position[2] };
+            m_lights.lights[i].color = { light.color[0], light.color[1], light.color[2] };
+            m_lights.lights[i].radius = light.radius;
+            m_lightCastsShadow[i] = light.castShadow;
+        }
+        m_toneMap.op = static_cast<SE::ToneMap::Operator>(desc.toneMapping.op);
+        m_toneMap.exposure = desc.toneMapping.exposure;
+        m_toneMap.gammaCorrect = desc.toneMapping.gammaCorrect;
+        m_bloom.enabled = desc.bloom.enabled;
+        m_bloom.threshold = desc.bloom.threshold;
+        m_bloom.intensity = desc.bloom.intensity;
+        m_bloom.scatter = desc.bloom.scatter;
+        m_volFog.enabled = desc.fog.enabled;
+        m_volFog.density = desc.fog.density;
+        m_volFog.anisotropy = desc.fog.anisotropy;
+        m_volFog.scatterIntensity = desc.fog.scatterIntensity;
+        m_volFog.steps = desc.fog.steps;
+        m_volFog.maxDistance = desc.fog.maxDistance;
+        std::copy(std::begin(desc.fog.ambientColor), std::end(desc.fog.ambientColor), m_volFog.ambientColor);
+        m_volFog.ambientIntensity = desc.fog.ambientIntensity;
+        m_volFog.heightFalloff = desc.fog.heightFalloff;
+        m_volFog.heightBase = desc.fog.heightBase;
+        m_volFog.noiseStrength = desc.fog.noiseStrength;
+        m_volFog.noiseScale = desc.fog.noiseScale;
+        m_volFog.noiseSpeed = desc.fog.noiseSpeed;
+        m_volFog.nearClearDistance = desc.fog.nearClearDistance;
+        m_volFog.distanceDensity = desc.fog.distanceDensity;
         m_currentScenePath = scenePath;
         m_currentDesc      = desc;
         m_sceneLoadError.clear();
@@ -560,95 +513,32 @@ protected:
 
         if (!startedLoadThisFrame && !m_loadingScenePath.empty())
         {
-            if (m_geometryPrepared && m_materialMeshIndex < m_preparedMeshes.size())
+            m_levelLoad.PumpUploads(GetRenderer().GetDevice(), GetRenderer().GetContext(),
+                                    GetAssets());
+            const SE::LevelLoadStatus operationStatus = m_levelLoad.GetStatus();
+            if (operationStatus.state == SE::LevelLoadState::Failed ||
+                operationStatus.state == SE::LevelLoadState::Cancelled)
             {
-                m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
-                while (m_materialMeshIndex < m_preparedMeshes.size())
+                m_sceneLoadError = operationStatus.failureReason.empty()
+                    ? "LEVEL LOAD FAILED" : operationStatus.failureReason;
+                m_loadingScenePath.clear();
+            }
+            else if (operationStatus.state == SE::LevelLoadState::Complete)
+            {
+                auto prepared = m_levelLoad.TakePreparedLevel();
+                if (prepared)
                 {
-                    auto& mesh = m_preparedMeshes[m_materialMeshIndex];
-                    const uint32_t count = mesh ? mesh->GetSubMeshCount() : 0;
-                    for (; m_materialSubMeshIndex < count; ++m_materialSubMeshIndex)
+                    const bool loaded = ApplyScene(m_loadingScenePath, std::move(*prepared));
+                    if (!loaded)
                     {
-                        m_preparedSubMats[m_materialMeshIndex].push_back(
-                            m_pipeline.LoadMeshMaterial(
-                                GetAssets(), *mesh, m_materialSubMeshIndex));
-                        ++m_materialLoadedCount;
+                        m_sceneLoadError = "LEVEL LOAD FAILED";
                     }
-                    ++m_materialMeshIndex;
-                    m_materialSubMeshIndex = 0;
+                    else
+                    {
+                        m_completeSceneLoadNextFrame = true;
+                    }
                 }
-
-                const float materialProgress = m_materialTotalCount > 0
-                    ? static_cast<float>(m_materialLoadedCount) /
-                      static_cast<float>(m_materialTotalCount)
-                    : 1.0f;
-                m_loadProgress.store(0.78f + 0.17f * materialProgress);
-                if (m_materialMeshIndex == m_preparedMeshes.size())
-                    m_prepareEnvironmentNextFrame = true;
-            }
-            else if (m_prepareEnvironmentNextFrame)
-            {
-                m_prepareEnvironmentNextFrame = false;
-                m_loadPhase.store(static_cast<int>(LoadPhase::LoadingEnvironment));
-                m_loadProgress.store(0.95f);
-                m_loadEnvironmentNextFrame = true;
-            }
-            else if (m_loadEnvironmentNextFrame)
-            {
-                m_loadEnvironmentNextFrame = false;
-                if (!m_loadingDesc.skybox.empty())
-                {
-                    const std::wstring skyboxW(m_loadingDesc.skybox.begin(),
-                                               m_loadingDesc.skybox.end());
-                    m_skybox.LoadPanorama(GetRenderer().GetDevice(), skyboxW.c_str());
-                }
-                m_loadProgress.store(0.98f);
-                m_finalizeSceneNextFrame = true;
-            }
-            else if (m_finalizeSceneNextFrame)
-            {
-                m_finalizeSceneNextFrame = false;
-                m_loadPhase.store(static_cast<int>(LoadPhase::Finalizing));
-                m_loadProgress.store(0.99f);
-
-                const bool loaded = ApplyScene(m_loadingScenePath, &m_loadingDesc, &m_loadingLevel,
-                                               std::move(m_preparedMeshes), &m_preparedSubMats,
-                                               true);
-                if (!loaded)
-                {
-                    SE_LOG_WARN("Scene load failed; keeping the previous scene active");
-                    m_sceneLoadError = "LEVEL LOAD FAILED";
-                    m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
-                    m_loadingScenePath.clear();
-                }
-                else
-                {
-                    m_loadPhase.store(static_cast<int>(LoadPhase::Complete));
-                    m_loadProgress.store(1.0f);
-                    m_completeSceneLoadNextFrame = true;
-                }
-            }
-            else if (m_meshLoadFuture.valid() &&
-                     m_meshLoadFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
-            {
-                m_preparedMeshes = m_meshLoadFuture.get();
-                bool geometryFailed = m_preparedMeshes.size() != m_loadingDesc.meshes.size();
-                for (size_t i = 0; !geometryFailed && i < m_loadingDesc.meshes.size(); ++i)
-                    geometryFailed = !m_loadingDesc.meshes[i].path.empty() && !m_preparedMeshes[i];
-                if (geometryFailed)
-                {
-                    m_sceneLoadError = "GEOMETRY IMPORT FAILED";
-                    m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
-                    m_loadingScenePath.clear();
-                }
-                else
-                {
-                    for (size_t i = 0; i < m_loadingDesc.meshes.size(); ++i)
-                        if (m_preparedMeshes[i])
-                            GetAssets().CacheMesh(
-                                m_loadingDesc.meshes[i].path, m_preparedMeshes[i]);
-                    StartMaterialPreparation();
-                }
+                m_loadingScenePath.clear();
             }
         }
 
@@ -664,6 +554,11 @@ protected:
                 if (GetInput().IsKeyPressed(VK_ESCAPE))
                     PostMessageW(GetWindow().GetHandle(), WM_CLOSE, 0, 0);
             }
+            DrawLoadingUI();
+            return;
+        }
+        if (!m_loadingScenePath.empty())
+        {
             DrawLoadingUI();
             return;
         }
@@ -927,7 +822,7 @@ protected:
     void OnPostProcess() override
     {
         auto* ctx = GetRenderer().GetContext();
-        if (m_initialSceneLoad)
+        if (m_initialSceneLoad || !m_loadingScenePath.empty())
         {
             // BeginFrame clears the MSAA surface, not the swap chain. Resolve it so
             // the loading UI is drawn over a known background before Present.
@@ -1021,117 +916,18 @@ protected:
     }
 
 private:
-    enum class LoadPhase { ReadingScene, ImportingGeometry, LoadingMaterials, LoadingEnvironment, Finalizing, Complete, Failed };
-
     void CancelSceneLoad()
     {
-        m_cancelSceneLoad.store(true);
-        if (m_meshLoadFuture.valid())
-        {
-            m_meshLoadFuture.wait();
-            m_meshLoadFuture = {};
-        }
-    }
-
-    void StartMaterialPreparation()
-    {
-        m_geometryPrepared = true;
-        m_preparedSubMats.clear();
-        m_preparedSubMats.resize(m_preparedMeshes.size());
-        m_materialMeshIndex = 0;
-        m_materialSubMeshIndex = 0;
-        m_materialLoadedCount = 0;
-        m_materialTotalCount = 0;
-        for (const auto& mesh : m_preparedMeshes)
-            if (mesh)
-                m_materialTotalCount += mesh->GetSubMeshCount();
-
-        m_loadPhase.store(static_cast<int>(LoadPhase::LoadingMaterials));
-        m_loadProgress.store(0.78f);
-        if (m_preparedMeshes.empty())
-            m_prepareEnvironmentNextFrame = true;
+        m_levelLoad.Cancel();
     }
 
     void BeginAsyncSceneLoad(const std::string& scenePath)
     {
+        m_levelLoad.Cancel();
         m_sceneLoadError.clear();
-        m_cancelSceneLoad.store(false);
-        m_prepareEnvironmentNextFrame = false;
-        m_loadEnvironmentNextFrame = false;
-        m_finalizeSceneNextFrame = false;
         m_completeSceneLoadNextFrame = false;
-        m_geometryPrepared = false;
-        m_preparedMeshes.clear();
-        m_preparedSubMats.clear();
-        m_materialMeshIndex = 0;
-        m_materialSubMeshIndex = 0;
-        m_materialLoadedCount = 0;
-        m_materialTotalCount = 0;
-        m_loadProgress.store(0.02f);
-        m_loadPhase.store(static_cast<int>(LoadPhase::ReadingScene));
-
-        auto levelResult = SE::LevelAssetLoader::LoadFromFile(scenePath);
-        SE::SceneDescriptor desc;
-        if (!levelResult.Succeeded() ||
-            !SE::SceneLoader::BuildDescriptor(levelResult.asset, desc))
-        {
-            m_sceneLoadError = "SCENE FILE ERROR";
-            m_loadPhase.store(static_cast<int>(LoadPhase::Failed));
-            return;
-        }
-
         m_loadingScenePath = scenePath;
-        m_loadingLevel = std::move(levelResult.asset);
-        m_loadingDesc = std::move(desc);
-        m_loadPhase.store(static_cast<int>(LoadPhase::ImportingGeometry));
-        m_loadProgress.store(0.05f);
-
-        if (m_loadingDesc.meshes.empty())
-        {
-            m_prepareEnvironmentNextFrame = true;
-            return;
-        }
-
-        std::vector<std::string> meshPaths;
-        meshPaths.reserve(m_loadingDesc.meshes.size());
-        m_preparedMeshes.resize(m_loadingDesc.meshes.size());
-        bool allCached = true;
-        for (size_t i = 0; i < m_loadingDesc.meshes.size(); ++i)
-        {
-            meshPaths.push_back(m_loadingDesc.meshes[i].path);
-            if (!meshPaths.back().empty())
-                m_preparedMeshes[i] = GetAssets().FindMesh(meshPaths.back());
-            if (!meshPaths.back().empty() && !m_preparedMeshes[i])
-                allCached = false;
-        }
-        if (allCached)
-        {
-            StartMaterialPreparation();
-            return;
-        }
-
-        ID3D11Device* device = GetRenderer().GetDevice();
-        m_meshLoadFuture = std::async(std::launch::async,
-            [this, device, meshPaths, prepared = m_preparedMeshes]() mutable {
-                const float meshCount = static_cast<float>(meshPaths.size());
-                for (size_t i = 0; i < meshPaths.size(); ++i)
-                {
-                    if (meshPaths[i].empty() || prepared[i])
-                        continue;
-                    auto mesh = std::make_shared<SE::Mesh>();
-                    const bool loaded = mesh->Load(device, meshPaths[i].c_str(),
-                        [this, i, meshCount](float progress) {
-                            const float total = (static_cast<float>(i) + progress) / meshCount;
-                            m_loadProgress.store(0.05f + total * 0.73f,
-                                                 std::memory_order_relaxed);
-                            return !m_cancelSceneLoad.load(std::memory_order_relaxed);
-                        });
-                    if (!loaded)
-                        return std::vector<SE::AssetHandle<SE::Mesh>>{};
-                    prepared[i] = std::move(mesh);
-                }
-                return prepared;
-            });
+        m_levelLoad.Start(scenePath);
     }
 
     void DrawLoadingUI()
@@ -1141,20 +937,19 @@ private:
             return (pos != std::string::npos) ? path.substr(pos + 1) : path;
         };
 
-        const LoadPhase phase = static_cast<LoadPhase>(m_loadPhase.load());
+        const SE::LevelLoadStatus status = m_levelLoad.GetStatus();
         const char* phaseText = "READING LEVEL DATA";
-        switch (phase)
+        switch (status.state)
         {
-        case LoadPhase::ImportingGeometry: phaseText = "IMPORTING WORLD GEOMETRY"; break;
-        case LoadPhase::LoadingMaterials:  phaseText = "STREAMING MATERIALS"; break;
-        case LoadPhase::LoadingEnvironment: phaseText = "PROCESSING SKY AND ENVIRONMENT"; break;
-        case LoadPhase::Finalizing:        phaseText = "BUILDING ENTITIES AND LIGHTING"; break;
-        case LoadPhase::Complete:          phaseText = "READY"; break;
-        case LoadPhase::Failed:            phaseText = "LOAD FAILED"; break;
+        case SE::LevelLoadState::Preparing: phaseText = "PREPARING LEVEL DEPENDENCIES"; break;
+        case SE::LevelLoadState::Uploading: phaseText = "UPLOADING LEVEL RESOURCES"; break;
+        case SE::LevelLoadState::Complete:  phaseText = "READY"; break;
+        case SE::LevelLoadState::Failed:    phaseText = "LOAD FAILED"; break;
+        case SE::LevelLoadState::Cancelled: phaseText = "LOAD CANCELLED"; break;
         default: break;
         }
 
-        const float progress = std::clamp(m_loadProgress.load(), 0.0f, 1.0f);
+        const float progress = std::clamp(status.progress, 0.0f, 1.0f);
         const std::string& path = m_loadingScenePath.empty() ? m_initialScenePath
                                                              : m_loadingScenePath;
         ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -1215,6 +1010,13 @@ private:
 
     void DrawUI(XMMATRIX view, XMMATRIX proj)
     {
+        const bool sceneLoading = m_initialSceneLoad || !m_loadingScenePath.empty();
+        if (sceneLoading)
+        {
+            DrawLoadingUI();
+            return;
+        }
+
         // Full-viewport dockspace
         ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(),
             ImGuiDockNodeFlags_PassthruCentralNode);
@@ -1296,14 +1098,10 @@ private:
         }
 
         // --- Scene Picker ---
-        const bool sceneLoading = !m_loadingScenePath.empty();
         auto getFilename = [](const std::string& path) -> std::string {
             auto pos = path.find_last_of("\\/");
             return (pos != std::string::npos) ? path.substr(pos + 1) : path;
         };
-
-        if (sceneLoading)
-            DrawLoadingUI();
 
         ImGui::Begin("Scene");
         if (sceneLoading)
@@ -1628,7 +1426,7 @@ private:
                                 if (!preset.texture.empty())
                                 {
                                     auto toW = [](const std::string& s) { return std::wstring(s.begin(), s.end()); };
-                                    ps.SetTexture(GetAssets().GetTexture(toW(preset.texture)));
+                                    ps.SetTexture(GetAssets().FindTexture(toW(preset.texture)));
                                 }
                                 if (oldMax != ps.config.maxParticles)
                                     ps.Init(GetRenderer().GetDevice(), GetShaders());
@@ -1774,6 +1572,7 @@ private:
     }
 
     SE::SkyboxRenderer                       m_skybox;
+    SE::AssetHandle<SE::Texture2D>           m_environmentTexture;
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;
     SE::CascadedShadowMap                    m_shadowMap;
@@ -1844,23 +1643,9 @@ private:
     std::string              m_loadingScenePath;
     std::string              m_initialScenePath;
     std::string              m_sceneLoadError;
+    std::vector<SE::LevelDiagnostic> m_levelDiagnostics;
     bool                     m_initialSceneLoad = false;
-    SE::SceneDescriptor      m_loadingDesc;
-    SE::LevelAsset           m_loadingLevel;
-    std::vector<SE::AssetHandle<SE::Mesh>> m_preparedMeshes;
-    std::vector<std::vector<SE::ForwardPipeline::SubMat>> m_preparedSubMats;
-    size_t                   m_materialMeshIndex = 0;
-    uint32_t                 m_materialSubMeshIndex = 0;
-    uint32_t                 m_materialLoadedCount = 0;
-    uint32_t                 m_materialTotalCount = 0;
-    std::future<std::vector<SE::AssetHandle<SE::Mesh>>> m_meshLoadFuture;
-    std::atomic<float>       m_loadProgress { 0.0f };
-    std::atomic<int>         m_loadPhase { static_cast<int>(LoadPhase::ReadingScene) };
-    std::atomic<bool>        m_cancelSceneLoad { false };
-    bool                     m_prepareEnvironmentNextFrame = false;
-    bool                     m_geometryPrepared = false;
-    bool                     m_loadEnvironmentNextFrame = false;
-    bool                     m_finalizeSceneNextFrame = false;
+    SE::LevelLoadOperation   m_levelLoad;
     bool                     m_completeSceneLoadNextFrame = false;
     std::vector<std::string> m_particlePresetFiles;
     std::vector<int>         m_selectedParticlePreset;
