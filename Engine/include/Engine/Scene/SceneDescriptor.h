@@ -122,6 +122,8 @@ struct SceneDescriptor
         bool planarReflection = false;
         float reflectionStrength = 1.0f;
         float reflectionResolutionScale = 0.5f;
+        float roughnessScale = 1.0f;
+        float metallicScale = 1.0f;
     };
     std::vector<SceneObject> objects;
 

@@ -30,7 +30,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 1. `ForwardPipeline::Begin()` → caches view/proj, extracts frustum
 2. `SubmitMesh()` → frustum cull, push to render queue
 3. `Flush()` → sort queue (opaque front-to-back, transparent back-to-front), bind per-draw state, draw
-4. Post-process chain: **SSAO → SSR → Volumetric Fog → Bloom → FXAA → ToneMap → Present**
+4. Post-process chain: **SSAO → Volumetric Fog → Bloom → FXAA → ToneMap → Present**
 
 ### Key Classes
 
@@ -46,7 +46,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `VolumetricFog` | Single-scattering fog, god rays, IBL ambient |
 | `Bloom` | Dual Kawase blur chain |
 | `ToneMap` | Reinhard/ACES, auto-exposure |
-| `SSR` | View-space ray march, MRT normals |
+| `EnvironmentLighting` | Irradiance, GGX-prefiltered specular IBL, BRDF LUT |
 | `SSAO` | Hemisphere sampling, bilateral blur, multiply composite |
 | `FXAA` | Post-process anti-aliasing |
 | `ParticleSystem` | GPU compute emit/update, billboard render, flipbook atlas, soft particles |
@@ -72,9 +72,13 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t1 | Roughness |
 | t2 | Normal map |
 | t3 | Directional shadow map |
-| t4 | Sky panorama (IBL) |
+| t4 | Diffuse irradiance |
 | t5–t6 | Point shadow cube maps |
 | t7 | Metallic map |
+| t9 | Emissive map |
+| t10 | Prefiltered specular environment |
+| t11 | BRDF integration LUT |
+| t12 | Optional planar reflection |
 
 ## Coding Conventions
 
@@ -100,12 +104,13 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 ## Design Decisions
 
 ### Forward-Only Rendering
-No deferred pass. All geometry in a single HDR forward pass into `m_forwardHDR_RT` (R16G16B16A16_FLOAT). MRT output: RT0 = HDR color, RT1 = view-space normal + roughness (for SSR/SSAO).
+No deferred pass. All geometry in a single HDR forward pass into `m_forwardHDR_RT` (R16G16B16A16_FLOAT). MRT output: RT0 = HDR color, RT1 = view-space normal + roughness (for SSAO and later temporal effects).
 
 ### PBR / IBL
 - Cook-Torrance BRDF: GGX NDF, Smith-Schlick geometry, Schlick Fresnel
-- IBL from equirectangular panorama: diffuse at max mip, specular at roughness-scaled mip
-- Panorama loaded as R16G16B16A16_FLOAT with full mip chain
+- IBL from equirectangular panorama: cosine-weighted irradiance, GGX-prefiltered specular, and BRDF LUT
+- One authored horizontal planar reflector can supplement IBL without screen-space reflection artifacts
+- Panorama loaded as R16G16B16A16_FLOAT and filtered on the GPU during level preparation
 
 ### Depth Buffer
 Created as `R32_TYPELESS` with DSV view (`D32_FLOAT`) and SRV view (`R32_FLOAT`) for post-process reads.
@@ -141,7 +146,7 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 ## Current Milestone Roadmap
 
 ### Completed (Phase 1–9 partial)
-M01–M55: Foundation, renderer bootstrap, input, lighting, scene, physics, advanced rendering (PBR, IBL, shadows, bloom, HDR, SSR, SSAO, alpha blending)
+M01–M55: Foundation, renderer bootstrap, input, lighting, scene, physics, advanced rendering (PBR, IBL, shadows, bloom, HDR, SSAO, alpha blending; the original SSR experiment was retired)
 M56: Spot lights (cone angle, inner/outer falloff, shadow map)
 M57: Cascaded Shadow Maps (4-cascade)
 M58: Emissive materials
