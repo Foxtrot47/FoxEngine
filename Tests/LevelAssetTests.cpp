@@ -346,10 +346,31 @@ static void TestCachedMeshSkipsImport()
     operation.Cancel();
 }
 
+static void TestAssetCacheRetainsReleasedHandles()
+{
+    SE::AssetManager assets;
+    auto mesh = std::make_shared<SE::Mesh>();
+    assets.CacheMesh("Assets/TestFixtures/tiny.obj", mesh);
+    mesh.reset();
+    Require(assets.FindMesh("Assets/TestFixtures/tiny.obj") != nullptr,
+            "mesh cache released its strong handle");
+
+    auto texture = std::make_shared<SE::Texture2D>();
+    assets.CacheTexture(L"Assets/TestFixtures/texture.dds", texture);
+    texture.reset();
+    Require(assets.FindTexture(L"Assets/TestFixtures/texture.dds") != nullptr,
+            "texture cache released its strong handle");
+
+    const auto snapshot = assets.CaptureSnapshot();
+    Require(snapshot.meshes.size() == 1 && snapshot.textures.size() == 1,
+            "persistent assets were omitted from the cache snapshot");
+}
+
 static void RunTests()
 {
     TestOperationFailuresAndCancellation();
     TestCachedMeshSkipsImport();
+    TestAssetCacheRetainsReleasedHandles();
     TestValidV2();
     TestValidationFailures();
     TestTypedFieldValidation();

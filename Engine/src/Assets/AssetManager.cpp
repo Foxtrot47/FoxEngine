@@ -16,13 +16,7 @@ AssetHandle<Mesh> AssetManager::FindMesh(const std::string& path)
     if (meshIt == m_meshes.end())
         return {};
 
-    auto mesh = meshIt->second.lock();
-    if (!mesh)
-    {
-        m_meshes.erase(meshIt);
-        m_meshWriteTimes.erase(path);
-        return {};
-    }
+    auto mesh = meshIt->second;
 
     std::error_code ec;
     const auto currentWriteTime = std::filesystem::last_write_time(path, ec);
@@ -55,10 +49,7 @@ void AssetManager::CacheMesh(const std::string& path, const AssetHandle<Mesh>& m
 AssetHandle<Texture2D> AssetManager::FindTexture(const std::wstring& path)
 {
     auto it = m_textures.find(path);
-    if (it != m_textures.end())
-        if (auto h = it->second.lock()) return h;
-    if (it != m_textures.end()) m_textures.erase(it);
-    return {};
+    return it != m_textures.end() ? it->second : AssetHandle<Texture2D>{};
 }
 
 void AssetManager::CacheTexture(const std::wstring& path, const AssetHandle<Texture2D>& texture)
@@ -75,18 +66,7 @@ AssetCacheSnapshot AssetManager::CaptureSnapshot()
     for (const auto& path : meshPaths)
         if (auto mesh = FindMesh(path)) snapshot.meshes.emplace(path, std::move(mesh));
 
-    for (auto it = m_textures.begin(); it != m_textures.end();)
-    {
-        if (auto texture = it->second.lock())
-        {
-            snapshot.textures.emplace(it->first, std::move(texture));
-            ++it;
-        }
-        else
-        {
-            it = m_textures.erase(it);
-        }
-    }
+    snapshot.textures = m_textures;
     return snapshot;
 }
 
@@ -122,18 +102,12 @@ AssetHandle<Texture2D> AssetManager::GetDefaultNormal()
 
 uint32_t AssetManager::CachedMeshCount() const
 {
-    uint32_t n = 0;
-    for (auto& [k, w] : m_meshes)
-        if (!w.expired()) ++n;
-    return n;
+    return static_cast<uint32_t>(m_meshes.size());
 }
 
 uint32_t AssetManager::CachedTextureCount() const
 {
-    uint32_t n = 0;
-    for (auto& [k, w] : m_textures)
-        if (!w.expired()) ++n;
-    return n;
+    return static_cast<uint32_t>(m_textures.size());
 }
 
 } // namespace SE
