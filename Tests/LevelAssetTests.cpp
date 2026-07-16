@@ -139,7 +139,9 @@ static void TestPlanarReflectionMaterial()
                 { "material", {
                     { "reflectionMode", "planar" },
                     { "reflectionStrength", 0.75f },
-                    { "reflectionResolutionScale", 0.5f }
+                    { "reflectionResolutionScale", 0.5f },
+                    { "roughnessScale", 0.6f },
+                    { "metallicScale", 0.9f }
                 } }
             } } } }
         } }) }
@@ -155,6 +157,9 @@ static void TestPlanarReflectionMaterial()
             "reflection descriptor build failed");
     Require(descriptor.objects.size() == 1 && descriptor.objects[0].planarReflection,
             "planar reflection was not propagated to runtime descriptor");
+    Require(descriptor.objects[0].roughnessScale == 0.6f &&
+            descriptor.objects[0].metallicScale == 0.9f,
+            "material scalar controls were not propagated");
 }
 
 static void TestAtmosphereSchema()
@@ -252,7 +257,6 @@ static void TestRepositoryScenes()
         "Assets/Scenes/bistro.json",
         "Assets/Scenes/showcase.json",
         "Assets/Scenes/sponza.json",
-        "Assets/Scenes/ssr_test.json",
         "Assets/Scenes/suntemple.json"
     })
     {

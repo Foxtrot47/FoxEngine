@@ -792,11 +792,13 @@ protected:
                 XMFLOAT3 tint = { object.def.tint[0], object.def.tint[1], object.def.tint[2] };
                 XMFLOAT3 emissive = { object.def.emissiveColor[0], object.def.emissiveColor[1], object.def.emissiveColor[2] };
                 if (object.def.type == SE::SceneDescriptor::SceneObject::Type::Sphere)
-                    m_pipeline.DrawPBRSphere(ctx, pos, object.def.radius, object.mat, 1.0f, 1.0f,
+                    m_pipeline.DrawPBRSphere(ctx, pos, object.def.radius, object.mat,
+                                             object.def.metallicScale, object.def.roughnessScale,
                                              tint, object.def.emissiveIntensity, emissive);
                 else
                     m_pipeline.DrawPBRPlane(ctx, pos, object.def.halfSizeX, object.def.halfSizeZ,
-                                            object.mat, 1.0f, 1.0f, tint,
+                                            object.mat, object.def.metallicScale,
+                                            object.def.roughnessScale, tint,
                                             object.def.emissiveIntensity, emissive);
             }
             m_pipeline.SetReflectionPass(ctx, false);
@@ -860,7 +862,9 @@ protected:
             XMFLOAT3 tint = { lo.def.tint[0],     lo.def.tint[1],     lo.def.tint[2] };
             XMFLOAT3 eCol = { lo.def.emissiveColor[0], lo.def.emissiveColor[1], lo.def.emissiveColor[2] };
             if (lo.def.type == Type::Sphere)
-                m_pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat, 1.0f, 1.0f, tint, lo.def.emissiveIntensity, eCol);
+                m_pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat,
+                                         lo.def.metallicScale, lo.def.roughnessScale,
+                                         tint, lo.def.emissiveIntensity, eCol);
             else
             {
                 if (static_cast<int>(objectIndex) == m_planarObjectIndex)
@@ -869,7 +873,8 @@ protected:
                                                     m_planarReflectionY,
                                                     m_planarReflectionStrength);
                 m_pipeline.DrawPBRPlane(ctx, pos, lo.def.halfSizeX, lo.def.halfSizeZ,
-                                        lo.mat, 1.0f, 1.0f, tint, lo.def.emissiveIntensity, eCol);
+                                        lo.mat, lo.def.metallicScale, lo.def.roughnessScale,
+                                        tint, lo.def.emissiveIntensity, eCol);
                 if (static_cast<int>(objectIndex) == m_planarObjectIndex)
                     m_pipeline.ClearPlanarReflection(ctx);
             }

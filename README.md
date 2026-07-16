@@ -6,10 +6,11 @@ A from-scratch DirectX 11 rendering engine built on Windows with C++17. Features
 
 ### Rendering
 - **PBR Forward Pipeline** — Cook-Torrance BRDF (GGX + Smith-Schlick + Fresnel)
-- **Image-Based Lighting** — Equirectangular HDR panorama sampling for diffuse irradiance + specular reflections
+- **Image-Based Lighting** — GPU-generated diffuse irradiance, GGX-prefiltered specular reflections, and BRDF LUT
+- **Stable Reflections** — Environment fallback everywhere plus an optional roughness-aware planar reflector
 - **Shadows** — Cascaded shadow maps (4-cascade), point light cube shadows, spot light shadow maps
 - **Post-Processing** — HDR rendering, ACES/Reinhard tone mapping, volumetric fog / god rays, FXAA
-- **Screen-Space Effects** — SSR, SSAO (hemisphere sampling + bilateral blur)
+- **Screen-Space Effects** — SSAO with hemisphere sampling and bilateral blur
 - **Bloom** — Dual Kawase blur chain with threshold
 - **Emissive Materials** — Per-texture emissive with intensity/color
 - **Alpha Support** — Alpha test for foliage, alpha blending for transparent materials
@@ -26,6 +27,8 @@ A from-scratch DirectX 11 rendering engine built on Windows with C++17. Features
 - **Billboard orientation** — Fixed angle with optional random rotation
 - **Texture rotation** — Per-emitter UV rotation to correct source texture orientation
 - **Tracer support** — Velocity-aligned billboard stretch for bullet tracers
+- **Volume emitters** — Sphere or box spawn regions for localized effects and atmospheric dust
+- **Lit particles** — Optional directional/environment response for smoke and dust
 - **Preset defaults** — Load emitter default presets from JSON in `Assets/Particles/Presets/`
 
 ### Engine Systems

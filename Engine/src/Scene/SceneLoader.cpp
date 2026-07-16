@@ -153,6 +153,8 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             object.planarReflection = source.material.planarReflection;
             object.reflectionStrength = source.material.reflectionStrength;
             object.reflectionResolutionScale = source.material.reflectionResolutionScale;
+            object.roughnessScale = source.material.roughnessScale;
+            object.metallicScale = source.material.metallicScale;
             out.objects.push_back(std::move(object));
         }
     }

@@ -1,21 +1,34 @@
 {
   "name": "PBR Showcase",
-  "skybox": "Assets/SunTemple/SunTemple_Skybox.dds",
+  "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
   "camera": {
-    "eye": [0, 3, -14],
+    "eye": [0, 4.8, -20],
     "yaw": 0,
-    "pitch": -10,
+    "pitch": -8,
     "nearZ": 0.1,
     "farZ": 500
   },
   "sun": {
     "elevation": 45.0,
     "azimuth": -30.0,
-    "intensity": 2.5,
-    "color": [1.0, 0.95, 0.88]
+    "intensity": 2.0,
+    "color": [1.0, 0.93, 0.82]
   },
-  "iblIntensity": 1.2,
-  "pointLights": [],
+  "iblIntensity": 1.05,
+  "pointLights": [
+    {
+      "position": [-6.0, 4.5, -1.0],
+      "color": [1.2, 1.7, 2.6],
+      "radius": 12.0,
+      "castShadow": true
+    },
+    {
+      "position": [5.5, 4.0, 5.0],
+      "color": [2.8, 1.25, 0.55],
+      "radius": 13.0,
+      "castShadow": true
+    }
+  ],
   "physics": {
     "floor": {
       "min": [-30, -0.5, -30],
@@ -23,34 +36,34 @@
       "friction": 0.6,
       "restitution": 0.3
     },
-    "ballSpawn": [0, 10, 0],
+    "ballSpawn": [0, 8, -4],
     "ballRadius": 0.5,
-    "characterSpawn": [0, 2, -14],
+    "characterSpawn": [0, 2, -18],
     "gravity": true
   },
   "toneMapping": {
     "op": 1,
-    "exposure": 1.0,
+    "exposure": 0.92,
     "gammaCorrect": false
   },
   "bloom": {
     "enabled": true,
-    "threshold": 1.2,
-    "intensity": 0.08,
-    "scatter": 0.65
+    "threshold": 1.1,
+    "intensity": 0.10,
+    "scatter": 0.58
   },
   "fog": {
     "enabled": true,
-    "density": 0.07,
-    "anisotropy": 0.35,
-    "scatterIntensity": 0.12,
+    "density": 0.018,
+    "anisotropy": 0.42,
+    "scatterIntensity": 0.20,
     "steps": 48,
     "maxDistance": 140.0,
     "ambientColor": [0.66, 0.68, 0.70],
-    "ambientIntensity": 1.35,
+    "ambientIntensity": 0.42,
     "heightFalloff": 0.02,
     "heightBase": 0.0,
-    "noiseStrength": 0.22,
+    "noiseStrength": 0.16,
     "noiseScale": 0.02,
     "noiseSpeed": 0.35,
     "nearClearDistance": 4.0,
@@ -58,26 +71,26 @@
   },
   "objects": [
     {
-      "comment": "--- Reflective marble floor ---",
+      "comment": "--- Restrained polished marble floor ---",
       "type": "plane",
       "position": [0, 0, 0],
       "halfSizeX": 18.0,
       "halfSizeZ": 18.0,
       "material": {
-        "albedo":       "Assets/Showcase/copper_albedo.dds",
-        "normal":       "Assets/Showcase/copper_normal.dds",
-        "roughness":    "Assets/Showcase/copper_roughness.dds",
-        "metallic_map": "Assets/Showcase/copper_metallic.dds",
+        "albedo":       "Assets/Showcase/marble_albedo.dds",
+        "normal":       "Assets/Showcase/marble_normal.dds",
+        "roughness":    "Assets/Showcase/marble_roughness.dds",
+        "roughnessScale": 0.72,
         "reflectionMode": "planar",
-        "reflectionStrength": 0.82,
+        "reflectionStrength": 0.58,
         "reflectionResolutionScale": 0.5
       }
     },
     {
       "comment": "--- Polished aluminium ---",
       "type": "sphere",
-      "position": [-7.5, 1.5, 0],
-      "radius": 1.4,
+      "position": [-6.0, 1.25, -2.0],
+      "radius": 1.2,
       "material": {
         "albedo":       "Assets/Showcase/aluminium_albedo.dds",
         "normal":       "Assets/Showcase/aluminium_normal.dds",
@@ -88,8 +101,8 @@
     {
       "comment": "--- Copper ---",
       "type": "sphere",
-      "position": [-2.5, 1.5, 0],
-      "radius": 1.4,
+      "position": [-2.0, 1.25, -2.0],
+      "radius": 1.2,
       "material": {
         "albedo":       "Assets/Showcase/copper_albedo.dds",
         "normal":       "Assets/Showcase/copper_normal.dds",
@@ -100,8 +113,8 @@
     {
       "comment": "--- Marble sphere ---",
       "type": "sphere",
-      "position": [2.5, 1.5, 0],
-      "radius": 1.4,
+      "position": [2.0, 1.25, -2.0],
+      "radius": 1.2,
       "material": {
         "albedo":    "Assets/Showcase/marble_albedo.dds",
         "normal":    "Assets/Showcase/marble_normal.dds",
@@ -110,8 +123,8 @@
     },
     {
       "type": "sphere",
-      "position": [7.5, 1.5, 0],
-      "radius": 1.4,
+      "position": [6.0, 1.25, -2.0],
+      "radius": 1.2,
       "material": {
         "albedo":    "Assets/Showcase/leather_albedo.dds",
         "normal":    "Assets/Showcase/leather_normal.dds",
@@ -119,10 +132,49 @@
       }
     },
     {
+      "comment": "--- Polished aluminium roughness study ---",
+      "type": "sphere",
+      "position": [-5.0, 1.05, 3.0],
+      "radius": 1.0,
+      "material": {
+        "albedo": "Assets/Showcase/aluminium_albedo.dds",
+        "normal": "Assets/Showcase/aluminium_normal.dds",
+        "roughness": "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds",
+        "roughnessScale": 0.22
+      }
+    },
+    {
+      "comment": "--- Satin aluminium roughness study ---",
+      "type": "sphere",
+      "position": [0.0, 1.05, 3.0],
+      "radius": 1.0,
+      "material": {
+        "albedo": "Assets/Showcase/aluminium_albedo.dds",
+        "normal": "Assets/Showcase/aluminium_normal.dds",
+        "roughness": "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds",
+        "roughnessScale": 0.72
+      }
+    },
+    {
+      "comment": "--- Brushed aluminium roughness study ---",
+      "type": "sphere",
+      "position": [5.0, 1.05, 3.0],
+      "radius": 1.0,
+      "material": {
+        "albedo": "Assets/Showcase/aluminium_albedo.dds",
+        "normal": "Assets/Showcase/aluminium_normal.dds",
+        "roughness": "Assets/Showcase/aluminium_roughness.dds",
+        "metallic_map": "Assets/Showcase/aluminium_metallic.dds",
+        "roughnessScale": 1.35
+      }
+    },
+    {
       "comment": "--- Emissive red glow ---",
       "type": "sphere",
-      "position": [-4, 3.5, 5],
-      "radius": 0.8,
+      "position": [-4, 3.2, 7],
+      "radius": 0.7,
       "material": {
         "albedo":    "Assets/Showcase/marble_albedo.dds",
         "roughness": "Assets/Showcase/marble_roughness.dds",
@@ -134,8 +186,8 @@
     {
       "comment": "--- Emissive green glow ---",
       "type": "sphere",
-      "position": [0, 3.5, 5],
-      "radius": 0.8,
+      "position": [0, 3.2, 7],
+      "radius": 0.7,
       "material": {
         "albedo":    "Assets/Showcase/marble_albedo.dds",
         "roughness": "Assets/Showcase/marble_roughness.dds",
@@ -147,8 +199,8 @@
     {
       "comment": "--- Emissive blue glow ---",
       "type": "sphere",
-      "position": [4, 3.5, 5],
-      "radius": 0.8,
+      "position": [4, 3.2, 7],
+      "radius": 0.7,
       "material": {
         "albedo":    "Assets/Showcase/marble_albedo.dds",
         "roughness": "Assets/Showcase/marble_roughness.dds",
@@ -161,8 +213,8 @@
   "particles": [
     {
       "comment": "Muzzle flash — bright starburst",
-      "position": [3, 1.5, -3],
-      "emit_rate": 5,
+      "position": [6.0, 1.4, 9.0],
+      "emit_rate": 2,
       "max_particles": 10,
       "lifetime_min": 0.03,
       "lifetime_max": 0.07,
@@ -181,20 +233,20 @@
       "softDistance": 0.0,
       "drag": 0.0,
       "shaderMode": 0,
-      "emitMode": 1,
+      "emitMode": 0,
       "rotationDegrees": 0.0,
       "randomRotation": false
     },
     {
       "comment": "Tracer",
-      "position": [3, 1.5, -3],
-      "emit_rate": 20,
-      "emitMode": 1,
+      "position": [6.0, 1.4, 9.0],
+      "emit_rate": 4,
+      "emitMode": 0,
       "max_particles": 32,
-      "lifetime_min": 0.06,
-      "lifetime_max": 0.12,
-      "velocity_min": [-20.0, 0.0, 0.0],
-      "velocity_max": [-30.0, 0.0, 0.0],
+      "lifetime_min": 0.18,
+      "lifetime_max": 0.3,
+      "velocity_min": [-8.0, 0.0, 0.0],
+      "velocity_max": [-12.0, 0.0, 0.0],
       "size_start": 0.04,
       "size_end": 0.02,
       "color_start": [6.0, 5.0, 2.0, 0.9],
@@ -217,7 +269,7 @@
     },
     {
       "comment": "Fire flipbook — animated flame sprites",
-      "position": [0, 0.5, -5],
+      "position": [-4.0, 0.5, 10.0],
       "emit_rate": 15,
       "max_particles": 60,
       "lifetime_min": 0.5,
@@ -238,8 +290,27 @@
       "shaderMode": 0
     },
     {
+      "comment": "Sparks and embers",
+      "position": [-1.0, 0.65, 10.0],
+      "emit_rate": 18,
+      "max_particles": 96,
+      "lifetime_min": 0.65,
+      "lifetime_max": 1.8,
+      "velocity_min": [-1.6, 1.2, -0.7],
+      "velocity_max": [1.6, 4.8, 0.7],
+      "size_start": 0.08,
+      "size_end": 0.015,
+      "color_start": [8.0, 3.8, 0.8, 1.0],
+      "color_end": [1.2, 0.12, 0.01, 0.0],
+      "gravity": [0, -2.8, 0],
+      "spawn_radius": 0.25,
+      "blendMode": 0,
+      "drag": 0.15,
+      "shaderMode": 1
+    },
+    {
       "comment": "Smoke",
-      "position": [-2, 0.5, -5],
+      "position": [-7.0, 0.5, 10.0],
       "emit_rate": 6,
       "max_particles": 40,
       "lifetime_min": 3.0,
@@ -259,7 +330,8 @@
       "shaderMode": 0,
       "atlasColumns": 3,
       "atlasRows": 3,
-      "atlasSpeed": 0.6
+      "atlasSpeed": 0.6,
+      "lightingInfluence": 0.55
     }
   ]
 }

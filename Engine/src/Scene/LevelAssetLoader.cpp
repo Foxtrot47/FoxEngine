@@ -167,6 +167,10 @@ void DecodeComponent(LevelEntityDefinition& entity, const std::string& type,
                 out.material.reflectionStrength = material["reflectionStrength"].get<float>();
             if (material.contains("reflectionResolutionScale"))
                 out.material.reflectionResolutionScale = material["reflectionResolutionScale"].get<float>();
+            if (material.contains("roughnessScale"))
+                out.material.roughnessScale = material["roughnessScale"].get<float>();
+            if (material.contains("metallicScale"))
+                out.material.metallicScale = material["metallicScale"].get<float>();
         }
         entity.primitiveRenderer = std::move(out);
     }
@@ -388,6 +392,8 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
             const auto& material = component["material"];
             ValidateNumber(result, material, "reflectionStrength", path + "/material");
             ValidateNumber(result, material, "reflectionResolutionScale", path + "/material");
+            ValidateNumber(result, material, "roughnessScale", path + "/material");
+            ValidateNumber(result, material, "metallicScale", path + "/material");
             if (material.contains("reflectionMode") &&
                 (!material["reflectionMode"].is_string() ||
                  (material["reflectionMode"] != "environment" && material["reflectionMode"] != "planar")))
