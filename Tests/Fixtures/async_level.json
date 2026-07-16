@@ -1,0 +1,15 @@
+{
+  "format": "FoxLevel",
+  "version": 2,
+  "name": "Async Fixture",
+  "settings": {},
+  "entities": [
+    {
+      "id": "0000000000000001",
+      "name": "Triangle",
+      "components": {
+        "meshRenderer": { "mesh": "Assets/TestFixtures/tiny.obj" }
+      }
+    }
+  ]
+}

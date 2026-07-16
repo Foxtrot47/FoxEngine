@@ -40,12 +40,6 @@ bool Engine::Initialize(const WindowDesc& windowDesc)
         return false;
     }
 
-    // Main-thread texture loads use this callback to keep dispatching UI messages.
-    // Threaded geometry imports provide their own atomic progress callback.
-    m_assets.SetImportProgressCallback([this](float) {
-        return m_window.PumpMessages();
-    });
-
     SE_LOG_INFO("Engine initialised — %ux%u", windowDesc.width, windowDesc.height);
     return true;
 }

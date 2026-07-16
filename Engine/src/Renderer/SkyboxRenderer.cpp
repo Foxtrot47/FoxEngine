@@ -2,8 +2,6 @@
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Core/Logger.h"
 #include <d3dcompiler.h>
-#include <windows.h>
-#include <DirectXTex.h>
 
 namespace SE {
 
@@ -69,65 +67,9 @@ bool SkyboxRenderer::Init(ID3D11Device* device, RenderStateCache& cache, ShaderL
     return true;
 }
 
-bool SkyboxRenderer::LoadPanorama(ID3D11Device* device, const wchar_t* path)
+void SkyboxRenderer::SetPanorama(ID3D11ShaderResourceView* panorama)
 {
-    DirectX::ScratchImage image;
-    HRESULT hr = DirectX::LoadFromDDSFile(path, DirectX::DDS_FLAGS_NONE, nullptr, image);
-    if (FAILED(hr))
-    {
-        char pathA[MAX_PATH];
-        WideCharToMultiByte(CP_UTF8, 0, path, -1, pathA, MAX_PATH, nullptr, nullptr);
-        SE_LOG_ERROR("SkyboxRenderer: LoadFromDDSFile failed '%s': 0x%08X", pathA, hr);
-        return false;
-    }
-
-    const DirectX::TexMetadata& meta = image.GetMetadata();
-
-    // Decompress BC6H → R16G16B16A16_FLOAT so we can generate mips for IBL sampling.
-    DirectX::ScratchImage decompressed;
-    if (DirectX::IsCompressed(meta.format))
-    {
-        hr = DirectX::Decompress(image.GetImages(), image.GetImageCount(), meta,
-                                 DXGI_FORMAT_R16G16B16A16_FLOAT, decompressed);
-        if (FAILED(hr))
-        {
-            SE_LOG_ERROR("SkyboxRenderer: Decompress failed: 0x%08X", hr);
-            return false;
-        }
-    }
-    else
-    {
-        decompressed = std::move(image);
-    }
-
-    // Generate full mip chain for IBL diffuse/specular sampling.
-    DirectX::ScratchImage mipped;
-    hr = DirectX::GenerateMipMaps(decompressed.GetImages(), decompressed.GetImageCount(),
-                                  decompressed.GetMetadata(),
-                                  DirectX::TEX_FILTER_LINEAR, 0, mipped);
-    if (FAILED(hr))
-    {
-        SE_LOG_ERROR("SkyboxRenderer: GenerateMipMaps failed: 0x%08X", hr);
-        // Fall back to no-mip version
-        mipped = std::move(decompressed);
-    }
-
-    const DirectX::TexMetadata& mippedMeta = mipped.GetMetadata();
-    hr = DirectX::CreateShaderResourceViewEx(
-        device,
-        mipped.GetImages(), mipped.GetImageCount(), mippedMeta,
-        D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0,
-        DirectX::CREATETEX_DEFAULT,
-        m_panoramaSRV.ReleaseAndGetAddressOf());
-    if (FAILED(hr))
-    {
-        SE_LOG_ERROR("SkyboxRenderer: CreateShaderResourceView failed: 0x%08X", hr);
-        return false;
-    }
-
-    SE_LOG_INFO("SkyboxRenderer: panorama loaded %zux%zu (%zu mips)",
-                mippedMeta.width, mippedMeta.height, mippedMeta.mipLevels);
-    return true;
+    m_panoramaSRV = panorama;
 }
 
 void SkyboxRenderer::Draw(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, DirectX::XMMATRIX proj)

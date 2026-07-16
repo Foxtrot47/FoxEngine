@@ -14,7 +14,7 @@ class SkyboxRenderer
 {
 public:
     bool Init(ID3D11Device* device, RenderStateCache& cache, ShaderLibrary& shaders);
-    bool LoadPanorama(ID3D11Device* device, const wchar_t* path);
+    void SetPanorama(ID3D11ShaderResourceView* panorama);
 
     // Strip translation from view, draw unit cube at far plane.
     void Draw(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, DirectX::XMMATRIX proj);
@@ -30,7 +30,6 @@ private:
     ConstantBuffer<SkyboxCB>                         m_cb;
     VertexBuffer                                     m_cubeVB;
     IndexBuffer                                      m_cubeIB;
-    Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_panoramaTex;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_panoramaSRV;
     Microsoft::WRL::ComPtr<ID3D11SamplerState>       m_sampler;
     ID3D11DepthStencilState* m_depthState = nullptr; // non-owning; owned by RenderStateCache
