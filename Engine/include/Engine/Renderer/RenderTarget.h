@@ -12,7 +12,8 @@ class RenderTarget
 public:
     bool Init(ID3D11Device* device, uint32_t width, uint32_t height,
               DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM,
-              bool withDepth = false, bool depthReadable = false);
+              bool withDepth = false, bool depthReadable = false,
+              bool generateMips = false);
     void Shutdown();
 
     // Save current RTV/DSV/viewport, bind this target, optionally clear.
@@ -27,6 +28,7 @@ public:
     // Bind the depth SRV to a PS slot (only valid if depthReadable=true).
     void BindDepthPS(ID3D11DeviceContext* ctx, UINT slot) const;
     void UnbindDepthPS(ID3D11DeviceContext* ctx, UINT slot) const;
+    void GenerateMips(ID3D11DeviceContext* ctx) const;
 
     ID3D11ShaderResourceView* GetSRV()      const { return m_srv.Get(); }
     ID3D11ShaderResourceView* GetDepthSRV() const { return m_depthSrv.Get(); }

@@ -128,6 +128,35 @@ static void TestTypedFieldValidation()
             "typed numeric range error was not diagnosed");
 }
 
+static void TestPlanarReflectionMaterial()
+{
+    const json level = {
+        { "format", "FoxLevel" }, { "version", 2 }, { "name", "Reflection" },
+        { "entities", json::array({ {
+            { "id", "0000000000000001" },
+            { "components", { { "planeRenderer", {
+                { "position", { 0.0f, 1.0f, 0.0f } },
+                { "material", {
+                    { "reflectionMode", "planar" },
+                    { "reflectionStrength", 0.75f },
+                    { "reflectionResolutionScale", 0.5f }
+                } }
+            } } } }
+        } }) }
+    };
+    const auto result = LevelAssetLoader::Parse(level, "reflection");
+    Require(result.Succeeded(), "planar reflection material should parse");
+    const auto& material = result.asset.entities[0].primitiveRenderer->material;
+    Require(material.planarReflection, "planar reflection mode was not decoded");
+    Require(material.reflectionStrength == 0.75f, "reflection strength mismatch");
+
+    SE::SceneDescriptor descriptor;
+    Require(SE::SceneLoader::BuildDescriptor(result.asset, descriptor),
+            "reflection descriptor build failed");
+    Require(descriptor.objects.size() == 1 && descriptor.objects[0].planarReflection,
+            "planar reflection was not propagated to runtime descriptor");
+}
+
 static void TestValidationFailures()
 {
     const json invalid = {
@@ -374,6 +403,7 @@ static void RunTests()
     TestValidV2();
     TestValidationFailures();
     TestTypedFieldValidation();
+    TestPlanarReflectionMaterial();
     TestLegacyConversion();
     TestRepositoryScenes();
     TestBistroRuntimeDescriptor();

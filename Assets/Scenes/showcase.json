@@ -67,7 +67,10 @@
         "albedo":       "Assets/Showcase/copper_albedo.dds",
         "normal":       "Assets/Showcase/copper_normal.dds",
         "roughness":    "Assets/Showcase/copper_roughness.dds",
-        "metallic_map": "Assets/Showcase/copper_metallic.dds"
+        "metallic_map": "Assets/Showcase/copper_metallic.dds",
+        "reflectionMode": "planar",
+        "reflectionStrength": 0.82,
+        "reflectionResolutionScale": 0.5
       }
     },
     {

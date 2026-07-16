@@ -135,6 +135,7 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     if (!m_transformCB.Create(device)) return false;
     if (!m_materialCB.Create(device))  return false;
     if (!m_shadowCB.Create(device))    return false;
+    if (!m_planarCB.Create(device))    return false;
 
     if (!m_sampler.Create(device, { FilterMode::Anisotropic, AddressMode::Wrap }))
         return false;
@@ -245,12 +246,57 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     ForwardShadowCBData defaultShadow = { 0, 0.0f, { 0.0f, 0.0f } };
     m_shadowCB.Update(ctx, defaultShadow);
     m_shadowCB.BindPS(ctx, 4);
+
+    PlanarReflectionCBData planar = {};
+    DirectX::XMStoreFloat4x4(&planar.reflectionViewProj, DirectX::XMMatrixIdentity());
+    m_planarCB.Update(ctx, planar);
+    m_planarCB.BindPS(ctx, 7);
 }
 
 void ForwardPipeline::BindEnvironment(ID3D11DeviceContext* ctx,
-                                       ID3D11ShaderResourceView* panoramaSRV)
+                                       ID3D11ShaderResourceView* irradianceSRV,
+                                       ID3D11ShaderResourceView* specularSRV,
+                                       ID3D11ShaderResourceView* brdfLutSRV)
 {
-    ctx->PSSetShaderResources(4, 1, &panoramaSRV);
+    ctx->PSSetShaderResources(4, 1, &irradianceSRV);
+    ctx->PSSetShaderResources(10, 1, &specularSRV);
+    ctx->PSSetShaderResources(11, 1, &brdfLutSRV);
+}
+
+void ForwardPipeline::SetReflectionPass(ID3D11DeviceContext* ctx, bool enabled, float planeY)
+{
+    PlanarReflectionCBData data = {};
+    DirectX::XMStoreFloat4x4(&data.reflectionViewProj, DirectX::XMMatrixIdentity());
+    data.planeY = planeY;
+    data.clipEnabled = enabled ? 1.0f : 0.0f;
+    m_planarCB.Update(ctx, data);
+    m_planarCB.BindPS(ctx, 7);
+    ctx->RSSetState(enabled ? m_noCullRS.Get() : nullptr);
+}
+
+void ForwardPipeline::BindPlanarReflection(ID3D11DeviceContext* ctx,
+                                            ID3D11ShaderResourceView* reflectionSRV,
+                                            DirectX::XMMATRIX reflectionViewProj,
+                                            float planeY, float strength)
+{
+    PlanarReflectionCBData data = {};
+    DirectX::XMStoreFloat4x4(&data.reflectionViewProj, reflectionViewProj);
+    data.planeY = planeY;
+    data.planarStrength = strength;
+    data.planarEnabled = reflectionSRV ? 1.0f : 0.0f;
+    m_planarCB.Update(ctx, data);
+    m_planarCB.BindPS(ctx, 7);
+    ctx->PSSetShaderResources(12, 1, &reflectionSRV);
+}
+
+void ForwardPipeline::ClearPlanarReflection(ID3D11DeviceContext* ctx)
+{
+    ID3D11ShaderResourceView* nullSRV = nullptr;
+    ctx->PSSetShaderResources(12, 1, &nullSRV);
+    PlanarReflectionCBData data = {};
+    DirectX::XMStoreFloat4x4(&data.reflectionViewProj, DirectX::XMMatrixIdentity());
+    m_planarCB.Update(ctx, data);
+    m_planarCB.BindPS(ctx, 7);
 }
 
 void ForwardPipeline::BindPointShadows(ID3D11DeviceContext* ctx,

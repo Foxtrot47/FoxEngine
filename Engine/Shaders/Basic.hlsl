@@ -55,16 +55,28 @@ cbuffer CSMCB : register(b6)
     float4 CascadeSplits;  // view-space far Z for each cascade
 };
 
+cbuffer PlanarReflectionCB : register(b7)
+{
+    row_major matrix ReflectionViewProj;
+    float PlaneY;
+    float PlanarStrength;
+    float PlanarEnabled;
+    float ClipEnabled;
+};
+
 Texture2D              g_albedo       : register(t0);
 Texture2D              g_roughness    : register(t1);
 Texture2D              g_normal       : register(t2);
 Texture2DArray         g_shadowMap    : register(t3);  // CSM cascade array
-Texture2D              g_sky          : register(t4);  // equirectangular HDR panorama
+Texture2D              g_irradiance   : register(t4);
 TextureCube<float>     g_pointShadow0 : register(t5);
 TextureCube<float>     g_pointShadow1 : register(t6);
 Texture2D              g_metallic     : register(t7);  // metallic map (R channel)
 Texture2D              g_spotShadow   : register(t8);  // spot light shadow map
 Texture2D              g_emissive     : register(t9);  // emissive map
+Texture2D              g_prefilteredEnv : register(t10);
+Texture2D              g_brdfLut      : register(t11);
+Texture2D              g_planarReflection : register(t12);
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -166,28 +178,41 @@ float2 DirToEnvUV(float3 dir)
 //   Diffuse  — samples the panorama at max mip in the normal direction (approximate irradiance).
 //   Specular — split-sum approximation: prefiltered env × BRDF(NdotV, roughness).
 //              BRDF term uses Lazarov 2013 analytical fit to avoid a LUT texture.
-float3 IBL(float3 N, float3 V, float3 albedo, float roughness, float metallic, float3 F0)
+float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
+           float roughness, float metallic, float3 F0)
 {
     float NdotV = max(dot(N, V), 0.0f);
     float3 F    = F_SchlickRoughness(NdotV, F0, roughness);
     float3 kD   = (1.0f - F) * (1.0f - metallic);
 
     // Diffuse: sample panorama at its maximum mip level (approximate average irradiance).
-    float skyW, skyH, skyMips;
-    g_sky.GetDimensions(0, skyW, skyH, skyMips);
-    float3 irradiance = g_sky.SampleLevel(g_sampler, DirToEnvUV(N), skyMips - 1.0f).rgb;
+    float3 irradiance = g_irradiance.SampleLevel(g_sampler, DirToEnvUV(N), 0).rgb;
     float3 diffuse    = kD * (irradiance / PI) * albedo * IBLIntensity;
 
     // Specular: prefiltered env at roughness-scaled LOD × split-sum BRDF approximation.
-    float3 R        = reflect(-V, N);
-    float3 envColor = g_sky.SampleLevel(g_sampler, DirToEnvUV(R), roughness * (skyMips - 1.0f)).rgb;
+    float3 R = reflect(-V, N);
+    float envW, envH, envMips;
+    g_prefilteredEnv.GetDimensions(0, envW, envH, envMips);
+    float3 envColor = g_prefilteredEnv.SampleLevel(
+        g_sampler, DirToEnvUV(R), roughness * (envMips - 1.0f)).rgb;
 
-    // Analytical fit for the BRDF integration map (Lazarov 2013 / UE4 approach).
-    float4 c0 = float4(-1.0f, -0.0275f, -0.572f,  0.022f);
-    float4 c1 = float4( 1.0f,  0.0425f,  1.04f,  -0.04f);
-    float4 r  = roughness * c0 + c1;
-    float  a004 = min(r.x * r.x, exp2(-9.28f * NdotV)) * r.x + r.y;
-    float2 brdf = float2(-1.04f, 1.04f) * a004 + r.zw;
+    if (PlanarEnabled > 0.5f)
+    {
+        float4 reflectedClip = mul(float4(worldPos, 1.0f), ReflectionViewProj);
+        float2 reflectedUV = float2(reflectedClip.x / reflectedClip.w * 0.5f + 0.5f,
+                                    -reflectedClip.y / reflectedClip.w * 0.5f + 0.5f);
+        float2 edge = smoothstep(0.0f, 0.04f, reflectedUV) *
+                      (1.0f - smoothstep(0.96f, 1.0f, reflectedUV));
+        float confidence = edge.x * edge.y * saturate(PlanarStrength);
+        float planarW, planarH, planarMips;
+        g_planarReflection.GetDimensions(0, planarW, planarH, planarMips);
+        float3 planar = g_planarReflection.SampleLevel(
+            g_sampler, reflectedUV, roughness * (planarMips - 1.0f)).rgb;
+        envColor = lerp(envColor, planar, confidence);
+    }
+
+    float2 brdf = g_brdfLut.SampleLevel(
+        g_sampler, float2(NdotV, 1.0f - roughness), 0).rg;
 
     float3 specular = envColor * (F0 * brdf.x + brdf.y) * IBLIntensity;
 
@@ -205,6 +230,8 @@ struct PSOut
 PSOut PS_Main(PSIn input)
 {
     PSOut o;
+    if (ClipEnabled > 0.5f)
+        clip(input.WorldPos.y - PlaneY - 0.01f);
     if (Unlit > 0.5f)
     {
         o.color  = float4(AlbedoTint, 1.0f);
@@ -261,7 +288,7 @@ PSOut PS_Main(PSIn input)
     float  NdotL = max(dot(N, L), 0.0f);
 
     // IBL ambient
-    float3 color = IBL(N, V, albedo.rgb, roughness, metallic, F0);
+    float3 color = IBL(N, V, input.WorldPos, albedo.rgb, roughness, metallic, F0);
 
     // Directional light (Cook-Torrance)
     color += shadow * LightColor * CookTorrance(N, V, L, albedo.rgb, roughness, metallic, F0);
@@ -352,7 +379,7 @@ PSOut PS_Main(PSIn input)
     if (emissiveSum > 0.001f)
         color += emissive * EmissiveColor * EmissiveIntensity;
 
-    // Transform world-space normal to view space for SSR
+    // Store view-space normal and roughness for screen-space effects.
     float3 viewN = normalize(mul(N, (float3x3)View));
 
     o.color  = float4(color, albedo.a);

@@ -147,6 +147,9 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             object.emissiveIntensity = source.material.emissiveIntensity;
             object.emissiveColor = source.material.emissiveColor;
             object.tint = source.material.tint;
+            object.planarReflection = source.material.planarReflection;
+            object.reflectionStrength = source.material.reflectionStrength;
+            object.reflectionResolutionScale = source.material.reflectionResolutionScale;
             out.objects.push_back(std::move(object));
         }
     }
@@ -154,7 +157,7 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
     // Skybox
     if (root.contains("skybox")) out.skybox = root["skybox"].get<std::string>();
 
-    // Reflection panorama (SSR fallback)
+    // Optional reflection panorama override.
     if (root.contains("reflectionPanorama")) out.reflectionPanorama = root["reflectionPanorama"].get<std::string>();
 
     // IBL

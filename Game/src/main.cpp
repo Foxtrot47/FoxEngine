@@ -26,12 +26,12 @@
 #include "Engine/Renderer/LightEnvironment.h"
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Renderer/SkyboxRenderer.h"
+#include "Engine/Renderer/EnvironmentLighting.h"
 #include "Engine/Renderer/CascadedShadowMap.h"
 #include "Engine/Renderer/RenderTarget.h"
 #include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/PointShadowMap.h"
 #include "Engine/Renderer/Bloom.h"
-#include "Engine/Renderer/SSR.h"
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/VolumetricFog.h"
 #include "Engine/Renderer/FXAA.h"
@@ -62,11 +62,12 @@ public:
         ID3D11Device* device = GetRenderer().GetDevice();
 
         if (!m_skybox.Init(device, GetRenderer().GetStateCache(), GetShaders())) return false;
+        if (!m_environmentLighting.Init(device, GetShaders())) return false;
         if (!m_lights.Init(device))                return false;
         if (!m_pipeline.Init(device, GetAssets(), GetShaders())) return false;
         if (!m_shadowMap.Init(device, GetShaders(), 2048)) return false;
 
-        // Forward HDR render target (owns its own depth buffer, depth is readable for SSR)
+        // Forward HDR render target with readable depth for screen-space effects.
         if (!m_forwardHDR_RT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
                 DXGI_FORMAT_R16G16B16A16_FLOAT, /*withDepth=*/true, /*depthReadable=*/true))
             return false;
@@ -85,10 +86,6 @@ public:
 
         // Bloom
         if (!m_bloom.Init(device, GetShaders(),
-                GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
-
-        // Screen-Space Reflections
-        if (!m_ssr.Init(device, GetShaders(),
                 GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
 
         // Screen-Space Ambient Occlusion
@@ -348,6 +345,36 @@ public:
         m_environmentTexture = std::move(prepared.environment);
         m_levelDiagnostics = std::move(prepared.diagnostics);
         m_skybox.SetPanorama(m_environmentTexture ? m_environmentTexture->GetSRV() : nullptr);
+        if (!m_environmentLighting.Build(device, GetRenderer().GetContext(),
+                                         m_environmentTexture ? m_environmentTexture->GetSRV() : nullptr))
+            SE_LOG_WARN("Environment lighting generation failed; using neutral fallback");
+
+        m_planarObjectIndex = -1;
+        m_planarReflectionScale = 0.5f;
+        for (size_t objectIndex = 0; objectIndex < m_sceneObjects.size(); ++objectIndex)
+        {
+            const auto& object = m_sceneObjects[objectIndex].def;
+            if (object.type == SE::SceneDescriptor::SceneObject::Type::Plane && object.planarReflection)
+            {
+                m_planarObjectIndex = static_cast<int>(objectIndex);
+                m_planarReflectionY = object.position[1];
+                m_planarReflectionStrength = object.reflectionStrength;
+                m_planarReflectionScale = (std::max)(0.25f, (std::min)(1.0f, object.reflectionResolutionScale));
+                break;
+            }
+        }
+        m_planarReflectionRT.Shutdown();
+        if (m_planarObjectIndex >= 0)
+        {
+            const uint32_t reflectionWidth = (std::max)(1u, static_cast<uint32_t>(GetWindow().GetWidth() * m_planarReflectionScale));
+            const uint32_t reflectionHeight = (std::max)(1u, static_cast<uint32_t>(GetWindow().GetHeight() * m_planarReflectionScale));
+            if (!m_planarReflectionRT.Init(device, reflectionWidth, reflectionHeight,
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, true, false, true))
+            {
+                SE_LOG_WARN("Planar reflection target creation failed; using environment reflection");
+                m_planarObjectIndex = -1;
+            }
+        }
         m_lights.elevDeg = desc.sun.elevation;
         m_lights.azimDeg = desc.sun.azimuth;
         m_lights.lightIntensity = desc.sun.intensity;
@@ -632,7 +659,7 @@ protected:
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
-        m_cachedProj = proj;  // Store for SSR in OnPostProcess
+        m_cachedProj = proj;
         m_cachedView = view;  // Store for volumetric fog in OnPostProcess
 
         DrawUI(view, proj);
@@ -684,6 +711,74 @@ protected:
             m_spotLight.EndShadowPass(ctx);
         }
 
+        ID3D11ShaderResourceView* fallbackEnvironment = GetAssets().GetDefaultBlack()->GetSRV();
+        ID3D11ShaderResourceView* irradianceSRV = m_environmentLighting.GetIrradianceSRV();
+        ID3D11ShaderResourceView* specularSRV = m_environmentLighting.GetSpecularSRV();
+        ID3D11ShaderResourceView* brdfLutSRV = m_environmentLighting.GetBRDFLutSRV();
+        if (!irradianceSRV) irradianceSRV = fallbackEnvironment;
+        if (!specularSRV) specularSRV = fallbackEnvironment;
+        if (!brdfLutSRV) brdfLutSRV = fallbackEnvironment;
+
+        // One bounded planar reflection pass for authored horizontal reflectors.
+        if (m_planarObjectIndex >= 0 && m_planarReflectionRT.GetRTV())
+        {
+            XMFLOAT3 reflectedEye = m_camera->eye;
+            XMFLOAT3 reflectedTarget = m_camera->target;
+            XMFLOAT3 reflectedUp = m_camera->up;
+            reflectedEye.y = 2.0f * m_planarReflectionY - reflectedEye.y;
+            reflectedTarget.y = 2.0f * m_planarReflectionY - reflectedTarget.y;
+            reflectedUp.y = -reflectedUp.y;
+            XMMATRIX reflectedView = XMMatrixLookAtLH(
+                XMLoadFloat3(&reflectedEye), XMLoadFloat3(&reflectedTarget), XMLoadFloat3(&reflectedUp));
+            m_planarReflectionViewProj = reflectedView * proj;
+
+            const float reflectionClear[4] = { 0, 0, 0, 1 };
+            m_planarReflectionRT.Begin(ctx, reflectionClear);
+            m_skybox.Draw(ctx, reflectedView, proj);
+            m_shadowMap.BindForLitPass(ctx);
+            m_lights.BindPS(ctx, reflectedEye, m_shadowMap.GetLightViewProj());
+            m_pipeline.Begin(ctx, reflectedView, proj);
+            m_pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
+
+            int reflectedShadowCount = 0;
+            for (int i = 0; i < 2 && i < m_lights.numLights; ++i)
+                if (m_lightCastsShadow[i]) reflectedShadowCount = i + 1; else break;
+            ID3D11ShaderResourceView* reflectedShadowSRVs[2] = { nullptr, nullptr };
+            for (int i = 0; i < reflectedShadowCount; ++i)
+                reflectedShadowSRVs[i] = m_pointShadowMaps[i].GetSRV();
+            m_pipeline.BindPointShadows(ctx, reflectedShadowSRVs[0], reflectedShadowSRVs[1],
+                                        reflectedShadowCount, m_pointShadowBias);
+            m_spotLight.BindForLitPass(ctx);
+            m_pipeline.SetReflectionPass(ctx, true, m_planarReflectionY);
+
+            for (const auto& loaded : m_loadedMeshes)
+                if (loaded.mesh && loaded.transform)
+                    m_pipeline.SubmitMesh(*loaded.mesh, loaded.transform->GetWorldMatrix(), loaded.materials);
+            if (!m_loadedMeshes.empty()) m_pipeline.Flush(ctx);
+            m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
+            for (size_t objectIndex = 0; objectIndex < m_sceneObjects.size(); ++objectIndex)
+            {
+                if (static_cast<int>(objectIndex) == m_planarObjectIndex) continue;
+                auto& object = m_sceneObjects[objectIndex];
+                XMFLOAT3 pos = { object.def.position[0], object.def.position[1], object.def.position[2] };
+                XMFLOAT3 tint = { object.def.tint[0], object.def.tint[1], object.def.tint[2] };
+                XMFLOAT3 emissive = { object.def.emissiveColor[0], object.def.emissiveColor[1], object.def.emissiveColor[2] };
+                if (object.def.type == SE::SceneDescriptor::SceneObject::Type::Sphere)
+                    m_pipeline.DrawPBRSphere(ctx, pos, object.def.radius, object.mat, 1.0f, 1.0f,
+                                             tint, object.def.emissiveIntensity, emissive);
+                else
+                    m_pipeline.DrawPBRPlane(ctx, pos, object.def.halfSizeX, object.def.halfSizeZ,
+                                            object.mat, 1.0f, 1.0f, tint,
+                                            object.def.emissiveIntensity, emissive);
+            }
+            m_pipeline.SetReflectionPass(ctx, false);
+            m_shadowMap.Unbind(ctx);
+            ID3D11ShaderResourceView* nullPointShadows[2] = { nullptr, nullptr };
+            ctx->PSSetShaderResources(5, 2, nullPointShadows);
+            m_planarReflectionRT.End(ctx);
+            m_planarReflectionRT.GenerateMips(ctx);
+        }
+
         // --- Forward path (HDR + PBR + IBL) ---
         {
             ID3D11RenderTargetView* rtvs[2] = { m_forwardHDR_RT.GetRTV(), m_normalRT.GetRTV() };
@@ -714,7 +809,7 @@ protected:
         m_shadowMap.BindForLitPass(ctx);
         m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
         m_pipeline.Begin(ctx, view, proj);
-        m_pipeline.BindEnvironment(ctx, m_skybox.GetPanoramaSRV());
+        m_pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
         m_pipeline.BindPointShadows(ctx, ptSRVs[0], ptSRVs[1], numPtShadows, m_pointShadowBias);
         m_spotLight.BindForLitPass(ctx);
         m_pipeline.SetMaterialParams(ctx,
@@ -729,8 +824,9 @@ protected:
         m_pipeline.DrawSphere(ctx, m_ballTransform->position, m_ballRadius, { 1.0f, 0.45f, 0.05f });
 
         // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
-        for (auto& lo : m_sceneObjects)
+        for (size_t objectIndex = 0; objectIndex < m_sceneObjects.size(); ++objectIndex)
         {
+            auto& lo = m_sceneObjects[objectIndex];
             using Type = SE::SceneDescriptor::SceneObject::Type;
             XMFLOAT3 pos  = { lo.def.position[0], lo.def.position[1], lo.def.position[2] };
             XMFLOAT3 tint = { lo.def.tint[0],     lo.def.tint[1],     lo.def.tint[2] };
@@ -738,8 +834,17 @@ protected:
             if (lo.def.type == Type::Sphere)
                 m_pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat, 1.0f, 1.0f, tint, lo.def.emissiveIntensity, eCol);
             else
+            {
+                if (static_cast<int>(objectIndex) == m_planarObjectIndex)
+                    m_pipeline.BindPlanarReflection(ctx, m_planarReflectionRT.GetSRV(),
+                                                    m_planarReflectionViewProj,
+                                                    m_planarReflectionY,
+                                                    m_planarReflectionStrength);
                 m_pipeline.DrawPBRPlane(ctx, pos, lo.def.halfSizeX, lo.def.halfSizeZ,
                                         lo.mat, 1.0f, 1.0f, tint, lo.def.emissiveIntensity, eCol);
+                if (static_cast<int>(objectIndex) == m_planarObjectIndex)
+                    m_pipeline.ClearPlanarReflection(ctx);
+            }
         }
 
         m_shadowMap.Unbind(ctx);
@@ -841,11 +946,18 @@ protected:
             m_normalRT.Shutdown();
             m_normalRT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT);
             m_bloom.Resize(dev, w, h);
-            m_ssr.Resize(dev, w, h);
             m_ssao.Resize(dev, w, h);
             m_volFog.Resize(dev, w, h);
             m_ldrRT.Shutdown();
             m_ldrRT.Init(dev, w, h, DXGI_FORMAT_R8G8B8A8_UNORM);
+            if (m_planarObjectIndex >= 0)
+            {
+                m_planarReflectionRT.Shutdown();
+                m_planarReflectionRT.Init(dev,
+                    (std::max)(1u, static_cast<uint32_t>(w * m_planarReflectionScale)),
+                    (std::max)(1u, static_cast<uint32_t>(h * m_planarReflectionScale)),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, true, false, true);
+            }
         }
 
         SE::RenderTarget& hdrRT = m_forwardHDR_RT;
@@ -856,13 +968,9 @@ protected:
             ctx->OMSetRenderTargets(2, nullRTV, nullptr);
         }
 
-        // Screen-Space Ambient Occlusion (darkens ambient before reflections)
+        // Screen-Space Ambient Occlusion.
         if (m_ssao.enabled)
             m_ssao.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
-
-        // Screen-Space Reflections (composites into hdrRT)
-        if (m_ssr.enabled)
-            m_ssr.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
 
         // Volumetric fog / god rays (in-scatter into hdrRT before bloom picks up shafts)
         if (m_volFog.enabled)
@@ -1333,18 +1441,6 @@ private:
                 ImGui::SliderFloat("Scatter",   &m_bloom.scatter,   0.0f, 1.0f,  "%.2f");
             }
         }
-        if (ImGui::CollapsingHeader("SSR"))
-        {
-            ImGui::Checkbox("Enable SSR", &m_ssr.enabled);
-            if (m_ssr.enabled)
-            {
-                ImGui::SliderFloat("SSR Intensity",  &m_ssr.intensity,   0.0f, 2.0f,  "%.2f");
-                ImGui::SliderFloat("Max Distance",   &m_ssr.maxDistance,  5.0f, 10000.0f, "%.0f");
-                ImGui::SliderFloat("Thickness",      &m_ssr.thickness,   0.1f, 5.0f,  "%.2f");
-                ImGui::SliderInt("Max Steps",        &m_ssr.maxSteps,    16, 10000);
-                ImGui::SliderInt("Binary Steps",     &m_ssr.binarySteps, 0, 16);
-            }
-        }
         if (ImGui::CollapsingHeader("SSAO"))
         {
             ImGui::Checkbox("Enable SSAO", &m_ssao.enabled);
@@ -1572,6 +1668,7 @@ private:
 
     SE::SkyboxRenderer                       m_skybox;
     SE::AssetHandle<SE::Texture2D>           m_environmentTexture;
+    SE::EnvironmentLighting                  m_environmentLighting;
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;
     SE::CascadedShadowMap                    m_shadowMap;
@@ -1619,11 +1716,16 @@ private:
     SE::ToneMap                  m_toneMap;
     SE::PointShadowMap           m_pointShadowMaps[2];
     SE::Bloom                    m_bloom;
-    SE::SSR                      m_ssr;
     SE::SSAO                     m_ssao;
     SE::VolumetricFog            m_volFog;
     SE::FXAA                     m_fxaa;
     SE::RenderTarget             m_ldrRT;
+    SE::RenderTarget             m_planarReflectionRT;
+    int                          m_planarObjectIndex = -1;
+    float                        m_planarReflectionY = 0.0f;
+    float                        m_planarReflectionStrength = 1.0f;
+    float                        m_planarReflectionScale = 0.5f;
+    DirectX::XMMATRIX            m_planarReflectionViewProj = DirectX::XMMatrixIdentity();
     SE::SpotLight                m_spotLight;
     std::vector<std::unique_ptr<SE::ParticleSystem>> m_particleSystems;
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();

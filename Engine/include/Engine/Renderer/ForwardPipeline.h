@@ -36,7 +36,16 @@ public:
     void Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, DirectX::XMMATRIX proj);
 
     // Bind equirectangular HDR panorama for IBL (t4). Pass nullptr to unbind.
-    void BindEnvironment(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* panoramaSRV);
+    void BindEnvironment(ID3D11DeviceContext* ctx,
+                         ID3D11ShaderResourceView* irradianceSRV,
+                         ID3D11ShaderResourceView* specularSRV,
+                         ID3D11ShaderResourceView* brdfLutSRV);
+    void SetReflectionPass(ID3D11DeviceContext* ctx, bool enabled, float planeY = 0.0f);
+    void BindPlanarReflection(ID3D11DeviceContext* ctx,
+                              ID3D11ShaderResourceView* reflectionSRV,
+                              DirectX::XMMATRIX reflectionViewProj,
+                              float planeY, float strength);
+    void ClearPlanarReflection(ID3D11DeviceContext* ctx);
 
     // Bind point shadow cube maps (t5-t6) + ForwardShadowCB (b4). Pass nullptr SRVs if unused.
     void BindPointShadows(ID3D11DeviceContext* ctx,
@@ -114,6 +123,14 @@ private:
         float metallic; float unlit; float debugShadow; float alphaCutoff;
         float emissiveIntensity; DirectX::XMFLOAT3 emissiveColor;
     };
+    struct PlanarReflectionCBData
+    {
+        DirectX::XMFLOAT4X4 reflectionViewProj;
+        float planeY;
+        float planarStrength;
+        float planarEnabled;
+        float clipEnabled;
+    };
 
     // Stored per-submit for Flush() to reference.
     struct QueuedDraw
@@ -130,6 +147,7 @@ private:
     ConstantBuffer<TransformCBData>           m_transformCB;
     ConstantBuffer<MaterialParamsCBData>      m_materialCB;
     ConstantBuffer<ForwardShadowCBData>       m_shadowCB;
+    ConstantBuffer<PlanarReflectionCBData>    m_planarCB;
     SamplerState                              m_sampler;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_cubeSampler;
     VertexBuffer                         m_sphereVB;

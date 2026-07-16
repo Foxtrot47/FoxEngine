@@ -154,6 +154,12 @@ void DecodeComponent(LevelEntityDefinition& entity, const std::string& type,
             out.material.emissiveColor = ReadFloatArray(
                 material, "emissive_color", out.material.emissiveColor);
             out.material.tint = ReadFloatArray(material, "tint", out.material.tint);
+            if (material.contains("reflectionMode"))
+                out.material.planarReflection = material["reflectionMode"].get<std::string>() == "planar";
+            if (material.contains("reflectionStrength"))
+                out.material.reflectionStrength = material["reflectionStrength"].get<float>();
+            if (material.contains("reflectionResolutionScale"))
+                out.material.reflectionResolutionScale = material["reflectionResolutionScale"].get<float>();
         }
         entity.primitiveRenderer = std::move(out);
     }
@@ -360,6 +366,17 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
         ValidateVector(result, component, "position", 3, path);
         for (const char* field : { "radius", "halfSizeX", "halfSizeZ" })
             ValidateNumber(result, component, field, path);
+        if (component.contains("material") && component["material"].is_object())
+        {
+            const auto& material = component["material"];
+            ValidateNumber(result, material, "reflectionStrength", path + "/material");
+            ValidateNumber(result, material, "reflectionResolutionScale", path + "/material");
+            if (material.contains("reflectionMode") &&
+                (!material["reflectionMode"].is_string() ||
+                 (material["reflectionMode"] != "environment" && material["reflectionMode"] != "planar")))
+                AddDiagnostic(result, Severity::Error, path + "/material/reflectionMode",
+                              "expected 'environment' or 'planar'");
+        }
     }
 }
 
