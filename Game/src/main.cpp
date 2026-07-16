@@ -1052,7 +1052,6 @@ private:
                 ImGui::DockBuilderSplitNode(dockLower, ImGuiDir_Up, 0.55f, &dockBottom, &dockFinal);
 
                 // Top tabs: Scene active (last = default)
-                ImGui::DockBuilderDockWindow("Input",  dockTop);
                 ImGui::DockBuilderDockWindow("Camera", dockTop);
                 ImGui::DockBuilderDockWindow("Scene",  dockTop);
 
@@ -1079,6 +1078,23 @@ private:
             ImGui::SetWindowFocus("Particles");
         else if (m_frameCount == 4)
             ImGui::SetWindowFocus("Lighting");
+
+        // --- Input ---
+        ImGui::Begin("Input");
+        const SE::GamepadState& gp = GetInput().GetGamepad(0);
+        if (gp.connected)
+        {
+            ImGui::Text("Controller 0  connected");
+            ImGui::Separator();
+            ImGui::Text("Left  stick  (%.2f, %.2f)", gp.leftX,  gp.leftY);
+            ImGui::Text("Right stick  (%.2f, %.2f)", gp.rightX, gp.rightY);
+            ImGui::Text("LT  %.2f   RT  %.2f",       gp.leftTrigger, gp.rightTrigger);
+        }
+        else
+        {
+            ImGui::TextDisabled("Controller 0  not connected");
+        }
+        ImGui::End();
 
         // HUD — FPS + asset stats rendered directly on screen (no window chrome)
         {
@@ -1495,23 +1511,6 @@ private:
                 ImGui::SliderFloat("Tracer Stretch", &ps.config.tracerStretch, 0.0f, 0.25f);
             }
             ImGui::PopID();
-        }
-        ImGui::End();
-
-        // --- Input ---
-        ImGui::Begin("Input");
-        const SE::GamepadState& gp = GetInput().GetGamepad(0);
-        if (gp.connected)
-        {
-            ImGui::Text("Controller 0  connected");
-            ImGui::Separator();
-            ImGui::Text("Left  stick  (%.2f, %.2f)", gp.leftX,  gp.leftY);
-            ImGui::Text("Right stick  (%.2f, %.2f)", gp.rightX, gp.rightY);
-            ImGui::Text("LT  %.2f   RT  %.2f",       gp.leftTrigger, gp.rightTrigger);
-        }
-        else
-        {
-            ImGui::TextDisabled("Controller 0  not connected");
         }
         ImGui::End();
 
