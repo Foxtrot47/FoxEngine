@@ -56,6 +56,7 @@ LevelParticleEmitterDefinition DecodeParticleEmitter(const json& value)
     out.colorStart = ReadFloatArray(value, "color_start", out.colorStart);
     out.colorEnd = ReadFloatArray(value, "color_end", out.colorEnd);
     out.gravity = ReadFloatArray(value, "gravity", out.gravity);
+    out.spawnBoxExtents = ReadFloatArray(value, "spawnBoxExtents", out.spawnBoxExtents);
 
     if (value.contains("emit_rate")) out.emitRate = value["emit_rate"].get<float>();
     if (value.contains("max_particles")) out.maxParticles = value["max_particles"].get<int>();
@@ -64,6 +65,7 @@ LevelParticleEmitterDefinition DecodeParticleEmitter(const json& value)
     if (value.contains("size_start")) out.sizeStart = value["size_start"].get<float>();
     if (value.contains("size_end")) out.sizeEnd = value["size_end"].get<float>();
     if (value.contains("spawn_radius")) out.spawnRadius = value["spawn_radius"].get<float>();
+    if (value.contains("spawnShape")) out.spawnShape = value["spawnShape"].get<std::string>() == "box" ? 1 : 0;
     if (value.contains("texture")) out.texture = value["texture"].get<std::string>();
     if (value.contains("atlasColumns")) out.atlasColumns = value["atlasColumns"].get<int>();
     if (value.contains("atlasRows")) out.atlasRows = value["atlasRows"].get<int>();
@@ -79,6 +81,7 @@ LevelParticleEmitterDefinition DecodeParticleEmitter(const json& value)
     if (value.contains("rotationDegrees")) out.rotationDegrees = value["rotationDegrees"].get<float>();
     if (value.contains("randomRotation")) out.randomRotation = value["randomRotation"].get<bool>();
     if (value.contains("tracerStretch")) out.tracerStretch = value["tracerStretch"].get<float>();
+    if (value.contains("lightingInfluence")) out.lightingInfluence = value["lightingInfluence"].get<float>();
     return out;
 }
 
@@ -129,6 +132,10 @@ void DecodeComponent(LevelEntityDefinition& entity, const std::string& type,
         out.color = ReadFloatArray(value, "color", out.color);
         if (value.contains("radius")) out.radius = value["radius"].get<float>();
         if (value.contains("castShadow")) out.castShadow = value["castShadow"].get<bool>();
+        if (value.contains("flicker")) out.flicker = value["flicker"].get<bool>();
+        if (value.contains("flickerAmplitude")) out.flickerAmplitude = value["flickerAmplitude"].get<float>();
+        if (value.contains("flickerFrequency")) out.flickerFrequency = value["flickerFrequency"].get<float>();
+        if (value.contains("flickerSeed")) out.flickerSeed = value["flickerSeed"].get<uint32_t>();
         entity.pointLight = std::move(out);
     }
     else if (type == "particleEmitter")
@@ -337,6 +344,10 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
         ValidateVector(result, component, "color", 3, path);
         ValidateNumber(result, component, "radius", path);
         ValidateBoolean(result, component, "castShadow", path);
+        ValidateBoolean(result, component, "flicker", path);
+        ValidateNumber(result, component, "flickerAmplitude", path);
+        ValidateNumber(result, component, "flickerFrequency", path);
+        ValidateInteger(result, component, "flickerSeed", path);
         if (component.contains("radius") && component["radius"].is_number() &&
             component["radius"].get<float>() <= 0.0f)
             AddDiagnostic(result, Severity::Error, path + "/radius", "must be greater than zero");
@@ -347,18 +358,24 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
             AddDependency(result, component["preset"], path + "/preset");
         if (component.contains("texture"))
             AddDependency(result, component["texture"], path + "/texture");
-        for (const char* field : { "position", "velocity_min", "velocity_max", "gravity" })
+        for (const char* field : { "position", "velocity_min", "velocity_max", "gravity", "spawnBoxExtents" })
             ValidateVector(result, component, field, 3, path);
         for (const char* field : { "color_start", "color_end" })
             ValidateVector(result, component, field, 4, path);
         for (const char* field : { "emit_rate", "lifetime_min", "lifetime_max", "size_start",
                                   "size_end", "spawn_radius", "atlasSpeed", "softDistance",
-                                  "aspectRatio", "drag", "rotationDegrees", "tracerStretch" })
+                                  "aspectRatio", "drag", "rotationDegrees", "tracerStretch",
+                                  "lightingInfluence" })
             ValidateNumber(result, component, field, path);
         for (const char* field : { "max_particles", "atlasColumns", "atlasRows",
                                   "atlasFrameCount", "blendMode", "shaderMode", "emitMode" })
             ValidateInteger(result, component, field, path);
         ValidateBoolean(result, component, "randomRotation", path);
+        if (component.contains("spawnShape") &&
+            (!component["spawnShape"].is_string() ||
+             (component["spawnShape"] != "sphere" && component["spawnShape"] != "box")))
+            AddDiagnostic(result, Severity::Error, path + "/spawnShape",
+                          "expected 'sphere' or 'box'");
     }
     else if (type == "sphereRenderer" || type == "planeRenderer")
     {

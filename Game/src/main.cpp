@@ -283,6 +283,8 @@ public:
             ps->config.colorEnd     = { pe.colorEnd[0], pe.colorEnd[1], pe.colorEnd[2], pe.colorEnd[3] };
             ps->config.gravity      = { pe.gravity[0], pe.gravity[1], pe.gravity[2] };
             ps->config.spawnRadius  = pe.spawnRadius;
+            ps->config.spawnShape   = pe.spawnShape;
+            ps->config.spawnBoxExtents = { pe.spawnBoxExtents[0], pe.spawnBoxExtents[1], pe.spawnBoxExtents[2] };
             ps->config.atlasColumns    = pe.atlasColumns;
             ps->config.atlasRows       = pe.atlasRows;
             ps->config.atlasFrameCount = pe.atlasFrameCount;
@@ -297,6 +299,7 @@ public:
             ps->config.rotationDegrees = pe.rotationDegrees;
             ps->config.randomRotation  = pe.randomRotation;
             ps->config.tracerStretch   = pe.tracerStretch;
+            ps->config.lightingInfluence = pe.lightingInfluence;
             ps->config.position        = { pe.position[0], pe.position[1], pe.position[2] };
             if (!ps->Init(device, GetShaders()))
             {
@@ -383,6 +386,7 @@ public:
         m_lights.lightColor[2] = desc.sun.color[2];
         m_lights.iblIntensity = desc.iblIntensity;
         m_lights.numLights = (std::min)(static_cast<int>(desc.pointLights.size()), 8);
+        m_pointLightDescs = desc.pointLights;
         std::fill(std::begin(m_lightCastsShadow), std::end(m_lightCastsShadow), false);
         for (int i = 0; i < m_lights.numLights; ++i)
         {
@@ -442,6 +446,8 @@ public:
         ps.config.colorEnd = { d.colorEnd[0], d.colorEnd[1], d.colorEnd[2], d.colorEnd[3] };
         ps.config.gravity = { d.gravity[0], d.gravity[1], d.gravity[2] };
         ps.config.spawnRadius = d.spawnRadius;
+        ps.config.spawnShape = d.spawnShape;
+        ps.config.spawnBoxExtents = { d.spawnBoxExtents[0], d.spawnBoxExtents[1], d.spawnBoxExtents[2] };
         ps.config.atlasColumns = d.atlasColumns;
         ps.config.atlasRows = d.atlasRows;
         ps.config.atlasFrameCount = d.atlasFrameCount;
@@ -456,6 +462,7 @@ public:
         ps.config.rotationDegrees = d.rotationDegrees;
         ps.config.randomRotation = d.randomRotation;
         ps.config.tracerStretch = d.tracerStretch;
+        ps.config.lightingInfluence = d.lightingInfluence;
     }
 
     static bool NearlyEqual(float a, float b, float eps = 0.0001f)
@@ -490,6 +497,8 @@ public:
                EqualFloat4(a.colorEnd, b.colorEnd) &&
                EqualFloat3(a.gravity, b.gravity) &&
                NearlyEqual(a.spawnRadius, b.spawnRadius) &&
+               a.spawnShape == b.spawnShape &&
+               EqualFloat3(a.spawnBoxExtents, b.spawnBoxExtents) &&
                a.texture == b.texture &&
                a.atlasColumns == b.atlasColumns &&
                a.atlasRows == b.atlasRows &&
@@ -504,7 +513,8 @@ public:
                a.emitMode == b.emitMode &&
                NearlyEqual(a.rotationDegrees, b.rotationDegrees) &&
                a.randomRotation == b.randomRotation &&
-               NearlyEqual(a.tracerStretch, b.tracerStretch);
+               NearlyEqual(a.tracerStretch, b.tracerStretch) &&
+               NearlyEqual(a.lightingInfluence, b.lightingInfluence);
     }
 
     void RefreshParticlePresets()
@@ -656,6 +666,24 @@ protected:
         m_physicsWorld.Step(dt);
         for (auto& ps : m_particleSystems)
             ps->Update(GetRenderer().GetContext(), dt);
+
+        const float totalTime = static_cast<float>(GetClock().GetTotalTime());
+        for (int i = 0; i < m_lights.numLights && i < static_cast<int>(m_pointLightDescs.size()); ++i)
+        {
+            const auto& source = m_pointLightDescs[i];
+            float factor = 1.0f;
+            if (source.flicker)
+            {
+                const float phase = static_cast<float>(source.flickerSeed) * 1.618034f;
+                const float primary = sinf(totalTime * source.flickerFrequency * XM_2PI + phase);
+                const float secondary = sinf(totalTime * source.flickerFrequency * 1.713f * XM_2PI + phase * 2.37f);
+                factor += source.flickerAmplitude * (primary * 0.65f + secondary * 0.35f);
+                factor = (std::max)(0.1f, factor);
+            }
+            m_lights.lights[i].color = {
+                source.color[0] * factor, source.color[1] * factor, source.color[2] * factor
+            };
+        }
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
@@ -917,10 +945,24 @@ protected:
             auto* dsv = readOnlyDSV ? readOnlyDSV : m_forwardHDR_RT.GetDSV();
             ctx->OMSetRenderTargets(1, &rtv, dsv);
             for (auto& ps : m_particleSystems)
+            {
+                const float er = XMConvertToRadians(m_lights.elevDeg);
+                const float ar = XMConvertToRadians(m_lights.azimDeg);
+                XMFLOAT3 particleLightDir = {
+                    cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar)
+                };
+                XMFLOAT3 particleLightColor = {
+                    m_lights.lightColor[0] * m_lights.lightIntensity,
+                    m_lights.lightColor[1] * m_lights.lightIntensity,
+                    m_lights.lightColor[2] * m_lights.lightIntensity
+                };
                 ps->Render(ctx, view, proj,
                     m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight(),
                     m_forwardHDR_RT.GetDepthSRV(),
-                    m_camera->nearZ, m_camera->farZ);
+                    m_camera->nearZ, m_camera->farZ,
+                    particleLightDir, particleLightColor,
+                    0.18f * m_lights.iblIntensity);
+            }
         }
     }
 
@@ -1567,7 +1609,11 @@ private:
 
                 ImGui::Text("Transform");
                 ImGui::DragFloat3("Position", &ps.config.position.x, 0.1f, -50.0f, 50.0f);
-                ImGui::SliderFloat("Spawn Radius", &ps.config.spawnRadius, 0.0f, 5.0f);
+                ImGui::Combo("Spawn Shape", &ps.config.spawnShape, "Sphere\0Box\0");
+                if (ps.config.spawnShape == 1)
+                    ImGui::DragFloat3("Box Extents", &ps.config.spawnBoxExtents.x, 0.1f, 0.0f, 50.0f);
+                else
+                    ImGui::SliderFloat("Spawn Radius", &ps.config.spawnRadius, 0.0f, 5.0f);
                 ImGui::SliderFloat("Aspect Ratio", &ps.config.aspectRatio, 0.5f, 4.0f);
                 ImGui::SliderFloat("Rotation (deg)", &ps.config.rotationDegrees, -180.0f, 180.0f);
                 ImGui::Checkbox("Random Rotation", &ps.config.randomRotation);
@@ -1605,6 +1651,7 @@ private:
                 ImGui::Combo("Shader Mode", &ps.config.shaderMode, "Textured\0Ember\0");
                 ImGui::SliderFloat("Soft Distance", &ps.config.softDistance, 0.0f, 3.0f);
                 ImGui::SliderFloat("Tracer Stretch", &ps.config.tracerStretch, 0.0f, 0.25f);
+                ImGui::SliderFloat("Lighting Influence", &ps.config.lightingInfluence, 0.0f, 1.0f);
             }
             ImGui::PopID();
         }
@@ -1731,6 +1778,7 @@ private:
     DirectX::XMMATRIX            m_cachedProj = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX            m_cachedView = DirectX::XMMatrixIdentity();
     bool                         m_lightCastsShadow[8] = { true };
+    std::vector<SE::SceneDescriptor::PointLightDesc> m_pointLightDescs;
     float                        m_pointShadowBias       = 0.015f;
     SE::PhysicsWorld::RaycastHit m_rayHit        = {};
     bool                         m_rayHitValid   = false;
