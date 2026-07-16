@@ -300,7 +300,7 @@ static void TestOperationFailuresAndCancellation()
 {
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json");
+        operation.Start("Tests/Fixtures/async_level.json", {});
         const auto status = WaitForCpuPreparation(operation);
         Require(status.state == SE::LevelLoadState::Uploading,
                 "optional failures should not reject level preparation");
@@ -313,7 +313,7 @@ static void TestOperationFailuresAndCancellation()
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/missing_geometry.json");
+        operation.Start("Tests/Fixtures/missing_geometry.json", {});
         const auto status = WaitForCpuPreparation(operation);
         Require(status.state == SE::LevelLoadState::Failed,
                 "required geometry failure did not reject preparation");
@@ -321,20 +321,35 @@ static void TestOperationFailuresAndCancellation()
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json");
+        operation.Start("Tests/Fixtures/async_level.json", {});
         operation.Cancel();
         Require(operation.GetStatus().state == SE::LevelLoadState::Cancelled,
                 "active operation did not cancel cleanly");
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json");
+        operation.Start("Tests/Fixtures/async_level.json", {});
     }
+}
+
+static void TestCachedMeshSkipsImport()
+{
+    SE::AssetCacheSnapshot cache;
+    cache.meshes.emplace("Assets/TestFixtures/not_here.obj", std::make_shared<SE::Mesh>());
+    SE::LevelLoadOperation operation;
+    operation.Start("Tests/Fixtures/missing_geometry.json", std::move(cache));
+    const auto status = WaitForCpuPreparation(operation);
+    Require(status.state == SE::LevelLoadState::Uploading,
+            "cached required mesh still entered the import path");
+    Require(status.cacheHits == 1, "cached mesh hit was not reported");
+    Require(status.requiredFailures == 0, "cached mesh was treated as a failed import");
+    operation.Cancel();
 }
 
 static void RunTests()
 {
     TestOperationFailuresAndCancellation();
+    TestCachedMeshSkipsImport();
     TestValidV2();
     TestValidationFailures();
     TestTypedFieldValidation();

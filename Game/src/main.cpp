@@ -927,7 +927,7 @@ private:
         m_sceneLoadError.clear();
         m_completeSceneLoadNextFrame = false;
         m_loadingScenePath = scenePath;
-        m_levelLoad.Start(scenePath);
+        m_levelLoad.Start(scenePath, GetAssets().CaptureSnapshot());
     }
 
     void DrawLoadingUI()

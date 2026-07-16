@@ -66,6 +66,30 @@ void AssetManager::CacheTexture(const std::wstring& path, const AssetHandle<Text
     if (texture) m_textures[path] = texture;
 }
 
+AssetCacheSnapshot AssetManager::CaptureSnapshot()
+{
+    AssetCacheSnapshot snapshot;
+    std::vector<std::string> meshPaths;
+    meshPaths.reserve(m_meshes.size());
+    for (const auto& entry : m_meshes) meshPaths.push_back(entry.first);
+    for (const auto& path : meshPaths)
+        if (auto mesh = FindMesh(path)) snapshot.meshes.emplace(path, std::move(mesh));
+
+    for (auto it = m_textures.begin(); it != m_textures.end();)
+    {
+        if (auto texture = it->second.lock())
+        {
+            snapshot.textures.emplace(it->first, std::move(texture));
+            ++it;
+        }
+        else
+        {
+            it = m_textures.erase(it);
+        }
+    }
+    return snapshot;
+}
+
 AssetHandle<Texture2D> AssetManager::GetDefaultWhite()
 {
     if (auto h = m_defaultWhite.lock()) return h;
