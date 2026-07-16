@@ -28,7 +28,7 @@ struct SceneDescriptor
     // Skybox
     std::string skybox;
 
-    // Optional equirectangular HDR panorama for SSR fallback reflections
+    // Optional equirectangular HDR panorama used for environment lighting.
     std::string reflectionPanorama;
 
     // Camera
@@ -119,6 +119,9 @@ struct SceneDescriptor
         std::array<float, 3> emissiveColor = { 1.f, 1.f, 1.f };
 
         std::array<float, 3> tint = { 1.f, 1.f, 1.f };
+        bool planarReflection = false;
+        float reflectionStrength = 1.0f;
+        float reflectionResolutionScale = 0.5f;
     };
     std::vector<SceneObject> objects;
 

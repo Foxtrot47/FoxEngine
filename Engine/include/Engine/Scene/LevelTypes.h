@@ -56,6 +56,9 @@ struct LevelMaterialDefinition
     float emissiveIntensity = 1.0f;
     std::array<float, 3> emissiveColor = { 1.0f, 1.0f, 1.0f };
     std::array<float, 3> tint = { 1.0f, 1.0f, 1.0f };
+    bool planarReflection = false;
+    float reflectionStrength = 1.0f;
+    float reflectionResolutionScale = 0.5f;
 };
 
 enum class LevelPrimitiveType { Sphere, Plane };

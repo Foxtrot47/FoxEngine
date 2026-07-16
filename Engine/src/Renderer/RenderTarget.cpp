@@ -4,7 +4,8 @@
 namespace SE {
 
 bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
-                         DXGI_FORMAT format, bool withDepth, bool depthReadable)
+                         DXGI_FORMAT format, bool withDepth, bool depthReadable,
+                         bool generateMips)
 {
     m_width  = width;
     m_height = height;
@@ -13,12 +14,13 @@ bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
     D3D11_TEXTURE2D_DESC td = {};
     td.Width            = width;
     td.Height           = height;
-    td.MipLevels        = 1;
+    td.MipLevels        = generateMips ? 0 : 1;
     td.ArraySize        = 1;
     td.Format           = format;
     td.SampleDesc.Count = 1;
     td.Usage            = D3D11_USAGE_DEFAULT;
     td.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    td.MiscFlags        = generateMips ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
 
     HRESULT hr = device->CreateTexture2D(&td, nullptr, m_tex.GetAddressOf());
     if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateTexture2D failed (0x%08X)", hr); return false; }
@@ -153,6 +155,12 @@ void RenderTarget::UnbindDepthPS(ID3D11DeviceContext* ctx, UINT slot) const
 {
     ID3D11ShaderResourceView* none = nullptr;
     ctx->PSSetShaderResources(slot, 1, &none);
+}
+
+void RenderTarget::GenerateMips(ID3D11DeviceContext* ctx) const
+{
+    if (ctx && m_srv)
+        ctx->GenerateMips(m_srv.Get());
 }
 
 } // namespace SE
