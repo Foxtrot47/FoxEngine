@@ -131,6 +131,13 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 - **Soft particles**: depth-fade near geometry intersections
 - **HDR colors**: values > 1.0 trigger bloom glow
 
+### Development Asset Loading
+- Levels and source assets are loaded directly during the current runtime/rendering phase.
+- `LevelLoadOperation` prepares dependencies asynchronously, uploads GPU resources on the main thread, and reuses the in-memory `AssetManager` cache.
+- Assimp remains the development mesh importer for FBX, glTF, and OBJ assets.
+- Do not introduce native cooked asset formats, a disk-backed derived-data cache, incremental cooking/version invalidation, or publish-time asset packaging before the Editor/tooling phase.
+- A cooked pipeline is deferred because it requires editor-facing import workflows and format/version management that are premature for the current project stage.
+
 ## Current Milestone Roadmap
 
 ### Completed (Phase 1–9 partial)
@@ -156,3 +163,4 @@ M71: Particle asset serialization / default presets
 - Phase 11: Engine tooling & profiling
 - Phase 12: Scripting (Lua)
 - Phase 13: Editor
+- Cooked asset pipeline and publishing: native runtime formats, disk-backed derived-data cache, incremental recooking/version invalidation, and final asset packaging (implement with the Editor/tooling phase)

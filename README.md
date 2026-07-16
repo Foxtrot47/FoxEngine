@@ -29,10 +29,10 @@ A from-scratch DirectX 11 rendering engine built on Windows with C++17. Features
 - **Preset defaults** — Load emitter default presets from JSON in `Assets/Particles/Presets/`
 
 ### Engine Systems
-- **Scene Management** — JSON scene descriptors with hot-reload, objects + particles + lights
+- **Scene Management** — Asynchronous dependency preparation for JSON scenes, with objects + particles + lights
 - **Physics** — AABB/Sphere/OBB narrowphase, rigidbody dynamics, collision response, raycasting, character controller
 - **Input** — Win32 raw input, XInput gamepad
-- **Asset Pipeline** — DDS/WIC texture loading, Assimp mesh import
+- **Asset Pipeline** — Concurrent CPU preparation, main-thread D3D11 uploads, in-memory caching, DDS/WIC texture loading, and Assimp mesh import
 - **Lighting** — Directional + point + spot lights, all with shadow support
 
 ## Requirements
