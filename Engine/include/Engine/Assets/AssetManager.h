@@ -13,6 +13,12 @@ namespace SE {
 template<typename T>
 using AssetHandle = std::shared_ptr<T>;
 
+struct AssetCacheSnapshot
+{
+    std::unordered_map<std::string, AssetHandle<Mesh>> meshes;
+    std::unordered_map<std::wstring, AssetHandle<Texture2D>> textures;
+};
+
 class AssetManager
 {
 public:
@@ -22,6 +28,7 @@ public:
     AssetHandle<Texture2D> FindTexture(const std::wstring& path);
     void CacheMesh(const std::string& path, const AssetHandle<Mesh>& mesh);
     void CacheTexture(const std::wstring& path, const AssetHandle<Texture2D>& texture);
+    AssetCacheSnapshot CaptureSnapshot();
 
     // Fallback 1×1 textures for submeshes missing a particular map.
     AssetHandle<Texture2D> GetDefaultWhite();    // flat white albedo / roughness (all channels = 1.0)

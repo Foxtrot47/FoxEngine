@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 #include "Engine/Assets/AssetManager.h"
 #include "Engine/Renderer/ForwardPipeline.h"
@@ -30,6 +31,7 @@ struct LevelLoadStatus
     std::string currentAsset;
     uint32_t completedDependencies = 0;
     uint32_t dependencyCount = 0;
+    uint32_t cacheHits = 0;
     uint32_t requiredFailures = 0;
     std::vector<LevelDiagnostic> warnings;
     std::string failureReason;
@@ -59,7 +61,7 @@ public:
     LevelLoadOperation(const LevelLoadOperation&) = delete;
     LevelLoadOperation& operator=(const LevelLoadOperation&) = delete;
 
-    bool Start(const std::string& path);
+    bool Start(const std::string& path, AssetCacheSnapshot cache);
     void Cancel();
     void PumpUploads(ID3D11Device* device, ID3D11DeviceContext* context,
                      AssetManager& assets);
@@ -89,6 +91,9 @@ private:
     std::unique_ptr<PreparedLevel> m_prepared;
     std::vector<CpuMesh> m_cpuMeshes;
     std::vector<CpuTexture> m_cpuTextures;
+    AssetCacheSnapshot m_cache;
+    std::unordered_map<std::string, AssetHandle<Mesh>> m_readyMeshes;
+    std::unordered_map<std::wstring, AssetHandle<Texture2D>> m_readyTextures;
     size_t m_meshUploadIndex = 0;
     size_t m_textureUploadIndex = 0;
     double m_uploadMilliseconds = 0.0;

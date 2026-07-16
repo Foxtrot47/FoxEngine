@@ -20,11 +20,11 @@ std::string StemDDS(const std::string& raw)
     return (dot == std::string::npos ? name : name.substr(0, dot)) + ".dds";
 }
 
-std::string MaterialTexturePath(const MeshSourceData& mesh, const std::string& raw)
+std::string MaterialTexturePath(const std::string& directory, const std::string& raw)
 {
     const std::string dds = StemDDS(raw);
-    const std::string primary = LevelDependencyPlan::NormalizePath(mesh.directory + "Textures/" + dds);
-    const std::string fallback = LevelDependencyPlan::NormalizePath(mesh.directory + dds);
+    const std::string primary = LevelDependencyPlan::NormalizePath(directory + "Textures/" + dds);
+    const std::string fallback = LevelDependencyPlan::NormalizePath(directory + dds);
     std::error_code error;
     return std::filesystem::exists(primary, error) ? primary : fallback;
 }
@@ -61,7 +61,7 @@ void LevelLoadOperation::Join()
     if (m_coordinator.joinable()) m_coordinator.join();
 }
 
-bool LevelLoadOperation::Start(const std::string& path)
+bool LevelLoadOperation::Start(const std::string& path, AssetCacheSnapshot cache)
 {
     Cancel();
     {
@@ -71,6 +71,9 @@ bool LevelLoadOperation::Start(const std::string& path)
         m_prepared.reset();
         m_cpuMeshes.clear();
         m_cpuTextures.clear();
+        m_cache = std::move(cache);
+        m_readyMeshes = m_cache.meshes;
+        m_readyTextures = m_cache.textures;
         m_meshUploadIndex = 0;
         m_textureUploadIndex = 0;
         m_uploadMilliseconds = 0.0;
@@ -137,9 +140,21 @@ void LevelLoadOperation::Prepare(std::string path)
     }
     PublishProgress(0.05f, path);
 
-    std::vector<LevelDependency> meshes;
+    std::vector<LevelDependency> meshDependencies;
     for (const auto& dependency : prepared->plan.dependencies)
-        if (dependency.kind == LevelDependencyKind::Mesh) meshes.push_back(dependency);
+        if (dependency.kind == LevelDependencyKind::Mesh) meshDependencies.push_back(dependency);
+    std::vector<LevelDependency> meshes;
+    for (const auto& dependency : meshDependencies)
+    {
+        if (m_cache.meshes.find(dependency.path) == m_cache.meshes.end())
+            meshes.push_back(dependency);
+        else
+        {
+            std::lock_guard lock(m_mutex);
+            ++m_status.cacheHits;
+            ++m_status.completedDependencies;
+        }
+    }
     std::vector<CpuMesh> cpuMeshes(meshes.size());
     std::atomic<size_t> meshCursor { 0 };
     std::atomic<bool> meshFailed { false };
@@ -207,27 +222,55 @@ void LevelLoadOperation::Prepare(std::string path)
         for (const auto& subMesh : mesh.source.subMeshes)
             for (const auto& raw : { subMesh.material.albedoPath, subMesh.material.normalPath,
                                      subMesh.material.roughnessPath, subMesh.material.emissivePath })
-                if (!raw.empty()) addTexture({ MaterialTexturePath(mesh.source, raw), mesh.path,
+                if (!raw.empty()) addTexture({ MaterialTexturePath(mesh.source.directory, raw), mesh.path,
                                                LevelDependencyKind::Texture, false }, true);
+    for (const auto& dependency : meshDependencies)
     {
-        std::lock_guard lock(m_mutex);
-        m_status.dependencyCount = static_cast<uint32_t>(meshes.size() + textures.size());
+        const auto cached = m_cache.meshes.find(dependency.path);
+        if (cached == m_cache.meshes.end()) continue;
+        const auto& mesh = *cached->second;
+        for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+        {
+            const auto subMesh = mesh.GetSubMeshInfo(i);
+            for (const auto& raw : { subMesh.albedoPath, subMesh.normalPath,
+                                     subMesh.roughnessPath, subMesh.emissivePath })
+                if (!raw.empty()) addTexture({ MaterialTexturePath(mesh.GetDirectory(), raw),
+                                               dependency.path, LevelDependencyKind::Texture, false }, true);
+        }
     }
 
-    std::vector<CpuTexture> cpuTextures(textures.size());
+    std::vector<LevelDependency> textureTasks;
+    textureTasks.reserve(textures.size());
+    for (const auto& dependency : textures)
+    {
+        if (m_cache.textures.find(Wide(dependency.path)) == m_cache.textures.end())
+            textureTasks.push_back(dependency);
+        else
+        {
+            std::lock_guard lock(m_mutex);
+            ++m_status.cacheHits;
+            ++m_status.completedDependencies;
+        }
+    }
+    {
+        std::lock_guard lock(m_mutex);
+        m_status.dependencyCount = static_cast<uint32_t>(meshDependencies.size() + textures.size());
+    }
+
+    std::vector<CpuTexture> cpuTextures(textureTasks.size());
     std::atomic<size_t> textureCursor { 0 };
     const auto textureStart = Clock::now();
     workers.clear();
-    const unsigned textureWorkers = (std::min)(available, static_cast<unsigned>(textures.size()));
+    const unsigned textureWorkers = (std::min)(available, static_cast<unsigned>(textureTasks.size()));
     for (unsigned w = 0; w < textureWorkers; ++w)
     {
         workers.emplace_back([&] {
             for (;;)
             {
                 const size_t index = textureCursor.fetch_add(1);
-                if (index >= textures.size() || m_cancelled.load()) return;
+                if (index >= textureTasks.size() || m_cancelled.load()) return;
                 CpuTexture item;
-                item.dependency = textures[index];
+                item.dependency = textureTasks[index];
                 try
                 {
                     item.decoded = Texture2D::Decode(Wide(item.dependency.path).c_str(), item.source,
@@ -255,7 +298,6 @@ void LevelLoadOperation::Prepare(std::string path)
         std::lock_guard lock(m_mutex);
         m_cpuMeshes = std::move(cpuMeshes);
         m_cpuTextures = std::move(cpuTextures);
-        m_status.dependencyCount = static_cast<uint32_t>(m_cpuMeshes.size() + m_cpuTextures.size());
         m_prepared = std::move(prepared);
         m_status.state = LevelLoadState::Uploading;
         m_status.progress = (std::max)(m_status.progress, 0.80f);
@@ -290,7 +332,7 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
                 }
                 assets.CacheMesh(cpu.path, mesh);
             }
-            m_prepared->meshes.push_back(std::move(mesh));
+            m_readyMeshes[cpu.path] = std::move(mesh);
         }
         else if (m_textureUploadIndex < m_cpuTextures.size())
         {
@@ -305,7 +347,11 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
                     if (!texture->Upload(device, cpu.source)) texture.reset();
                     else assets.CacheTexture(Wide(cpu.dependency.path), texture);
                 }
-                if (texture) m_prepared->textures.push_back(std::move(texture));
+                if (texture)
+                {
+                    m_readyTextures[Wide(cpu.dependency.path)] = texture;
+                    m_prepared->textures.push_back(std::move(texture));
+                }
             }
         }
         else break;
@@ -317,9 +363,21 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
     m_uploadMilliseconds += std::chrono::duration<double, std::milli>(Clock::now() - frameStart).count();
     if (m_meshUploadIndex < m_cpuMeshes.size() || m_textureUploadIndex < m_cpuTextures.size()) return;
 
-    std::vector<std::vector<ForwardPipeline::SubMat>> uniqueMaterials;
-    for (const auto& mesh : m_prepared->meshes)
+    m_prepared->meshes.clear();
+    m_prepared->materials.clear();
+    for (const auto& descriptorMesh : m_prepared->descriptor.meshes)
     {
+        const std::string path = LevelDependencyPlan::NormalizePath(descriptorMesh.path);
+        const auto ready = m_readyMeshes.find(path);
+        if (ready == m_readyMeshes.end() || !ready->second)
+        {
+            ++m_status.requiredFailures;
+            m_status.state = LevelLoadState::Failed;
+            m_status.failureReason = "Required cached mesh disappeared: " + path;
+            return;
+        }
+        const auto& mesh = ready->second;
+        m_prepared->meshes.push_back(mesh);
         std::vector<ForwardPipeline::SubMat> materials;
         materials.reserve(mesh->GetSubMeshCount());
         for (uint32_t i = 0; i < mesh->GetSubMeshCount(); ++i)
@@ -346,21 +404,7 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
             material.alphaCutoff = info.alphaCutoff;
             materials.push_back(std::move(material));
         }
-        uniqueMaterials.push_back(std::move(materials));
-    }
-    const auto uniqueMeshes = m_prepared->meshes;
-    m_prepared->meshes.clear();
-    m_prepared->materials.clear();
-    for (const auto& descriptorMesh : m_prepared->descriptor.meshes)
-    {
-        const std::string path = LevelDependencyPlan::NormalizePath(descriptorMesh.path);
-        size_t index = 0;
-        while (index < m_cpuMeshes.size() && m_cpuMeshes[index].path != path) ++index;
-        if (index < uniqueMeshes.size())
-        {
-            m_prepared->meshes.push_back(uniqueMeshes[index]);
-            m_prepared->materials.push_back(uniqueMaterials[index]);
-        }
+        m_prepared->materials.push_back(std::move(materials));
     }
     for (const auto& object : m_prepared->descriptor.objects)
         m_prepared->objectMaterials.push_back(ResolveObjectMaterial(assets, object));
@@ -374,6 +418,9 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
     m_prepared->diagnostics.insert(m_prepared->diagnostics.end(),
                                    m_status.warnings.begin(), m_status.warnings.end());
     m_prepared->timings = m_status.timings;
+    m_cache = {};
+    m_readyMeshes.clear();
+    m_readyTextures.clear();
     m_status.progress = 1.0f;
     m_status.state = LevelLoadState::Complete;
 }
