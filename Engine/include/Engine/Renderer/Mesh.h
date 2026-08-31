@@ -33,6 +33,8 @@ struct SubMeshInfo
     std::string emissivePath;
     AlphaMode   alphaMode = AlphaMode::Opaque;
     float       alphaCutoff = 0.5f;
+    bool        packedMR = false;       // roughnessPath texture is (x, roughness, metallic)
+    float       roughnessFactor = 1.0f; // scalar roughness for texture-less materials
 };
 
 struct MeshSubMeshSource
@@ -78,6 +80,8 @@ private:
         std::string  emissivePath;
         AlphaMode    alphaMode = AlphaMode::Opaque;
         float        alphaCutoff = 0.5f;
+        bool         packedMR = false;
+        float        roughnessFactor = 1.0f;
     };
     std::vector<SubMesh> m_subMeshes;
     std::string          m_directory;

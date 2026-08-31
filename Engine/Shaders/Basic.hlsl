@@ -31,6 +31,7 @@ cbuffer MaterialCB : register(b3)
     float3 AlbedoTint;  float  RoughnessScale;
     float  Metallic;    float  Unlit;  float  DebugShadow;  float  AlphaCutoff;
     float  EmissiveIntensity;  float3 EmissiveColor;
+    float  PackedMR;    float3 _mcbPad; // PackedMR: t1 = (x, roughness, metallic) packed map
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -255,8 +256,14 @@ PSOut PS_Main(PSIn input)
     if (AlphaCutoff > 0.0f)
         clip(albedo.a - AlphaCutoff);
 
-    float roughness = max(saturate(g_roughness.Sample(g_sampler, input.TexCoord).r * RoughnessScale), 0.04f);
-    float metallic  = saturate(g_metallic.Sample(g_sampler, input.TexCoord).r * Metallic);
+    // Packed metallic-roughness (glTF / ORCA layout): G = roughness, B = metallic.
+    // Legacy layout: t1.r = roughness, t7.r = metallic.
+    float3 mrSample = g_roughness.Sample(g_sampler, input.TexCoord).rgb;
+    float roughSample = PackedMR > 0.5f ? mrSample.g : mrSample.r;
+    float roughness = max(saturate(roughSample * RoughnessScale), 0.04f);
+    float metalSample = PackedMR > 0.5f ? mrSample.b
+                                        : g_metallic.Sample(g_sampler, input.TexCoord).r;
+    float metallic  = saturate(metalSample * Metallic);
     float3 F0       = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
 
     // Cascaded directional shadow (PCF 3×3)
@@ -366,6 +373,12 @@ PSOut PS_Main(PSIn input)
     {
         o.color  = float4(shadow, shadow, shadow, 1.0f);
         o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return o;
+    }
+    if (DebugLightMode > 2.5f)
+    {
+        o.color  = float4(roughness.xxx, 1.0f);
+        o.normal = float4(0.0f, 0.0f, 0.0f, roughness);
         return o;
     }
     if (DebugLightMode > 1.5f)

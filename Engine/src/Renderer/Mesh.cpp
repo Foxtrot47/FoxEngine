@@ -143,10 +143,27 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
             // Normal map.
             source.material.normalPath = tryGet(aiTextureType_NORMALS);
 
-            // Roughness: glTF metallic-roughness texture (G = roughness).
+            // Roughness / metallic workflow detection from typed Assimp slots only
+            // (never UNKNOWN or filename guesses):
+            //  - glTF metallic-roughness: Assimp reports the packed texture as both
+            //    DIFFUSE_ROUGHNESS and METALNESS (same path) -> G=roughness, B=metallic.
+            //  - UE/ORCA FBX exports: the SPECULAR slot carries the same packed
+            //    layout (content-verified: R unused, G roughness, B metallic).
+            //  - Texture-less materials fall back to the scalar roughness factor.
             source.material.roughnessPath = tryGet(aiTextureType_DIFFUSE_ROUGHNESS);
-            if (source.material.roughnessPath.empty())
-                source.material.roughnessPath = tryGet(aiTextureType_UNKNOWN);
+            if (!source.material.roughnessPath.empty())
+            {
+                source.material.packedMR =
+                    source.material.roughnessPath == tryGet(aiTextureType_METALNESS);
+            }
+            else
+            {
+                source.material.roughnessPath = tryGet(aiTextureType_SPECULAR);
+                source.material.packedMR = !source.material.roughnessPath.empty();
+            }
+            ai_real roughnessFactor = 1.0f;
+            if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS)
+                source.material.roughnessFactor = static_cast<float>(roughnessFactor);
 
             // Emissive map
             source.material.emissivePath = tryGet(aiTextureType_EMISSIVE);
@@ -209,6 +226,8 @@ bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)
         sm.emissivePath = std::move(input.material.emissivePath);
         sm.alphaMode = input.material.alphaMode;
         sm.alphaCutoff = input.material.alphaCutoff;
+        sm.packedMR = input.material.packedMR;
+        sm.roughnessFactor = input.material.roughnessFactor;
         m_subMeshes.push_back(std::move(sm));
     }
     m_directory = std::move(source.directory);
@@ -244,6 +263,8 @@ SubMeshInfo Mesh::GetSubMeshInfo(uint32_t index) const
     info.emissivePath  = sm.emissivePath;
     info.alphaMode     = sm.alphaMode;
     info.alphaCutoff   = sm.alphaCutoff;
+    info.packedMR      = sm.packedMR;
+    info.roughnessFactor = sm.roughnessFactor;
     return info;
 }
 
