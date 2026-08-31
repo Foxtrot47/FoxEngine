@@ -668,23 +668,7 @@ protected:
         for (auto& ps : m_particleSystems)
             ps->Update(GetRenderer().GetContext(), dt);
 
-        const float totalTime = static_cast<float>(GetClock().GetTotalTime());
-        for (int i = 0; i < m_lights.numLights && i < static_cast<int>(m_pointLightDescs.size()); ++i)
-        {
-            const auto& source = m_pointLightDescs[i];
-            float factor = 1.0f;
-            if (source.flicker)
-            {
-                const float phase = static_cast<float>(source.flickerSeed) * 1.618034f;
-                const float primary = sinf(totalTime * source.flickerFrequency * XM_2PI + phase);
-                const float secondary = sinf(totalTime * source.flickerFrequency * 1.713f * XM_2PI + phase * 2.37f);
-                factor += source.flickerAmplitude * (primary * 0.65f + secondary * 0.35f);
-                factor = (std::max)(0.1f, factor);
-            }
-            m_lights.lights[i].color = {
-                source.color[0] * factor, source.color[1] * factor, source.color[2] * factor
-            };
-        }
+        UpdatePointLightFlicker(static_cast<float>(GetClock().GetTotalTime()));
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
@@ -1164,6 +1148,67 @@ private:
         ImGui::PopStyleVar();
     }
 
+    // Scene-driven firelight: modulate live light color from the base descriptor
+    // color so UI edits target the descriptor and never fight the modulation.
+    void UpdatePointLightFlicker(float totalTime)
+    {
+        for (int i = 0; i < m_lights.numLights && i < static_cast<int>(m_pointLightDescs.size()); ++i)
+        {
+            const auto& source = m_pointLightDescs[i];
+            float factor = 1.0f;
+            if (source.flicker)
+            {
+                const float phase = static_cast<float>(source.flickerSeed) * 1.618034f;
+                const float primary = sinf(totalTime * source.flickerFrequency * XM_2PI + phase);
+                const float secondary = sinf(totalTime * source.flickerFrequency * 1.713f * XM_2PI + phase * 2.37f);
+                factor += source.flickerAmplitude * (primary * 0.65f + secondary * 0.35f);
+                factor = (std::max)(0.1f, factor);
+            }
+            m_lights.lights[i].color = {
+                source.color[0] * factor, source.color[1] * factor, source.color[2] * factor
+            };
+        }
+    }
+
+    void DrawPointLightsPanel()
+    {
+        ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
+        for (int i = 0; i < m_lights.numLights; ++i)
+        {
+            ImGui::PushID(i);
+            char label[24];
+            sprintf_s(label, "Point Light %d", i + 1);
+            if (ImGui::TreeNode(label))
+            {
+                ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
+                if (i < static_cast<int>(m_pointLightDescs.size()))
+                {
+                    // Scene-driven light: edit the base color; the per-frame
+                    // flicker factor is applied on top of it.
+                    auto& source = m_pointLightDescs[i];
+                    ImGui::ColorEdit3("Color", source.color.data(),
+                                      ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                    ImGui::Checkbox("Flicker", &source.flicker);
+                    if (source.flicker)
+                    {
+                        ImGui::SliderFloat("Amplitude", &source.flickerAmplitude, 0.0f, 1.0f);
+                        ImGui::SliderFloat("Frequency", &source.flickerFrequency, 0.5f, 20.0f);
+                    }
+                }
+                else
+                {
+                    ImGui::ColorEdit3("Color", &m_lights.lights[i].color.x,
+                                      ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                }
+                ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
+                if (i < 2)
+                    ImGui::Checkbox("Cast Shadow", &m_lightCastsShadow[i]);
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+    }
+
     void DrawUI(XMMATRIX view, XMMATRIX proj)
     {
         const bool sceneLoading = m_initialSceneLoad || !m_loadingScenePath.empty();
@@ -1438,43 +1483,7 @@ private:
             }
         }
         if (ImGui::CollapsingHeader("Point Lights"))
-        {
-            ImGui::SliderInt("Active", &m_lights.numLights, 0, 8);
-            for (int i = 0; i < m_lights.numLights; ++i)
-            {
-                ImGui::PushID(i);
-                char label[24];
-                sprintf_s(label, "Point Light %d", i + 1);
-                if (ImGui::TreeNode(label))
-                {
-                    ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
-                    if (i < static_cast<int>(m_pointLightDescs.size()))
-                    {
-                        // Scene-driven light: edit the base color; the per-frame
-                        // flicker factor is applied on top of it.
-                        auto& source = m_pointLightDescs[i];
-                        ImGui::ColorEdit3("Color", source.color.data(),
-                                          ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-                        ImGui::Checkbox("Flicker", &source.flicker);
-                        if (source.flicker)
-                        {
-                            ImGui::SliderFloat("Amplitude", &source.flickerAmplitude, 0.0f, 1.0f);
-                            ImGui::SliderFloat("Frequency", &source.flickerFrequency, 0.5f, 20.0f);
-                        }
-                    }
-                    else
-                    {
-                        ImGui::ColorEdit3("Color", &m_lights.lights[i].color.x,
-                                          ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-                    }
-                    ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
-                    if (i < 2)
-                        ImGui::Checkbox("Cast Shadow", &m_lightCastsShadow[i]);
-                    ImGui::TreePop();
-                }
-                ImGui::PopID();
-            }
-        }
+            DrawPointLightsPanel();
         if (ImGui::CollapsingHeader("Debug"))
         {
             ImGui::Checkbox("Show Shadow Factor", &m_debugShadow);
