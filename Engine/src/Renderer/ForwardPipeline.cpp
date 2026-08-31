@@ -408,28 +408,20 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
             prevMode = mat.alphaMode;
         }
 
-        // Set alpha cutoff in material CB when needed
-        if (mat.alphaMode == AlphaMode::Cutout)
-        {
-            MaterialParamsCBData mc = {};
-            mc.albedoTint     = { 1.0f, 1.0f, 1.0f };
-            mc.roughnessScale = 1.0f;
-            mc.alphaCutoff    = mat.alphaCutoff;
-            mc.emissiveIntensity = 1.0f;
-            mc.emissiveColor  = { 1.0f, 1.0f, 1.0f };
-            m_materialCB.Update(ctx, mc);
-            m_materialCB.BindPS(ctx, 3);
-        }
-        else if (mat.alphaMode != AlphaMode::Opaque)
-        {
-            MaterialParamsCBData mc = {};
-            mc.albedoTint     = { 1.0f, 1.0f, 1.0f };
-            mc.roughnessScale = 1.0f;
-            mc.emissiveIntensity = 1.0f;
-            mc.emissiveColor  = { 1.0f, 1.0f, 1.0f };
-            m_materialCB.Update(ctx, mc);
-            m_materialCB.BindPS(ctx, 3);
-        }
+        // Every draw must initialize MaterialCB. Leaving opaque draws untouched
+        // carries zero/stale parameters, which collapses roughness to 0.04 and can
+        // also leak alpha, emissive, metallic, or debug state from a previous draw.
+        MaterialParamsCBData mc = {};
+        mc.albedoTint       = m_globalTint;
+        mc.roughnessScale   = mat.roughnessScale * m_globalRoughnessScale;
+        mc.metallic         = m_globalMetallic; // texture value scales by the global override
+        mc.debugShadow      = m_globalDebugShadow;
+        mc.alphaCutoff      = mat.alphaMode == AlphaMode::Cutout ? mat.alphaCutoff : 0.0f;
+        mc.emissiveIntensity = 1.0f;
+        mc.emissiveColor    = { 1.0f, 1.0f, 1.0f };
+        mc.packedMR         = mat.packedMR ? 1.0f : 0.0f;
+        m_materialCB.Update(ctx, mc);
+        m_materialCB.BindPS(ctx, 3);
 
         mat.albedo->BindPS(ctx, 0);
         mat.roughness->BindPS(ctx, 1);
@@ -463,6 +455,15 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.emissiveColor  = emissiveColor;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
+}
+
+void ForwardPipeline::SetGlobalMaterialParams(DirectX::XMFLOAT3 tint, float roughnessScale,
+                                              float metallic, float debugShadow)
+{
+    m_globalTint = tint;
+    m_globalRoughnessScale = roughnessScale;
+    m_globalMetallic = metallic;
+    m_globalDebugShadow = debugShadow;
 }
 
 void ForwardPipeline::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,

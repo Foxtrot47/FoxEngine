@@ -61,6 +61,12 @@ public:
                            float debugShadow = 0.0f, float emissiveIntensity = 1.0f,
                            DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f });
 
+    // Global overrides applied on top of per-submesh material values during Flush().
+    // tint replaces AlbedoTint, roughnessScale/metallic multiply texture values,
+    // debugShadow enables the shadow-factor debug view.
+    void SetGlobalMaterialParams(DirectX::XMFLOAT3 tint, float roughnessScale,
+                                 float metallic, float debugShadow);
+
     // --- Queued rendering (M42) ---
     // Submit a mesh for sorted draw. Call Flush() after all submits to actually draw.
     void SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
@@ -149,6 +155,10 @@ private:
 
     ConstantBuffer<TransformCBData>           m_transformCB;
     ConstantBuffer<MaterialParamsCBData>      m_materialCB;
+    DirectX::XMFLOAT3 m_globalTint = { 1.0f, 1.0f, 1.0f };
+    float m_globalRoughnessScale = 1.0f;
+    float m_globalMetallic = 1.0f;
+    float m_globalDebugShadow = 0.0f;
     ConstantBuffer<ForwardShadowCBData>       m_shadowCB;
     ConstantBuffer<PlanarReflectionCBData>    m_planarCB;
     SamplerState                              m_sampler;

@@ -843,7 +843,7 @@ protected:
         m_pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
         m_pipeline.BindPointShadows(ctx, ptSRVs[0], ptSRVs[1], numPtShadows, m_pointShadowBias);
         m_spotLight.BindForLitPass(ctx);
-        m_pipeline.SetMaterialParams(ctx,
+        m_pipeline.SetGlobalMaterialParams(
             { m_matTint[0], m_matTint[1], m_matTint[2] }, m_roughnessScale, m_metallic,
             m_debugShadow ? 1.0f : 0.0f);
         for (const auto& loaded : m_loadedMeshes)
@@ -1750,7 +1750,7 @@ private:
 
     float m_matTint[3]     = { 1.0f, 1.0f, 1.0f };
     float m_roughnessScale = 1.0f;
-    float m_metallic       = 0.0f;
+    float m_metallic       = 1.0f; // global scale on texture metallic; 1 = texture-driven
 
     SE::PhysicsWorld        m_physicsWorld;
     SE::TransformComponent* m_ballTransform = nullptr;
