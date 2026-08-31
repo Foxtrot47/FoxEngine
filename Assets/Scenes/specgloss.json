@@ -1,0 +1,85 @@
+{
+  "format": "FoxLevel",
+  "version": 2,
+  "name": "SpecGloss vs MetalRough",
+  "settings": {
+    "environment": {
+      "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
+      "iblIntensity": 1.0
+    },
+    "toneMapping": {
+      "operator": "ACES",
+      "exposure": 1.0,
+      "gammaCorrect": false
+    },
+    "bloom": {
+      "enabled": true,
+      "threshold": 1.0,
+      "intensity": 0.1,
+      "scatter": 0.7
+    }
+  },
+  "entities": [
+    {
+      "id": "0000000000000001",
+      "name": "SpecGlossVsMetalRough",
+      "components": {
+        "transform": {
+          "position": [
+            0,
+            2,
+            0
+          ],
+          "rotationDegrees": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            10,
+            10,
+            10
+          ]
+        },
+        "meshRenderer": {
+          "mesh": "Assets/TestAssets/SpecGlossVsMetalRough/SpecGlossVsMetalRough.gltf",
+          "castShadows": true,
+          "receiveShadows": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000002",
+      "name": "Main Camera",
+      "components": {
+        "camera": {
+          "eye": [
+            0,
+            2.2,
+            -7
+          ],
+          "yaw": 0,
+          "pitch": 0,
+          "nearZ": 0.05,
+          "farZ": 200
+        }
+      }
+    },
+    {
+      "id": "0000000000000003",
+      "name": "Sun",
+      "components": {
+        "directionalLight": {
+          "elevation": 55.0,
+          "azimuth": -30.0,
+          "intensity": 2.0,
+          "color": [
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    }
+  ]
+}
