@@ -20,13 +20,27 @@ std::string StemDDS(const std::string& raw)
     return (dot == std::string::npos ? name : name.substr(0, dot)) + ".dds";
 }
 
+std::string BaseName(const std::string& raw)
+{
+    std::string p = raw;
+    std::replace(p.begin(), p.end(), '\\', '/');
+    const size_t slash = p.rfind('/');
+    return slash == std::string::npos ? p : p.substr(slash + 1);
+}
+
+// DDS variants are preferred; source-format files (png/jpg) are development
+// fallbacks so Assimp-imported assets render without a conversion step.
 std::string MaterialTexturePath(const std::string& directory, const std::string& raw)
 {
-    const std::string dds = StemDDS(raw);
-    const std::string primary = LevelDependencyPlan::NormalizePath(directory + "Textures/" + dds);
-    const std::string fallback = LevelDependencyPlan::NormalizePath(directory + dds);
+    const std::string candidates[] = {
+        LevelDependencyPlan::NormalizePath(directory + "Textures/" + StemDDS(raw)),
+        LevelDependencyPlan::NormalizePath(directory + StemDDS(raw)),
+        LevelDependencyPlan::NormalizePath(directory + BaseName(raw)),
+    };
     std::error_code error;
-    return std::filesystem::exists(primary, error) ? primary : fallback;
+    for (const auto& candidate : candidates)
+        if (std::filesystem::exists(candidate, error)) return candidate;
+    return candidates[1];
 }
 
 AssetHandle<Texture2D> FindTexture(AssetManager& assets, const std::string& path)
@@ -385,10 +399,7 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
             const auto info = mesh->GetSubMeshInfo(i);
             const auto resolve = [&](const std::string& raw) {
                 if (raw.empty()) return AssetHandle<Texture2D>{};
-                const std::string dds = StemDDS(raw);
-                auto texture = FindTexture(assets, mesh->GetDirectory() + "Textures/" + dds);
-                if (!texture) texture = FindTexture(assets, mesh->GetDirectory() + dds);
-                return texture;
+                return FindTexture(assets, MaterialTexturePath(mesh->GetDirectory(), raw));
             };
             ForwardPipeline::SubMat material;
             material.albedo = resolve(info.albedoPath);
