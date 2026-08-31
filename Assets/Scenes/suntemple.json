@@ -6,7 +6,7 @@
     "transform": {
       "position": [0, 0, 0],
       "rotation": [0, 0, 0],
-      "scale": 0.01
+      "scale": 1.0
     }
   },
   "skybox": "Assets/SunTemple/SunTemple_Skybox.dds",

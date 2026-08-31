@@ -375,7 +375,7 @@ static void TestGltfSpecGlossDetection()
     Require(SE::Mesh::Import("Assets/TestFixtures/spec_gloss.gltf", source,
                              [](float) { return true; }),
             "spec/gloss glTF import failed");
-    Require(source.subMeshes.size() == 2, "spec/gloss glTF submesh count mismatch");
+    Require(source.subMeshes.size() == 3, "spec/gloss glTF submesh count mismatch");
 
     const auto& textured = source.subMeshes[0].material;
     Require(textured.albedoPath == "diffuse.png", "spec/gloss diffuse path mismatch");
@@ -392,6 +392,14 @@ static void TestGltfSpecGlossDetection()
     Require(scalar.roughnessPath.empty(), "texture-less spec/gloss should have no roughness path");
     Require(scalar.roughnessFactor > 0.74f && scalar.roughnessFactor < 0.76f,
             "texture-less spec/gloss roughness was not derived from glossiness");
+
+    // Node transforms must be baked into vertices (glTF places meshes via nodes),
+    // and a mesh referenced by two nodes must yield one submesh per instance.
+    float minX = 1e9f, instanceMaxX = -1e9f;
+    for (const auto& vertex : source.subMeshes[1].vertices) minX = (std::min)(minX, vertex.x);
+    for (const auto& vertex : source.subMeshes[2].vertices) instanceMaxX = (std::max)(instanceMaxX, vertex.x);
+    Require(minX > 4.0f, "glTF node translation was not baked into mesh vertices");
+    Require(instanceMaxX < -3.5f, "instanced glTF mesh was not duplicated per node");
 }
 
 static void TestCpuTextureDecode()

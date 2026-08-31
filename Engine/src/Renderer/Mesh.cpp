@@ -131,14 +131,35 @@ static void ExtractSubMeshMaterial(const aiMaterial* mat, SubMeshInfo& out)
     DetectAlphaMode(mat, out);
 }
 
-static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v)
+// World transforms per mesh index, gathered from the node hierarchy. A mesh
+// referenced by several nodes gets one entry per instance.
+static void CollectNodeTransforms(const aiNode* node, const aiMatrix4x4& parent,
+                                  std::vector<std::vector<aiMatrix4x4>>& out)
 {
-    const aiVector3D pos = mesh->mVertices[v];
-    const aiVector3D n   = mesh->mNormals    ? mesh->mNormals[v]    : aiVector3D(0, 1, 0);
-    const aiVector3D t   = mesh->mTangents   ? mesh->mTangents[v]   : aiVector3D(1, 0, 0);
-    const aiVector3D b   = mesh->mBitangents ? mesh->mBitangents[v] : aiVector3D(0, 1, 0);
+    const aiMatrix4x4 world = parent * node->mTransformation;
+    for (uint32_t i = 0; i < node->mNumMeshes; ++i)
+        out[node->mMeshes[i]].push_back(world);
+    for (uint32_t i = 0; i < node->mNumChildren; ++i)
+        CollectNodeTransforms(node->mChildren[i], world, out);
+}
+
+static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v,
+                             const aiMatrix4x4& world, const aiMatrix3x3& normalMat,
+                             bool applyTransform)
+{
+    aiVector3D pos = mesh->mVertices[v];
+    aiVector3D n   = mesh->mNormals    ? mesh->mNormals[v]    : aiVector3D(0, 1, 0);
+    aiVector3D t   = mesh->mTangents   ? mesh->mTangents[v]   : aiVector3D(1, 0, 0);
+    aiVector3D b   = mesh->mBitangents ? mesh->mBitangents[v] : aiVector3D(0, 1, 0);
     const aiVector3D uv  = mesh->mTextureCoords[0] ? mesh->mTextureCoords[0][v]
                                                    : aiVector3D(0, 0, 0);
+    if (applyTransform)
+    {
+        pos = world * pos;
+        n   = (normalMat * n).NormalizeSafe();
+        t   = (normalMat * t).NormalizeSafe();
+        b   = (normalMat * b).NormalizeSafe();
+    }
     MeshVertex vtx;
     vtx.x = pos.x;  vtx.y = pos.y;  vtx.z = pos.z;
     vtx.nx = n.x;   vtx.ny = n.y;   vtx.nz = n.z;
@@ -150,12 +171,19 @@ static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v)
 
 // Reads one Assimp mesh into a submesh source. The progress callback maps the
 // submesh range onto [0.8, 1.0] of the overall import; returning false cancels.
-static bool ReadSubMesh(const aiScene* scene, uint32_t m,
+static bool ReadSubMesh(const aiScene* scene, uint32_t m, const aiMatrix4x4& world,
                         const Mesh::ImportProgressCallback& progress,
                         MeshSubMeshSource& out, AABB& bounds)
 {
     const aiMesh* mesh = scene->mMeshes[m];
     const float meshCount = static_cast<float>(scene->mNumMeshes);
+
+    const bool applyTransform = !world.IsIdentity();
+    aiMatrix3x3 normalMat(world);
+    const float det = normalMat.Determinant();
+    if (applyTransform)
+        normalMat.Inverse().Transpose();
+    const bool flipWinding = det < 0.0f;
 
     out.vertices.reserve(mesh->mNumVertices);
     for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
@@ -166,7 +194,7 @@ static bool ReadSubMesh(const aiScene* scene, uint32_t m,
                       meshCount))
             return false;
 
-        const MeshVertex vtx = ReadVertex(mesh, v);
+        const MeshVertex vtx = ReadVertex(mesh, v, world, normalMat, applyTransform);
         out.vertices.push_back(vtx);
         bounds.Expand({ vtx.x, vtx.y, vtx.z });
     }
@@ -181,8 +209,17 @@ static bool ReadSubMesh(const aiScene* scene, uint32_t m,
             return false;
 
         const aiFace& face = mesh->mFaces[f];
-        for (uint32_t i = 0; i < face.mNumIndices; ++i)
-            out.indices.push_back(face.mIndices[i]);
+        if (flipWinding && face.mNumIndices == 3)
+        {
+            out.indices.push_back(face.mIndices[2]);
+            out.indices.push_back(face.mIndices[1]);
+            out.indices.push_back(face.mIndices[0]);
+        }
+        else
+        {
+            for (uint32_t i = 0; i < face.mNumIndices; ++i)
+                out.indices.push_back(face.mIndices[i]);
+        }
     }
 
     if (mesh->mMaterialIndex < scene->mNumMaterials)
@@ -226,17 +263,28 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
     output.subMeshes.reserve(scene->mNumMeshes);
     output.bounds = AABB{};
 
+    // Bake node placement into vertices (glTF and FBX position meshes via nodes).
+    std::vector<std::vector<aiMatrix4x4>> nodeTransforms(scene->mNumMeshes);
+    CollectNodeTransforms(scene->mRootNode, aiMatrix4x4(), nodeTransforms);
+
     for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
     {
         if (progress && !progress(0.8f + 0.2f * static_cast<float>(m) /
                                  static_cast<float>(scene->mNumMeshes)))
             return false;
 
-        MeshSubMeshSource source;
-        if (!ReadSubMesh(scene, m, progress, source, output.bounds))
-            return false;
+        // Unreferenced meshes keep identity placement; instanced meshes are duplicated.
+        if (nodeTransforms[m].empty())
+            nodeTransforms[m].push_back(aiMatrix4x4());
 
-        output.subMeshes.push_back(std::move(source));
+        for (const aiMatrix4x4& world : nodeTransforms[m])
+        {
+            MeshSubMeshSource source;
+            if (!ReadSubMesh(scene, m, world, progress, source, output.bounds))
+                return false;
+
+            output.subMeshes.push_back(std::move(source));
+        }
     }
 
     if (progress && !progress(1.0f))
