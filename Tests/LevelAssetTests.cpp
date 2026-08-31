@@ -344,6 +344,29 @@ static void TestCpuMeshImport()
         [](float) { return false; }), "cancelled mesh import unexpectedly succeeded");
 }
 
+static void TestGltfPackedMRDetection()
+{
+    SE::MeshSourceData source;
+    Require(SE::Mesh::Import("Assets/TestFixtures/packed_mr.gltf", source,
+                             [](float) { return true; }),
+            "packed MR glTF import failed");
+    Require(source.subMeshes.size() == 2, "packed MR glTF submesh count mismatch");
+
+    const auto& packed = source.subMeshes[0].material;
+    Require(packed.albedoPath == "albedo.png", "glTF base color path mismatch");
+    Require(packed.roughnessPath == "packed_mr.png",
+            "glTF metallic-roughness texture was not routed to the roughness slot");
+    Require(packed.packedMR, "shared metallic-roughness texture was not flagged as packed");
+    Require(packed.normalPath == "normal.png", "glTF normal path mismatch");
+    Require(packed.roughnessFactor == 1.0f, "textured material roughness factor should default to 1");
+
+    const auto& scalar = source.subMeshes[1].material;
+    Require(scalar.roughnessPath.empty(), "texture-less material should have no roughness path");
+    Require(!scalar.packedMR, "texture-less material must not be flagged as packed");
+    Require(scalar.roughnessFactor > 0.34f && scalar.roughnessFactor < 0.36f,
+            "scalar roughness factor was not imported");
+}
+
 static void TestCpuTextureDecode()
 {
     SE::TextureSourceData png;
@@ -458,6 +481,7 @@ static void RunTests()
     TestBistroRuntimeDescriptor();
     TestDependencyPlan();
     TestCpuMeshImport();
+    TestGltfPackedMRDetection();
     TestCpuTextureDecode();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
