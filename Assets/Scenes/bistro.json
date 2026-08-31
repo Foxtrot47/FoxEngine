@@ -5,7 +5,8 @@
   "settings": {
     "environment": {
       "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
-      "iblIntensity": 1.0
+      "iblIntensity": 1.0,
+      "diffuseIBLSaturation": 0.0
     },
     "physics": {
       "floor": {

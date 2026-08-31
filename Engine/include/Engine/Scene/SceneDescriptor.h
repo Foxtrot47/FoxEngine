@@ -40,6 +40,7 @@ struct SceneDescriptor
     SunDesc sun;
 
     float iblIntensity = 1.0f;
+    float diffuseIBLSaturation = 1.0f;
 
     // Point lights
     using PointLightDesc = LevelPointLightDefinition;

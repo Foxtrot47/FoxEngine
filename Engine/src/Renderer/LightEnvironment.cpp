@@ -24,7 +24,7 @@ void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 camera
     lc.lightColor    = { lightColor[0] * lightIntensity,
                          lightColor[1] * lightIntensity,
                          lightColor[2] * lightIntensity };
-    lc._pad0         = 0.0f;
+    lc.diffuseIBLSaturation = diffuseIBLSaturation;
     lc.cameraPos     = cameraPos;
     lc.debugLightMode = debugLightMode;
     XMStoreFloat4x4(&lc.lightViewProj, lightViewProj);

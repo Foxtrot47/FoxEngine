@@ -385,6 +385,7 @@ public:
         m_lights.lightColor[1] = desc.sun.color[1];
         m_lights.lightColor[2] = desc.sun.color[2];
         m_lights.iblIntensity = desc.iblIntensity;
+        m_lights.diffuseIBLSaturation = desc.diffuseIBLSaturation;
         m_lights.numLights = (std::min)(static_cast<int>(desc.pointLights.size()), 8);
         m_pointLightDescs = desc.pointLights;
         std::fill(std::begin(m_lightCastsShadow), std::end(m_lightCastsShadow), false);
@@ -1408,6 +1409,8 @@ private:
             ImGui::SliderFloat("Intensity",    &m_lights.lightIntensity, 0.0f, 10.0f, "%.2f");
             ImGui::ColorEdit3("Light Color",   m_lights.lightColor);
             ImGui::SliderFloat("IBL Intensity", &m_lights.iblIntensity, 0.0f, 5.0f, "%.2f");
+            ImGui::SliderFloat("Diffuse IBL Saturation", &m_lights.diffuseIBLSaturation,
+                               0.0f, 1.0f, "%.2f");
             ImGui::SliderFloat("Shadow Bias", &m_pointShadowBias, 0.001f, 0.1f, "%.4f");
         }
         if (ImGui::CollapsingHeader("Spot Light"))
