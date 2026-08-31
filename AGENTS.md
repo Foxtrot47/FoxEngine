@@ -160,6 +160,11 @@ M71: Particle asset serialization / default presets
 
 ### Next Up
 
+- M72: Material workflow correctness
+  - Explicit metallic/roughness and specular/gloss workflows
+  - Correct glTF packed-channel decoding (G roughness, B metallic)
+  - Generic Assimp workflow detection without `UNKNOWN` or filename guesses
+  - Keep asset-specific material conversion in Blender/import tooling, outside runtime engine code
 - M61: Decals
 - M62: TAA
 
