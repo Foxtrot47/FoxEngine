@@ -27,6 +27,8 @@ public:
         AssetHandle<Texture2D> emissive;   // t9; nullptr → default black (no emission)
         AlphaMode alphaMode  = AlphaMode::Opaque;
         float     alphaCutoff = 0.5f;
+        bool      packedMR = false;       // roughness texture is (x, roughness, metallic)
+        float     roughnessScale = 1.0f;  // material roughness factor (scalar workflows)
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -122,6 +124,7 @@ private:
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
         float metallic; float unlit; float debugShadow; float alphaCutoff;
         float emissiveIntensity; DirectX::XMFLOAT3 emissiveColor;
+        float packedMR; DirectX::XMFLOAT3 _pad;
     };
     struct PlanarReflectionCBData
     {

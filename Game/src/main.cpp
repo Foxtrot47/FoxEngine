@@ -1463,7 +1463,8 @@ private:
             int dlm = (int)m_lights.debugLightMode;
             ImGui::RadioButton("Normal",    &dlm, 0); ImGui::SameLine();
             ImGui::RadioButton("Force Lit", &dlm, 1); ImGui::SameLine();
-            ImGui::RadioButton("NdotL",     &dlm, 2);
+            ImGui::RadioButton("NdotL",     &dlm, 2); ImGui::SameLine();
+            ImGui::RadioButton("Roughness", &dlm, 3);
             m_lights.debugLightMode = (float)dlm;
         }
         ImGui::End();
