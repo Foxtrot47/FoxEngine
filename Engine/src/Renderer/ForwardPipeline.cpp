@@ -364,6 +364,50 @@ void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
     }
 }
 
+void ForwardPipeline::ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mode)
+{
+    const float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    switch (mode)
+    {
+    case AlphaMode::Opaque:
+        ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
+        ctx->RSSetState(nullptr);
+        break;
+    case AlphaMode::Cutout:
+        ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
+        ctx->RSSetState(m_noCullRS.Get());
+        break;
+    case AlphaMode::Transparent:
+        ctx->OMSetBlendState(m_alphaBlend.Get(), blendFactor, 0xFFFFFFFF);
+        ctx->RSSetState(m_noCullRS.Get());
+        break;
+    }
+}
+
+// Every draw must initialize MaterialCB. Leaving opaque draws untouched
+// carries zero/stale parameters, which collapses roughness to 0.04 and can
+// also leak alpha, emissive, metallic, or debug state from a previous draw.
+void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat)
+{
+    MaterialParamsCBData mc = {};
+    mc.albedoTint       = m_globalTint;
+    mc.roughnessScale   = mat.roughnessScale * m_globalRoughnessScale;
+    mc.metallic         = m_globalMetallic; // texture value scales by the global override
+    mc.debugShadow      = m_globalDebugShadow;
+    mc.alphaCutoff      = mat.alphaMode == AlphaMode::Cutout ? mat.alphaCutoff : 0.0f;
+    mc.emissiveIntensity = 1.0f;
+    mc.emissiveColor    = { 1.0f, 1.0f, 1.0f };
+    mc.packedMR         = mat.packedMR ? 1.0f : 0.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    mat.albedo->BindPS(ctx, 0);
+    mat.roughness->BindPS(ctx, 1);
+    mat.normal->BindPS(ctx, 2);
+    (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
+    (mat.emissive ? mat.emissive : m_defaultBlack)->BindPS(ctx, 9);
+}
+
 void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 {
     using namespace DirectX;
@@ -386,59 +430,19 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 
         auto& mat = (*draw.mats)[item.subMeshIndex];
 
-        // Handle alpha mode state changes
         if (mat.alphaMode != prevMode)
         {
-            float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            switch (mat.alphaMode)
-            {
-            case AlphaMode::Opaque:
-                ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
-                ctx->RSSetState(nullptr);
-                break;
-            case AlphaMode::Cutout:
-                ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
-                ctx->RSSetState(m_noCullRS.Get());
-                break;
-            case AlphaMode::Transparent:
-                ctx->OMSetBlendState(m_alphaBlend.Get(), blendFactor, 0xFFFFFFFF);
-                ctx->RSSetState(m_noCullRS.Get());
-                break;
-            }
+            ApplyAlphaModeState(ctx, mat.alphaMode);
             prevMode = mat.alphaMode;
         }
 
-        // Every draw must initialize MaterialCB. Leaving opaque draws untouched
-        // carries zero/stale parameters, which collapses roughness to 0.04 and can
-        // also leak alpha, emissive, metallic, or debug state from a previous draw.
-        MaterialParamsCBData mc = {};
-        mc.albedoTint       = m_globalTint;
-        mc.roughnessScale   = mat.roughnessScale * m_globalRoughnessScale;
-        mc.metallic         = m_globalMetallic; // texture value scales by the global override
-        mc.debugShadow      = m_globalDebugShadow;
-        mc.alphaCutoff      = mat.alphaMode == AlphaMode::Cutout ? mat.alphaCutoff : 0.0f;
-        mc.emissiveIntensity = 1.0f;
-        mc.emissiveColor    = { 1.0f, 1.0f, 1.0f };
-        mc.packedMR         = mat.packedMR ? 1.0f : 0.0f;
-        m_materialCB.Update(ctx, mc);
-        m_materialCB.BindPS(ctx, 3);
-
-        mat.albedo->BindPS(ctx, 0);
-        mat.roughness->BindPS(ctx, 1);
-        mat.normal->BindPS(ctx, 2);
-        (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
-        (mat.emissive ? mat.emissive : m_defaultBlack)->BindPS(ctx, 9);
+        BindSubMaterial(ctx, mat);
         draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
         ++m_lastDrawCalls;
     }
 
-    // Restore default state
     if (prevMode != AlphaMode::Opaque)
-    {
-        float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
-        ctx->RSSetState(nullptr);
-    }
+        ApplyAlphaModeState(ctx, AlphaMode::Opaque);
 }
 
 void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,

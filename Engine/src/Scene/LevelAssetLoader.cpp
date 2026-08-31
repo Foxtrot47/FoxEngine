@@ -443,10 +443,8 @@ void ValidateHierarchy(LevelAssetLoadResult& result)
         visit(entity.id);
 }
 
-void ParseVersion2(LevelAssetLoadResult& result, const json& root)
+void ParseLevelHeader(LevelAssetLoadResult& result, const json& root)
 {
-    result.asset = LevelAsset{};
-
     if (!root.contains("format") || !root["format"].is_string() ||
         root["format"].get<std::string>() != "FoxLevel")
         AddDiagnostic(result, Severity::Error, "/format", "expected 'FoxLevel'");
@@ -469,7 +467,10 @@ void ParseVersion2(LevelAssetLoadResult& result, const json& root)
         result.asset.name = root["name"].get<std::string>();
     else
         AddDiagnostic(result, Severity::Error, "/name", "expected a string");
+}
 
+void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
+{
     if (root.contains("settings"))
     {
         if (root["settings"].is_object())
@@ -504,6 +505,57 @@ void ParseVersion2(LevelAssetLoadResult& result, const json& root)
 
         }
     }
+}
+
+void ParseEntityDefinition(LevelAssetLoadResult& result, const json& source,
+                           const std::string& base, std::unordered_set<LevelEntityID>& ids)
+{
+    LevelEntityDefinition entity;
+    if (!source.contains("id") || !ParseEntityID(source["id"], entity.id))
+        AddDiagnostic(result, Severity::Error, base + "/id",
+                      "expected a non-zero hexadecimal string of at most 16 digits");
+    else if (!ids.insert(entity.id).second)
+        AddDiagnostic(result, Severity::Error, base + "/id", "duplicate entity ID");
+
+    if (source.contains("parent") && !ParseEntityID(source["parent"], entity.parent))
+        AddDiagnostic(result, Severity::Error, base + "/parent",
+                      "expected a non-zero hexadecimal entity ID");
+    if (source.contains("name"))
+    {
+        if (source["name"].is_string())
+            entity.name = source["name"].get<std::string>();
+        else
+            AddDiagnostic(result, Severity::Error, base + "/name", "expected a string");
+    }
+    if (source.contains("active"))
+    {
+        if (source["active"].is_boolean())
+            entity.active = source["active"].get<bool>();
+        else
+            AddDiagnostic(result, Severity::Error, base + "/active", "expected a boolean");
+    }
+
+    if (!source.contains("components") || !source["components"].is_object())
+        AddDiagnostic(result, Severity::Error, base + "/components", "expected an object");
+    else
+    {
+        for (auto it = source["components"].begin(); it != source["components"].end(); ++it)
+        {
+            const size_t diagnosticsBefore = result.diagnostics.size();
+            ValidateComponent(result, it.key(), it.value(), base + "/components/" + it.key());
+            if (it.value().is_object() && result.diagnostics.size() == diagnosticsBefore)
+                DecodeComponent(entity, it.key(), it.value());
+        }
+    }
+    result.asset.entities.push_back(std::move(entity));
+}
+
+void ParseVersion2(LevelAssetLoadResult& result, const json& root)
+{
+    result.asset = LevelAsset{};
+
+    ParseLevelHeader(result, root);
+    ParseEnvironmentSettings(result, root);
 
     if (!root.contains("entities") || !root["entities"].is_array())
     {
@@ -521,45 +573,7 @@ void ParseVersion2(LevelAssetLoadResult& result, const json& root)
             AddDiagnostic(result, Severity::Error, base, "expected an object");
             continue;
         }
-
-        LevelEntityDefinition entity;
-        if (!source.contains("id") || !ParseEntityID(source["id"], entity.id))
-            AddDiagnostic(result, Severity::Error, base + "/id",
-                          "expected a non-zero hexadecimal string of at most 16 digits");
-        else if (!ids.insert(entity.id).second)
-            AddDiagnostic(result, Severity::Error, base + "/id", "duplicate entity ID");
-
-        if (source.contains("parent") && !ParseEntityID(source["parent"], entity.parent))
-            AddDiagnostic(result, Severity::Error, base + "/parent",
-                          "expected a non-zero hexadecimal entity ID");
-        if (source.contains("name"))
-        {
-            if (source["name"].is_string())
-                entity.name = source["name"].get<std::string>();
-            else
-                AddDiagnostic(result, Severity::Error, base + "/name", "expected a string");
-        }
-        if (source.contains("active"))
-        {
-            if (source["active"].is_boolean())
-                entity.active = source["active"].get<bool>();
-            else
-                AddDiagnostic(result, Severity::Error, base + "/active", "expected a boolean");
-        }
-
-        if (!source.contains("components") || !source["components"].is_object())
-            AddDiagnostic(result, Severity::Error, base + "/components", "expected an object");
-        else
-        {
-            for (auto it = source["components"].begin(); it != source["components"].end(); ++it)
-            {
-                const size_t diagnosticsBefore = result.diagnostics.size();
-                ValidateComponent(result, it.key(), it.value(), base + "/components/" + it.key());
-                if (it.value().is_object() && result.diagnostics.size() == diagnosticsBefore)
-                    DecodeComponent(entity, it.key(), it.value());
-            }
-        }
-        result.asset.entities.push_back(std::move(entity));
+        ParseEntityDefinition(result, source, base, ids);
     }
 
     ValidateHierarchy(result);

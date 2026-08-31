@@ -154,6 +154,9 @@ private:
     Microsoft::WRL::ComPtr<ID3D11Buffer>       m_lineBuffer;
 
     ConstantBuffer<TransformCBData>           m_transformCB;
+    void ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mode);
+    void BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat);
+
     ConstantBuffer<MaterialParamsCBData>      m_materialCB;
     DirectX::XMFLOAT3 m_globalTint = { 1.0f, 1.0f, 1.0f };
     float m_globalRoughnessScale = 1.0f;

@@ -30,6 +30,143 @@ private:
 
 } // anonymous namespace
 
+static std::string GetTexturePath(const aiMaterial* mat, aiTextureType type)
+{
+    aiString s;
+    if (mat->GetTexture(type, 0, &s) == AI_SUCCESS && s.length > 0 && s.C_Str()[0] != '*')
+        return s.C_Str();
+    return {};
+}
+
+// Roughness / metallic workflow detection from typed Assimp slots only
+// (never UNKNOWN or filename guesses):
+//  - glTF metallic-roughness: Assimp reports the packed texture as both
+//    DIFFUSE_ROUGHNESS and METALNESS (same path) -> G=roughness, B=metallic.
+//  - UE/ORCA FBX exports: the SPECULAR slot carries the same packed
+//    layout (content-verified: R unused, G roughness, B metallic).
+//  - Texture-less materials fall back to the scalar roughness factor.
+static void ResolveRoughnessWorkflow(const aiMaterial* mat, SubMeshInfo& out)
+{
+    out.roughnessPath = GetTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);
+    if (!out.roughnessPath.empty())
+    {
+        out.packedMR = out.roughnessPath == GetTexturePath(mat, aiTextureType_METALNESS);
+    }
+    else
+    {
+        out.roughnessPath = GetTexturePath(mat, aiTextureType_SPECULAR);
+        out.packedMR = !out.roughnessPath.empty();
+    }
+    ai_real roughnessFactor = 1.0f;
+    if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS)
+        out.roughnessFactor = static_cast<float>(roughnessFactor);
+}
+
+static void DetectAlphaMode(const aiMaterial* mat, SubMeshInfo& out)
+{
+    aiString alphaStr;
+    if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaStr) == AI_SUCCESS)
+    {
+        if (strcmp(alphaStr.C_Str(), "MASK") == 0)
+            out.alphaMode = AlphaMode::Cutout;
+        else if (strcmp(alphaStr.C_Str(), "BLEND") == 0)
+            out.alphaMode = AlphaMode::Transparent;
+    }
+    else
+    {
+        // FBX fallback: if an opacity texture exists or opacity < 1, treat as cutout
+        aiString opacityTex;
+        float opacity = 1.0f;
+        mat->Get(AI_MATKEY_OPACITY, opacity);
+
+        if (mat->GetTexture(aiTextureType_OPACITY, 0, &opacityTex) == AI_SUCCESS)
+            out.alphaMode = AlphaMode::Cutout;
+        else if (opacity < 0.99f)
+            out.alphaMode = AlphaMode::Transparent;
+    }
+
+    float cutoff = 0.5f;
+    if (mat->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS)
+        out.alphaCutoff = cutoff;
+}
+
+static void ExtractSubMeshMaterial(const aiMaterial* mat, SubMeshInfo& out)
+{
+    // Base color: prefer PBR slot, fall back to legacy diffuse.
+    out.albedoPath = GetTexturePath(mat, aiTextureType_BASE_COLOR);
+    if (out.albedoPath.empty())
+        out.albedoPath = GetTexturePath(mat, aiTextureType_DIFFUSE);
+
+    out.normalPath = GetTexturePath(mat, aiTextureType_NORMALS);
+
+    ResolveRoughnessWorkflow(mat, out);
+
+    out.emissivePath = GetTexturePath(mat, aiTextureType_EMISSIVE);
+    if (out.emissivePath.empty())
+        out.emissivePath = GetTexturePath(mat, aiTextureType_EMISSION_COLOR);
+
+    DetectAlphaMode(mat, out);
+}
+
+static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v)
+{
+    const aiVector3D pos = mesh->mVertices[v];
+    const aiVector3D n   = mesh->mNormals    ? mesh->mNormals[v]    : aiVector3D(0, 1, 0);
+    const aiVector3D t   = mesh->mTangents   ? mesh->mTangents[v]   : aiVector3D(1, 0, 0);
+    const aiVector3D b   = mesh->mBitangents ? mesh->mBitangents[v] : aiVector3D(0, 1, 0);
+    const aiVector3D uv  = mesh->mTextureCoords[0] ? mesh->mTextureCoords[0][v]
+                                                   : aiVector3D(0, 0, 0);
+    MeshVertex vtx;
+    vtx.x = pos.x;  vtx.y = pos.y;  vtx.z = pos.z;
+    vtx.nx = n.x;   vtx.ny = n.y;   vtx.nz = n.z;
+    vtx.u = uv.x;   vtx.v = uv.y;
+    vtx.tx = t.x;   vtx.ty = t.y;   vtx.tz = t.z;
+    vtx.bx = b.x;   vtx.by = b.y;   vtx.bz = b.z;
+    return vtx;
+}
+
+// Reads one Assimp mesh into a submesh source. The progress callback maps the
+// submesh range onto [0.8, 1.0] of the overall import; returning false cancels.
+static bool ReadSubMesh(const aiScene* scene, uint32_t m,
+                        const Mesh::ImportProgressCallback& progress,
+                        MeshSubMeshSource& out, AABB& bounds)
+{
+    const aiMesh* mesh = scene->mMeshes[m];
+    const float meshCount = static_cast<float>(scene->mNumMeshes);
+
+    out.vertices.reserve(mesh->mNumVertices);
+    for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
+    {
+        if ((v & 0x3ffu) == 0 && progress &&
+            !progress(0.8f + 0.2f * (static_cast<float>(m) +
+                      0.5f * static_cast<float>(v) / static_cast<float>(mesh->mNumVertices)) /
+                      meshCount))
+            return false;
+
+        const MeshVertex vtx = ReadVertex(mesh, v);
+        out.vertices.push_back(vtx);
+        bounds.Expand({ vtx.x, vtx.y, vtx.z });
+    }
+
+    out.indices.reserve(mesh->mNumFaces * 3);
+    for (uint32_t f = 0; f < mesh->mNumFaces; ++f)
+    {
+        if ((f & 0x3ffu) == 0 && progress &&
+            !progress(0.8f + 0.2f * (static_cast<float>(m) + 0.5f +
+                      0.5f * static_cast<float>(f) / static_cast<float>(mesh->mNumFaces)) /
+                      meshCount))
+            return false;
+
+        const aiFace& face = mesh->mFaces[f];
+        for (uint32_t i = 0; i < face.mNumIndices; ++i)
+            out.indices.push_back(face.mIndices[i]);
+    }
+
+    if (mesh->mMaterialIndex < scene->mNumMaterials)
+        ExtractSubMeshMaterial(scene->mMaterials[mesh->mMaterialIndex], out.material);
+    return true;
+}
+
 bool Mesh::Import(const char* path, MeshSourceData& output,
                   const ImportProgressCallback& progress, std::string* error)
 {
@@ -72,131 +209,9 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
                                  static_cast<float>(scene->mNumMeshes)))
             return false;
 
-        const aiMesh* mesh = scene->mMeshes[m];
-
         MeshSubMeshSource source;
-        source.vertices.reserve(mesh->mNumVertices);
-
-        for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
-        {
-            if ((v & 0x3ffu) == 0 && progress &&
-                !progress(0.8f + 0.2f * (static_cast<float>(m) +
-                          0.5f * static_cast<float>(v) / static_cast<float>(mesh->mNumVertices)) /
-                          static_cast<float>(scene->mNumMeshes)))
-                return false;
-
-            MeshVertex vtx;
-            vtx.x  = mesh->mVertices[v].x;
-            vtx.y  = mesh->mVertices[v].y;
-            vtx.z  = mesh->mVertices[v].z;
-            vtx.nx = mesh->mNormals ? mesh->mNormals[v].x : 0.0f;
-            vtx.ny = mesh->mNormals ? mesh->mNormals[v].y : 1.0f;
-            vtx.nz = mesh->mNormals ? mesh->mNormals[v].z : 0.0f;
-            if (mesh->mTextureCoords[0])
-            {
-                vtx.u = mesh->mTextureCoords[0][v].x;
-                vtx.v = mesh->mTextureCoords[0][v].y;
-            }
-            else { vtx.u = vtx.v = 0.0f; }
-            vtx.tx = mesh->mTangents   ? mesh->mTangents[v].x   : 1.0f;
-            vtx.ty = mesh->mTangents   ? mesh->mTangents[v].y   : 0.0f;
-            vtx.tz = mesh->mTangents   ? mesh->mTangents[v].z   : 0.0f;
-            vtx.bx = mesh->mBitangents ? mesh->mBitangents[v].x : 0.0f;
-            vtx.by = mesh->mBitangents ? mesh->mBitangents[v].y : 1.0f;
-            vtx.bz = mesh->mBitangents ? mesh->mBitangents[v].z : 0.0f;
-            source.vertices.push_back(vtx);
-            output.bounds.Expand({ vtx.x, vtx.y, vtx.z });
-        }
-
-        source.indices.reserve(mesh->mNumFaces * 3);
-        for (uint32_t f = 0; f < mesh->mNumFaces; ++f)
-        {
-            if ((f & 0x3ffu) == 0 && progress &&
-                !progress(0.8f + 0.2f * (static_cast<float>(m) + 0.5f +
-                          0.5f * static_cast<float>(f) / static_cast<float>(mesh->mNumFaces)) /
-                          static_cast<float>(scene->mNumMeshes)))
-                return false;
-
-            const aiFace& face = mesh->mFaces[f];
-            for (uint32_t i = 0; i < face.mNumIndices; ++i)
-                source.indices.push_back(face.mIndices[i]);
-        }
-
-        // Extract material texture paths (glTF PBR slots).
-        if (mesh->mMaterialIndex < scene->mNumMaterials)
-        {
-            const aiMaterial* mat = scene->mMaterials[mesh->mMaterialIndex];
-            aiString s;
-
-            auto tryGet = [&](aiTextureType t) -> std::string {
-                if (mat->GetTexture(t, 0, &s) == AI_SUCCESS &&
-                    s.length > 0 && s.C_Str()[0] != '*')
-                    return s.C_Str();
-                return {};
-            };
-
-            // Base color: prefer PBR slot, fall back to legacy diffuse.
-            source.material.albedoPath = tryGet(aiTextureType_BASE_COLOR);
-            if (source.material.albedoPath.empty())
-                source.material.albedoPath = tryGet(aiTextureType_DIFFUSE);
-
-            // Normal map.
-            source.material.normalPath = tryGet(aiTextureType_NORMALS);
-
-            // Roughness / metallic workflow detection from typed Assimp slots only
-            // (never UNKNOWN or filename guesses):
-            //  - glTF metallic-roughness: Assimp reports the packed texture as both
-            //    DIFFUSE_ROUGHNESS and METALNESS (same path) -> G=roughness, B=metallic.
-            //  - UE/ORCA FBX exports: the SPECULAR slot carries the same packed
-            //    layout (content-verified: R unused, G roughness, B metallic).
-            //  - Texture-less materials fall back to the scalar roughness factor.
-            source.material.roughnessPath = tryGet(aiTextureType_DIFFUSE_ROUGHNESS);
-            if (!source.material.roughnessPath.empty())
-            {
-                source.material.packedMR =
-                    source.material.roughnessPath == tryGet(aiTextureType_METALNESS);
-            }
-            else
-            {
-                source.material.roughnessPath = tryGet(aiTextureType_SPECULAR);
-                source.material.packedMR = !source.material.roughnessPath.empty();
-            }
-            ai_real roughnessFactor = 1.0f;
-            if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS)
-                source.material.roughnessFactor = static_cast<float>(roughnessFactor);
-
-            // Emissive map
-            source.material.emissivePath = tryGet(aiTextureType_EMISSIVE);
-            if (source.material.emissivePath.empty())
-                source.material.emissivePath = tryGet(aiTextureType_EMISSION_COLOR);
-
-            // Alpha mode detection
-            aiString alphaStr;
-            if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaStr) == AI_SUCCESS)
-            {
-                if (strcmp(alphaStr.C_Str(), "MASK") == 0)
-                    source.material.alphaMode = AlphaMode::Cutout;
-                else if (strcmp(alphaStr.C_Str(), "BLEND") == 0)
-                    source.material.alphaMode = AlphaMode::Transparent;
-            }
-            else
-            {
-                // FBX fallback: if an opacity texture exists or opacity < 1, treat as cutout
-                aiString opacityTex;
-                float opacity = 1.0f;
-                mat->Get(AI_MATKEY_OPACITY, opacity);
-
-                if (mat->GetTexture(aiTextureType_OPACITY, 0, &opacityTex) == AI_SUCCESS)
-                    source.material.alphaMode = AlphaMode::Cutout;
-                else if (opacity < 0.99f)
-                    source.material.alphaMode = AlphaMode::Transparent;
-            }
-
-            // Alpha cutoff (glTF ALPHACUTOFF property)
-            float cutoff = 0.5f;
-            if (mat->Get(AI_MATKEY_GLTF_ALPHACUTOFF, cutoff) == AI_SUCCESS)
-                source.material.alphaCutoff = cutoff;
-        }
+        if (!ReadSubMesh(scene, m, progress, source, output.bounds))
+            return false;
 
         output.subMeshes.push_back(std::move(source));
     }
