@@ -397,7 +397,8 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.alphaCutoff      = mat.alphaMode == AlphaMode::Cutout ? mat.alphaCutoff : 0.0f;
     mc.emissiveIntensity = 1.0f;
     mc.emissiveColor    = { 1.0f, 1.0f, 1.0f };
-    mc.packedMR         = mat.packedMR ? 1.0f : 0.0f;
+    mc.workflow         = static_cast<float>(mat.workflow);
+    mc.glossinessFactor = mat.glossinessFactor;
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 

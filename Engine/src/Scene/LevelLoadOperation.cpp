@@ -395,9 +395,11 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
             material.normal = resolve(info.normalPath);
             material.roughness = resolve(info.roughnessPath);
             material.emissive = resolve(info.emissivePath);
-            material.packedMR = info.packedMR && static_cast<bool>(material.roughness);
+            material.workflow = material.roughness ? info.workflow
+                                                    : MaterialWorkflow::SeparateMR;
             material.roughnessScale =
                 material.roughness ? 1.0f : info.roughnessFactor;
+            material.glossinessFactor = info.glossinessFactor;
             if (!material.albedo) material.albedo = assets.GetDefaultWhite();
             if (!material.normal) material.normal = assets.GetDefaultNormal();
             if (!material.roughness) material.roughness = assets.GetDefaultWhite();

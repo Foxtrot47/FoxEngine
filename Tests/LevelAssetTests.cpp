@@ -356,15 +356,42 @@ static void TestGltfPackedMRDetection()
     Require(packed.albedoPath == "albedo.png", "glTF base color path mismatch");
     Require(packed.roughnessPath == "packed_mr.png",
             "glTF metallic-roughness texture was not routed to the roughness slot");
-    Require(packed.packedMR, "shared metallic-roughness texture was not flagged as packed");
+    Require(packed.workflow == SE::MaterialWorkflow::PackedMR,
+            "shared metallic-roughness texture was not flagged as packed");
     Require(packed.normalPath == "normal.png", "glTF normal path mismatch");
     Require(packed.roughnessFactor == 1.0f, "textured material roughness factor should default to 1");
 
     const auto& scalar = source.subMeshes[1].material;
     Require(scalar.roughnessPath.empty(), "texture-less material should have no roughness path");
-    Require(!scalar.packedMR, "texture-less material must not be flagged as packed");
+    Require(scalar.workflow == SE::MaterialWorkflow::SeparateMR,
+            "texture-less material must not be flagged as packed");
     Require(scalar.roughnessFactor > 0.34f && scalar.roughnessFactor < 0.36f,
             "scalar roughness factor was not imported");
+}
+
+static void TestGltfSpecGlossDetection()
+{
+    SE::MeshSourceData source;
+    Require(SE::Mesh::Import("Assets/TestFixtures/spec_gloss.gltf", source,
+                             [](float) { return true; }),
+            "spec/gloss glTF import failed");
+    Require(source.subMeshes.size() == 2, "spec/gloss glTF submesh count mismatch");
+
+    const auto& textured = source.subMeshes[0].material;
+    Require(textured.albedoPath == "diffuse.png", "spec/gloss diffuse path mismatch");
+    Require(textured.roughnessPath == "spec_gloss.png",
+            "specular-glossiness texture was not routed to the roughness slot");
+    Require(textured.workflow == SE::MaterialWorkflow::SpecularGloss,
+            "spec/gloss material was not detected");
+    Require(textured.glossinessFactor > 0.59f && textured.glossinessFactor < 0.61f,
+            "glossiness factor was not imported");
+
+    const auto& scalar = source.subMeshes[1].material;
+    Require(scalar.workflow == SE::MaterialWorkflow::SeparateMR,
+            "texture-less spec/gloss should fall back to the scalar MR path");
+    Require(scalar.roughnessPath.empty(), "texture-less spec/gloss should have no roughness path");
+    Require(scalar.roughnessFactor > 0.74f && scalar.roughnessFactor < 0.76f,
+            "texture-less spec/gloss roughness was not derived from glossiness");
 }
 
 static void TestCpuTextureDecode()
@@ -482,6 +509,7 @@ static void RunTests()
     TestDependencyPlan();
     TestCpuMeshImport();
     TestGltfPackedMRDetection();
+    TestGltfSpecGlossDetection();
     TestCpuTextureDecode();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
