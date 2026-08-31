@@ -1448,7 +1448,25 @@ private:
                 if (ImGui::TreeNode(label))
                 {
                     ImGui::DragFloat3("Position", &m_lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
-                    ImGui::ColorEdit3("Color",    &m_lights.lights[i].color.x);
+                    if (i < static_cast<int>(m_pointLightDescs.size()))
+                    {
+                        // Scene-driven light: edit the base color; the per-frame
+                        // flicker factor is applied on top of it.
+                        auto& source = m_pointLightDescs[i];
+                        ImGui::ColorEdit3("Color", source.color.data(),
+                                          ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                        ImGui::Checkbox("Flicker", &source.flicker);
+                        if (source.flicker)
+                        {
+                            ImGui::SliderFloat("Amplitude", &source.flickerAmplitude, 0.0f, 1.0f);
+                            ImGui::SliderFloat("Frequency", &source.flickerFrequency, 0.5f, 20.0f);
+                        }
+                    }
+                    else
+                    {
+                        ImGui::ColorEdit3("Color", &m_lights.lights[i].color.x,
+                                          ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+                    }
                     ImGui::SliderFloat("Radius",  &m_lights.lights[i].radius, 0.5f, 500.0f);
                     if (i < 2)
                         ImGui::Checkbox("Cast Shadow", &m_lightCastsShadow[i]);
