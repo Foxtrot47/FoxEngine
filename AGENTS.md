@@ -157,14 +157,10 @@ M68: Per-emitter blend mode, drag, flipbook fire, ember shader
 M69: Smoke particles with expanding billboard puffs
 M70: More particle effects (explosions, sparks/trails, dust)
 M71: Particle asset serialization / default presets
+M72: Material workflow correctness (metallic/roughness, packed MR, specular/glossiness; node-transform baking at import)
 
 ### Next Up
 
-- M72: Material workflow correctness
-  - Explicit metallic/roughness and specular/gloss workflows
-  - Correct glTF packed-channel decoding (G roughness, B metallic)
-  - Generic Assimp workflow detection without `UNKNOWN` or filename guesses
-  - Keep asset-specific material conversion in Blender/import tooling, outside runtime engine code
 - M61: Decals
 - M62: TAA
 
