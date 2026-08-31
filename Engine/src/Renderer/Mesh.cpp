@@ -38,27 +38,50 @@ static std::string GetTexturePath(const aiMaterial* mat, aiTextureType type)
     return {};
 }
 
-// Roughness / metallic workflow detection from typed Assimp slots only
-// (never UNKNOWN or filename guesses):
+// Roughness / metallic / specular workflow detection from typed Assimp slots
+// only (never UNKNOWN or filename guesses):
 //  - glTF metallic-roughness: Assimp reports the packed texture as both
 //    DIFFUSE_ROUGHNESS and METALNESS (same path) -> G=roughness, B=metallic.
-//  - UE/ORCA FBX exports: the SPECULAR slot carries the same packed
-//    layout (content-verified: R unused, G roughness, B metallic).
-//  - Texture-less materials fall back to the scalar roughness factor.
+//  - glTF spec/gloss (KHR_materials_pbrSpecularGlossiness): Assimp puts the
+//    texture in SPECULAR (RGB=specular color, A=gloss) and sets
+//    AI_MATKEY_GLOSSINESS_FACTOR, which no other importer emits.
+//  - UE/ORCA FBX exports: a SPECULAR slot without a glossiness factor carries the
+//    packed metallic-roughness layout (content-verified: R unused, G roughness, B metallic).
+//  - Texture-less materials fall back to the scalar roughness/glossiness factors.
 static void ResolveRoughnessWorkflow(const aiMaterial* mat, SubMeshInfo& out)
 {
+    const std::string specular = GetTexturePath(mat, aiTextureType_SPECULAR);
+    ai_real glossinessFactor = 1.0f;
+    const bool specGloss =
+        mat->Get(AI_MATKEY_GLOSSINESS_FACTOR, glossinessFactor) == AI_SUCCESS;
+    if (specGloss)
+        out.glossinessFactor = static_cast<float>(glossinessFactor);
+
     out.roughnessPath = GetTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);
     if (!out.roughnessPath.empty())
     {
-        out.packedMR = out.roughnessPath == GetTexturePath(mat, aiTextureType_METALNESS);
+        if (out.roughnessPath == GetTexturePath(mat, aiTextureType_METALNESS))
+            out.workflow = MaterialWorkflow::PackedMR;
     }
-    else
+    else if (specGloss && !specular.empty())
     {
-        out.roughnessPath = GetTexturePath(mat, aiTextureType_SPECULAR);
-        out.packedMR = !out.roughnessPath.empty();
+        out.roughnessPath = specular;
+        out.workflow = MaterialWorkflow::SpecularGloss;
     }
+    else if (specGloss)
+    {
+        // Texture-less spec/gloss: approximate with the scalar MR path
+        // (specular color constants are not carried through the pipeline).
+        out.roughnessFactor = 1.0f - out.glossinessFactor;
+    }
+    else if (!specular.empty())
+    {
+        out.roughnessPath = specular;
+        out.workflow = MaterialWorkflow::PackedMR;
+    }
+
     ai_real roughnessFactor = 1.0f;
-    if (mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS)
+    if (!specGloss && mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS)
         out.roughnessFactor = static_cast<float>(roughnessFactor);
 }
 
@@ -241,8 +264,9 @@ bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)
         sm.emissivePath = std::move(input.material.emissivePath);
         sm.alphaMode = input.material.alphaMode;
         sm.alphaCutoff = input.material.alphaCutoff;
-        sm.packedMR = input.material.packedMR;
+        sm.workflow = input.material.workflow;
         sm.roughnessFactor = input.material.roughnessFactor;
+        sm.glossinessFactor = input.material.glossinessFactor;
         m_subMeshes.push_back(std::move(sm));
     }
     m_directory = std::move(source.directory);
@@ -278,8 +302,9 @@ SubMeshInfo Mesh::GetSubMeshInfo(uint32_t index) const
     info.emissivePath  = sm.emissivePath;
     info.alphaMode     = sm.alphaMode;
     info.alphaCutoff   = sm.alphaCutoff;
-    info.packedMR      = sm.packedMR;
+    info.workflow      = sm.workflow;
     info.roughnessFactor = sm.roughnessFactor;
+    info.glossinessFactor = sm.glossinessFactor;
     return info;
 }
 

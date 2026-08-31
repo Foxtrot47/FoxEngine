@@ -25,6 +25,12 @@ struct MeshVertex
 // Paths are relative to GetDirectory(). Empty string = no texture assigned.
 enum class AlphaMode : uint8_t { Opaque, Cutout, Transparent };
 
+// How the roughness-slot texture (t1) is interpreted:
+//  SeparateMR:    t1.r = roughness, metallic map (t7.r) is separate
+//  PackedMR:      t1 = (unused, roughness, metallic) — glTF metallic-roughness or ORCA FBX
+//  SpecularGloss: t1.rgb = specular color (F0), t1.a = glossiness
+enum class MaterialWorkflow : uint8_t { SeparateMR, PackedMR, SpecularGloss };
+
 struct SubMeshInfo
 {
     std::string albedoPath;
@@ -33,8 +39,9 @@ struct SubMeshInfo
     std::string emissivePath;
     AlphaMode   alphaMode = AlphaMode::Opaque;
     float       alphaCutoff = 0.5f;
-    bool        packedMR = false;       // roughnessPath texture is (x, roughness, metallic)
-    float       roughnessFactor = 1.0f; // scalar roughness for texture-less materials
+    MaterialWorkflow workflow = MaterialWorkflow::SeparateMR;
+    float       roughnessFactor = 1.0f;   // scalar roughness for texture-less MR materials
+    float       glossinessFactor = 1.0f;  // scalar glossiness for spec/gloss materials
 };
 
 struct MeshSubMeshSource
@@ -80,8 +87,9 @@ private:
         std::string  emissivePath;
         AlphaMode    alphaMode = AlphaMode::Opaque;
         float        alphaCutoff = 0.5f;
-        bool         packedMR = false;
+        MaterialWorkflow workflow = MaterialWorkflow::SeparateMR;
         float        roughnessFactor = 1.0f;
+        float        glossinessFactor = 1.0f;
     };
     std::vector<SubMesh> m_subMeshes;
     std::string          m_directory;

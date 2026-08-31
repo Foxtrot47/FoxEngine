@@ -31,7 +31,10 @@ cbuffer MaterialCB : register(b3)
     float3 AlbedoTint;  float  RoughnessScale;
     float  Metallic;    float  Unlit;  float  DebugShadow;  float  AlphaCutoff;
     float  EmissiveIntensity;  float3 EmissiveColor;
-    float  PackedMR;    float3 _mcbPad; // PackedMR: t1 = (x, roughness, metallic) packed map
+    // Workflow: 0 = separate maps (t1.r rough, t7.r metal),
+    //            1 = packed MR (t1 = x, roughness, metallic),
+    //            2 = spec/gloss (t1.rgb specular color, t1.a glossiness)
+    float  Workflow;    float  GlossinessFactor;  float2 _mcbPad;
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -256,15 +259,27 @@ PSOut PS_Main(PSIn input)
     if (AlphaCutoff > 0.0f)
         clip(albedo.a - AlphaCutoff);
 
-    // Packed metallic-roughness (glTF / ORCA layout): G = roughness, B = metallic.
-    // Legacy layout: t1.r = roughness, t7.r = metallic.
-    float3 mrSample = g_roughness.Sample(g_sampler, input.TexCoord).rgb;
-    float roughSample = PackedMR > 0.5f ? mrSample.g : mrSample.r;
-    float roughness = max(saturate(roughSample * RoughnessScale), 0.04f);
-    float metalSample = PackedMR > 0.5f ? mrSample.b
-                                        : g_metallic.Sample(g_sampler, input.TexCoord).r;
-    float metallic  = saturate(metalSample * Metallic);
-    float3 F0       = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
+    // See MaterialCB Workflow comment for the t1 texture interpretations.
+    float4 mrSample = g_roughness.Sample(g_sampler, input.TexCoord);
+    float roughness;
+    float metallic;
+    float3 F0;
+    if (Workflow > 1.5f) // spec/gloss: RGB drives F0 directly, no metal term
+    {
+        float gloss = saturate(mrSample.a * GlossinessFactor);
+        roughness = max(saturate((1.0f - gloss) * RoughnessScale), 0.04f);
+        metallic  = 0.0f;
+        F0        = mrSample.rgb;
+    }
+    else
+    {
+        float roughSample = Workflow > 0.5f ? mrSample.g : mrSample.r;
+        roughness = max(saturate(roughSample * RoughnessScale), 0.04f);
+        float metalSample = Workflow > 0.5f ? mrSample.b
+                                            : g_metallic.Sample(g_sampler, input.TexCoord).r;
+        metallic  = saturate(metalSample * Metallic);
+        F0        = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
+    }
 
     // Cascaded directional shadow (PCF 3×3)
     float shadow = 1.0f;
