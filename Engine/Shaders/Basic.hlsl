@@ -13,7 +13,7 @@ cbuffer TransformCB : register(b0)
 cbuffer LightCB : register(b1)
 {
     float3 LightDir;      float  IBLIntensity;
-    float3 LightColor;    float  _pad0;
+    float3 LightColor;    float  DiffuseIBLSaturation;
     float3 CameraPos;     float  DebugLightMode;  // 0=normal, 1=force lit, 2=show NdotL
     row_major matrix LightViewProj;
 };
@@ -187,7 +187,9 @@ float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
 
     // Diffuse: sample panorama at its maximum mip level (approximate average irradiance).
     float3 irradiance = g_irradiance.SampleLevel(g_sampler, DirToEnvUV(N), 0).rgb;
-    float3 diffuse    = kD * (irradiance / PI) * albedo * IBLIntensity;
+    float irradianceLuma = dot(irradiance, float3(0.2126f, 0.7152f, 0.0722f));
+    irradiance = lerp(irradianceLuma.xxx, irradiance, saturate(DiffuseIBLSaturation));
+    float3 diffuse    = kD * irradiance * albedo * IBLIntensity;
 
     // Specular: prefiltered env at roughness-scaled LOD × split-sum BRDF approximation.
     float3 R = reflect(-V, N);

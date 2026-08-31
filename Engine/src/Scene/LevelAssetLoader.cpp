@@ -490,6 +490,18 @@ void ParseVersion2(LevelAssetLoadResult& result, const json& root)
             if (environment.contains("reflectionPanorama"))
                 AddDependency(result, environment["reflectionPanorama"],
                               "/settings/environment/reflectionPanorama");
+            ValidateNumber(result, environment, "iblIntensity", "/settings/environment");
+            ValidateNumber(result, environment, "diffuseIBLSaturation", "/settings/environment");
+            if (environment.contains("diffuseIBLSaturation") &&
+                environment["diffuseIBLSaturation"].is_number())
+            {
+                const float saturation = environment["diffuseIBLSaturation"].get<float>();
+                if (saturation < 0.0f || saturation > 1.0f)
+                    AddDiagnostic(result, Severity::Error,
+                                  "/settings/environment/diffuseIBLSaturation",
+                                  "must be between zero and one");
+            }
+
         }
     }
 
@@ -561,7 +573,7 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
 {
     json settings = json::object();
     json environment = json::object();
-    for (const char* field : { "skybox", "reflectionPanorama", "iblIntensity" })
+    for (const char* field : { "skybox", "reflectionPanorama", "iblIntensity", "diffuseIBLSaturation" })
         if (root.contains(field))
             environment[field] = root[field];
     if (!environment.empty())

@@ -42,7 +42,8 @@ static void TestValidV2()
         { "settings", {
             { "environment", {
                 { "skybox", "Assets/Bistro/san_giuseppe_bridge_4k.dds" },
-                { "reflectionPanorama", "Assets/Bistro/san_giuseppe_bridge_4k.dds" }
+                { "reflectionPanorama", "Assets/Bistro/san_giuseppe_bridge_4k.dds" },
+                { "diffuseIBLSaturation", 0.25f }
             } }
         } },
         { "entities", json::array({
@@ -98,6 +99,12 @@ static void TestValidV2()
             "runtime transform hierarchy was not applied");
     Require(rootTransform->scale.y == 2.0f && rootTransform->scale.z == 3.0f,
             "runtime non-uniform scale mismatch");
+
+    SE::SceneDescriptor descriptor;
+    Require(SE::SceneLoader::BuildDescriptor(result.asset, descriptor),
+            "valid v2 descriptor failed to build");
+    Require(descriptor.diffuseIBLSaturation == 0.25f,
+            "diffuse IBL saturation was not propagated");
 }
 
 static void TestTypedFieldValidation()
@@ -106,6 +113,7 @@ static void TestTypedFieldValidation()
         { "format", "FoxLevel" },
         { "version", 2 },
         { "name", "Bad fields" },
+        { "settings", { { "environment", { { "diffuseIBLSaturation", 1.5f } } } } },
         { "entities", json::array({
             {
                 { "id", "0000000000000001" },
@@ -126,6 +134,8 @@ static void TestTypedFieldValidation()
             "typed boolean error was not diagnosed");
     Require(HasErrorContaining(result, "greater than zero"),
             "typed numeric range error was not diagnosed");
+    Require(HasErrorContaining(result, "between zero and one"),
+            "diffuse IBL saturation range error was not diagnosed");
 }
 
 static void TestPlanarReflectionMaterial()
@@ -280,6 +290,8 @@ static void TestBistroRuntimeDescriptor()
             "Bistro exterior path mismatch");
     Require(descriptor.meshes[1].path == "Assets/Bistro/BistroInterior.fbx",
             "Bistro interior path mismatch");
+    Require(descriptor.diffuseIBLSaturation == 0.0f,
+            "Bistro diffuse IBL should be neutral");
 }
 
 static void TestDependencyPlan()

@@ -65,7 +65,7 @@ static json BuildSettingsJson(const LevelAsset& asset)
     if (asset.settings.contains("environment") && asset.settings["environment"].is_object())
     {
         const auto& environment = asset.settings["environment"];
-        for (const char* field : { "skybox", "reflectionPanorama", "iblIntensity" })
+        for (const char* field : { "skybox", "reflectionPanorama", "iblIntensity", "diffuseIBLSaturation" })
             if (environment.contains(field))
                 root[field] = environment[field];
     }
@@ -167,6 +167,8 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
 
     // IBL
     if (root.contains("iblIntensity")) out.iblIntensity = root["iblIntensity"].get<float>();
+    if (root.contains("diffuseIBLSaturation"))
+        out.diffuseIBLSaturation = root["diffuseIBLSaturation"].get<float>();
 
     // Physics
     if (root.contains("physics"))

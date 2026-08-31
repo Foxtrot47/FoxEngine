@@ -20,7 +20,8 @@ public:
     float azimDeg         = 30.0f;
     float lightIntensity  = 3.0f;   // multiplier on lightColor
     float iblIntensity    = 1.0f;   // multiplier on IBL diffuse + specular
-    float debugLightMode  = 0.0f;   // 0=normal, 1=force lit (shadow=1), 2=show NdotL
+    float diffuseIBLSaturation = 1.0f; // color transfer from the panorama into diffuse ambient
+    float debugLightMode  = 0.0f;   // 0=normal, 1=force lit, 2=NdotL, 3=roughness
     float lightColor[3]   = { 1.0f, 0.95f, 0.85f };
 
     // Point lights
@@ -37,7 +38,7 @@ private:
     struct LightCBData
     {
         DirectX::XMFLOAT3 lightDir;    float iblIntensity;
-        DirectX::XMFLOAT3 lightColor;  float _pad0;
+        DirectX::XMFLOAT3 lightColor;  float diffuseIBLSaturation;
         DirectX::XMFLOAT3 cameraPos;   float debugLightMode;
         DirectX::XMFLOAT4X4 lightViewProj;
     };
