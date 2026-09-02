@@ -36,6 +36,7 @@
 #include "Engine/Renderer/VolumetricFog.h"
 #include "Engine/Renderer/FXAA.h"
 #include "Engine/Renderer/TAA.h"
+#include "Engine/Renderer/FSRUpscaler.h"
 #include "Engine/Renderer/ParticleSystem.h"
 #include "Engine/Renderer/SpotLight.h"
 #include "Engine/Input/GamepadState.h"
@@ -548,6 +549,7 @@ protected:
             m_initialSceneLoad = false;
             m_loadingScenePath.clear();
             m_taa.ResetHistory();
+            m_fsr.ResetHistory();
             m_havePrevViewProj = false; // camera jumps on scene load
             SE_LOG_INFO("TestScene ready — %s", m_currentDesc.name.c_str());
         }
@@ -691,12 +693,7 @@ protected:
             m_prevViewProjNoJitter = m_viewProjNoJitter;
             m_havePrevViewProj = true;
         }
-        if (m_taa.enabled)
-        {
-            const XMFLOAT2 jitter =
-                m_taa.NextJitter(GetWindow().GetWidth(), GetWindow().GetHeight());
-            proj = proj * XMMatrixTranslation(jitter.x, jitter.y, 0.0f);
-        }
+        ApplyTemporalJitter(proj);
         m_cachedProj = proj;
         m_cachedView = view;  // Store for volumetric fog in OnPostProcess
 
@@ -998,31 +995,15 @@ protected:
 
         uint32_t w = GetWindow().GetWidth(), h = GetWindow().GetHeight();
 
-        // Resize render targets when the window changes size.
-        if (m_forwardHDR_RT.GetWidth() != w || m_forwardHDR_RT.GetHeight() != h)
-        {
-            auto* dev = GetRenderer().GetDevice();
-            m_forwardHDR_RT.Shutdown();
-            m_forwardHDR_RT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT, true, true);
-            m_normalRT.Shutdown();
-            m_normalRT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT);
-            m_velocityRT.Shutdown();
-            m_velocityRT.Init(dev, w, h, DXGI_FORMAT_R16G16_FLOAT);
-            m_taa.Resize(dev, w, h);
-            m_bloom.Resize(dev, w, h);
-            m_ssao.Resize(dev, w, h);
-            m_volFog.Resize(dev, w, h);
-            m_ldrRT.Shutdown();
-            m_ldrRT.Init(dev, w, h, DXGI_FORMAT_R8G8B8A8_UNORM);
-            if (m_planarObjectIndex >= 0)
-            {
-                m_planarReflectionRT.Shutdown();
-                m_planarReflectionRT.Init(dev,
-                    (std::max)(1u, static_cast<uint32_t>(w * m_planarReflectionScale)),
-                    (std::max)(1u, static_cast<uint32_t>(h * m_planarReflectionScale)),
-                    DXGI_FORMAT_R16G16B16A16_FLOAT, true, false, true);
-            }
-        }
+        // FSR renders the scene at reduced resolution and upscales to the window.
+        const float fsrRatio = m_fsrEnabled ? FsrUpscaleRatio() : 1.0f;
+        const uint32_t rw = (std::max)(1u, static_cast<uint32_t>(w / fsrRatio));
+        const uint32_t rh = (std::max)(1u, static_cast<uint32_t>(h / fsrRatio));
+
+        // Resize render targets when the window or the render resolution changes.
+        if (m_forwardHDR_RT.GetWidth() != rw || m_forwardHDR_RT.GetHeight() != rh ||
+            m_ldrRT.GetWidth() != w || m_ldrRT.GetHeight() != h)
+            ResizeRenderTargets(rw, rh, w, h);
 
         SE::RenderTarget& hdrRT = m_forwardHDR_RT;
 
@@ -1067,8 +1048,18 @@ protected:
                            cascadeVP, splitFar);
         }
 
-        // TAA before bloom so bloom receives a temporally stable image.
-        if (m_taa.enabled)
+        UpdateFsrLifetime(rw, rh, w, h);
+
+        // Upscale (FSR) or TAA before bloom so bloom receives a temporally
+        // stable image at output resolution.
+        const bool useFsr = m_fsrEnabled && m_fsr.IsInitialized() &&
+                            hdrRT.GetWidth() == m_fsr.RenderWidth() &&
+                            hdrRT.GetHeight() == m_fsr.RenderHeight();
+        if (useFsr)
+        {
+            DispatchFsr(ctx, hdrRT);
+        }
+        else if (m_taa.enabled)
         {
             XMMATRIX invVP = XMMatrixInverse(nullptr, m_viewProjNoJitter);
             m_taa.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_velocityRT.GetSRV(),
@@ -1076,15 +1067,17 @@ protected:
         }
         m_prevViewProjNoJitter = m_viewProjNoJitter;
 
+        SE::RenderTarget& outRT = useFsr ? m_fsrOutputRT : hdrRT;
+
         if (m_bloom.enabled)
-            m_bloom.Apply(ctx, hdrRT);
+            m_bloom.Apply(ctx, outRT);
 
         if (m_fxaa.enabled)
         {
             // Tone map into intermediate LDR RT, then FXAA to backbuffer
             float clearBlack[4] = { 0, 0, 0, 1 };
             m_ldrRT.Begin(ctx, clearBlack);
-            m_toneMap.Apply(ctx, hdrRT.GetSRV(), w, h);
+            m_toneMap.Apply(ctx, outRT.GetSRV(), w, h);
             m_ldrRT.End(ctx);
 
             GetRenderer().BindBackBuffer(ctx);
@@ -1093,14 +1086,156 @@ protected:
         else
         {
             GetRenderer().BindBackBuffer(ctx);
-            m_toneMap.Apply(ctx, hdrRT.GetSRV(), w, h);
+            m_toneMap.Apply(ctx, outRT.GetSRV(), w, h);
         }
+    }
+
+    float FsrUpscaleRatio() const
+    {
+        switch (m_fsrQuality)
+        {
+        case 1:  return 1.7f;  // Balanced
+        case 2:  return 2.0f;  // Performance
+        case 3:  return 1.0f;  // Native AA
+        default: return 1.5f;  // Quality
+        }
+    }
+
+    // (Re)create scene render targets at render resolution (rw, rh) and
+    // display-resolution targets at (w, h).
+    void ResizeRenderTargets(uint32_t rw, uint32_t rh, uint32_t w, uint32_t h)
+    {
+        auto* dev = GetRenderer().GetDevice();
+        m_forwardHDR_RT.Shutdown();
+        m_forwardHDR_RT.Init(dev, rw, rh, DXGI_FORMAT_R16G16B16A16_FLOAT, true, true);
+        m_normalRT.Shutdown();
+        m_normalRT.Init(dev, rw, rh, DXGI_FORMAT_R16G16B16A16_FLOAT);
+        m_velocityRT.Shutdown();
+        m_velocityRT.Init(dev, rw, rh, DXGI_FORMAT_R16G16_FLOAT);
+        m_taa.Resize(dev, rw, rh);
+        m_bloom.Resize(dev, w, h);
+        m_ssao.Resize(dev, rw, rh);
+        m_volFog.Resize(dev, rw, rh);
+        m_ldrRT.Shutdown();
+        m_ldrRT.Init(dev, w, h, DXGI_FORMAT_R8G8B8A8_UNORM);
+        if (m_planarObjectIndex >= 0)
+        {
+            m_planarReflectionRT.Shutdown();
+            m_planarReflectionRT.Init(dev,
+                (std::max)(1u, static_cast<uint32_t>(w * m_planarReflectionScale)),
+                (std::max)(1u, static_cast<uint32_t>(h * m_planarReflectionScale)),
+                DXGI_FORMAT_R16G16B16A16_FLOAT, true, false, true);
+        }
+    }
+
+    // Create/destroy the FSR context when its configuration changes.
+    void UpdateFsrLifetime(uint32_t rw, uint32_t rh, uint32_t w, uint32_t h)
+    {
+        if (!m_fsrEnabled)
+        {
+            if (m_fsr.IsInitialized())
+            {
+                m_fsr.Shutdown();
+                m_fsrOutputRT.Shutdown();
+            }
+            return;
+        }
+        if (m_fsr.IsInitialized() &&
+            m_fsr.RenderWidth() == rw && m_fsr.RenderHeight() == rh &&
+            m_fsrOutputRT.GetWidth() == w && m_fsrOutputRT.GetHeight() == h)
+            return;
+
+        auto* dev = GetRenderer().GetDevice();
+        if (!m_fsr.Init(dev, rw, rh, w, h))
+            m_fsrEnabled = false;
+        m_fsr.SetVelocityFactor(m_fsrVelocityFactor);
+        m_fsrOutputRT.Shutdown();
+        m_fsrOutputRT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                           false, false, false, /*withUAV=*/true);
+    }
+
+    void DispatchFsr(ID3D11DeviceContext* ctx, SE::RenderTarget& hdrRT)
+    {
+        // hdrRT may still be bound as RTV from the previous pass; FSR binds
+        // it as a compute SRV.
+        ID3D11RenderTargetView* nullRTV[3] = { nullptr, nullptr, nullptr };
+        ctx->OMSetRenderTargets(3, nullRTV, nullptr);
+
+        SE::FSRUpscaler::DispatchParams p;
+        p.color            = hdrRT.GetTexture();
+        p.depth            = hdrRT.GetDepthTexture();
+        p.motionVectors    = m_velocityRT.GetTexture();
+        p.output           = m_fsrOutputRT.GetTexture();
+        p.frameTimeSeconds = GetClock().GetDeltaTime();
+        p.cameraNear       = m_camera->nearZ;
+        p.cameraFar        = m_camera->farZ;
+        p.cameraFovY       = DirectX::XMConvertToRadians(m_camera->fovDeg);
+        p.sharpen          = m_fsrSharpen;
+        p.sharpness        = m_fsrSharpness;
+        m_fsr.Dispatch(ctx, p);
     }
 
 private:
     void CancelSceneLoad()
     {
         m_levelLoad.Cancel();
+    }
+
+    // Sub-pixel projection jitter for FSR (its own sequence) or TAA.
+    void ApplyTemporalJitter(DirectX::XMMATRIX& proj)
+    {
+        using namespace DirectX;
+        if (m_fsrEnabled && m_fsr.IsInitialized())
+        {
+            const XMFLOAT2 jitter = m_fsr.NextJitter();
+            proj = proj * XMMatrixTranslation(jitter.x, jitter.y, 0.0f);
+        }
+        else if (m_taa.enabled)
+        {
+            const XMFLOAT2 jitter =
+                m_taa.NextJitter(m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight());
+            proj = proj * XMMatrixTranslation(jitter.x, jitter.y, 0.0f);
+        }
+    }
+
+    // FSR 3.1 and the engine TAA are mutually exclusive temporal AA paths.
+    void DrawTemporalAAUI()
+    {
+        int method = m_fsrEnabled ? 1 : (m_taa.enabled ? 2 : 0);
+        const char* methods[] = { "Off", "FSR 3.1", "Engine TAA" };
+        if (ImGui::Combo("Method", &method, methods, IM_ARRAYSIZE(methods)))
+        {
+            m_fsrEnabled = method == 1;
+            m_taa.enabled = method == 2;
+            m_taa.ResetHistory();
+        }
+        if (m_fsrEnabled)
+            DrawFsrUI();
+        else if (m_taa.enabled)
+            DrawTaaUI();
+    }
+
+    void DrawFsrUI()
+    {
+        const char* modes[] = { "Quality (1.5x)", "Balanced (1.7x)",
+                                "Performance (2.0x)", "Native AA (1.0x)" };
+        ImGui::Combo("Mode", &m_fsrQuality, modes, IM_ARRAYSIZE(modes));
+        ImGui::Checkbox("Sharpen", &m_fsrSharpen);
+        if (m_fsrSharpen)
+            ImGui::SliderFloat("Sharpness", &m_fsrSharpness, 0.0f, 1.0f, "%.2f");
+        if (ImGui::SliderFloat("Velocity Factor", &m_fsrVelocityFactor, 0.0f, 1.0f, "%.2f"))
+            m_fsr.SetVelocityFactor(m_fsrVelocityFactor);
+        ImGui::Text("Render: %ux%u -> %ux%u",
+                    m_fsr.RenderWidth(), m_fsr.RenderHeight(),
+                    GetWindow().GetWidth(), GetWindow().GetHeight());
+    }
+
+    void DrawTaaUI()
+    {
+        ImGui::SliderFloat("History Blend", &m_taa.blendFactor, 0.5f, 0.98f, "%.2f");
+        ImGui::SliderFloat("Clamp Width", &m_taa.clampGamma, 0.5f, 2.5f, "%.2f");
+        if (ImGui::Button("Reset History"))
+            m_taa.ResetHistory();
     }
 
     void BeginAsyncSceneLoad(const std::string& scenePath)
@@ -1592,18 +1727,8 @@ private:
                 ImGui::SliderFloat("Distance Density", &m_volFog.distanceDensity, 0.0f, 8.0f, "%.2f");
             }
         }
-        if (ImGui::CollapsingHeader("TAA"))
-        {
-            if (ImGui::Checkbox("Enable TAA", &m_taa.enabled) && m_taa.enabled)
-                m_taa.ResetHistory();
-            if (m_taa.enabled)
-            {
-                ImGui::SliderFloat("History Blend", &m_taa.blendFactor, 0.5f, 0.98f, "%.2f");
-                ImGui::SliderFloat("Clamp Width", &m_taa.clampGamma, 0.5f, 2.5f, "%.2f");
-                if (ImGui::Button("Reset History"))
-                    m_taa.ResetHistory();
-            }
-        }
+        if (ImGui::CollapsingHeader("Temporal AA / Upscaling"))
+            DrawTemporalAAUI();
         if (ImGui::CollapsingHeader("FXAA"))
         {
             ImGui::Checkbox("Enable FXAA", &m_fxaa.enabled);
@@ -1859,6 +1984,13 @@ private:
     SE::FXAA                     m_fxaa;
     SE::TAA                      m_taa;
     SE::RenderTarget             m_velocityRT;
+    SE::FSRUpscaler              m_fsr;
+    SE::RenderTarget             m_fsrOutputRT;
+    bool                         m_fsrEnabled = true;
+    int                          m_fsrQuality = 3; // 0=Quality 1=Balanced 2=Performance 3=Native AA
+    bool                         m_fsrSharpen = true;
+    float                        m_fsrSharpness = 0.4f;
+    float                        m_fsrVelocityFactor = 0.0f; // 0 = stable thin features
     SE::RenderTarget             m_ldrRT;
     DirectX::XMMATRIX            m_viewProjNoJitter = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX            m_prevViewProjNoJitter = DirectX::XMMatrixIdentity();
