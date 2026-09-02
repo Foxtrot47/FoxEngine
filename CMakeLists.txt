@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(Engine)
 add_subdirectory(Game)
+add_subdirectory(Editor)
 
 include(CTest)
 if(BUILD_TESTING)
