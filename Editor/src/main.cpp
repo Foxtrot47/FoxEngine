@@ -14,6 +14,12 @@
 #include "EditorTheme.h"
 #include "EditorCamera.h"
 #include "EditorPanels.h"
+#include "EditorSelection.h"
+#include "EditorUndo.h"
+#include "EditorGizmo.h"
+#include "EditorOutliner.h"
+#include "EditorDetails.h"
+#include <ImGuizmo.h>
 
 class EditorApp : public SE::Engine
 {
@@ -97,6 +103,8 @@ private:
         for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
             if (m_sceneFiles[i] == m_scene.currentScenePath) { m_selectedScene = i; break; }
         m_editorCam.SyncFromCamera(*m_scene.camera);
+        m_selection.Clear();
+        m_undo.Clear(); // undo entries point into the previous scene
     }
 
     void BindViewportRT()
@@ -126,6 +134,8 @@ private:
 
     void DrawUI(bool sceneActive)
     {
+        ImGuizmo::BeginFrame();
+        HandleHotkeys();
         DrawMainMenu();
 
         ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
@@ -138,6 +148,9 @@ private:
         DrawViewportPanel(sceneActive);
         DrawScenePanel();
         DrawStatsPanel();
+        Editor::DrawOutlinerPanel(m_scene, m_selection);
+        Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
+                                 GetRenderer().GetDevice(), GetShaders());
         Editor::DrawCameraPanel(m_scene, m_editorCam);
         Editor::DrawMaterialPanel(m_scene);
         Editor::DrawPhysicsPanel(m_scene);
@@ -156,7 +169,37 @@ private:
                 PostMessageW(GetWindow().GetHandle(), WM_CLOSE, 0, 0);
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Edit"))
+        {
+            if (ImGui::MenuItem("Undo", "Ctrl+Z", false, m_undo.CanUndo()))
+                m_undo.Undo();
+            if (ImGui::MenuItem("Redo", "Ctrl+Y", false, m_undo.CanRedo()))
+                m_undo.Redo();
+            ImGui::EndMenu();
+        }
         ImGui::EndMainMenuBar();
+    }
+
+    // UE-style bindings: Q/W/E/R select gizmo op over the viewport,
+    // Ctrl+Z / Ctrl+Y undo/redo anywhere outside text input.
+    void HandleHotkeys()
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.WantTextInput)
+            return;
+        SE::InputManager& input = GetInput();
+        if (io.KeyCtrl)
+        {
+            if (input.IsKeyPressed('Z')) m_undo.Undo();
+            if (input.IsKeyPressed('Y')) m_undo.Redo();
+            return;
+        }
+        if (!m_viewportHovered || m_editorCam.IsFlying())
+            return;
+        if (input.IsKeyPressed('Q')) m_gizmoOp = Editor::GizmoOp::None;
+        if (input.IsKeyPressed('W')) m_gizmoOp = Editor::GizmoOp::Translate;
+        if (input.IsKeyPressed('E')) m_gizmoOp = Editor::GizmoOp::Rotate;
+        if (input.IsKeyPressed('R')) m_gizmoOp = Editor::GizmoOp::Scale;
     }
 
     void BuildDefaultLayout(ImGuiID dockspaceId)
@@ -180,17 +223,19 @@ private:
 
         ImGui::DockBuilderDockWindow("Viewport", dockCenter);
 
-        // Top tabs: Scene active (last docked = default tab)
-        ImGui::DockBuilderDockWindow("Stats",  dockRightTop);
-        ImGui::DockBuilderDockWindow("Camera", dockRightTop);
-        ImGui::DockBuilderDockWindow("Scene",  dockRightTop);
+        // Top tabs: Outliner active (last docked = default tab)
+        ImGui::DockBuilderDockWindow("Stats",    dockRightTop);
+        ImGui::DockBuilderDockWindow("Camera",   dockRightTop);
+        ImGui::DockBuilderDockWindow("Scene",    dockRightTop);
+        ImGui::DockBuilderDockWindow("Outliner", dockRightTop);
 
-        // Bottom tabs: Lighting active (last docked = default tab)
+        // Bottom tabs: Details active (last docked = default tab)
         ImGui::DockBuilderDockWindow("Particles",       dockRightBottom);
         ImGui::DockBuilderDockWindow("Physics",         dockRightBottom);
         ImGui::DockBuilderDockWindow("Material",        dockRightBottom);
         ImGui::DockBuilderDockWindow("Post Processing", dockRightBottom);
         ImGui::DockBuilderDockWindow("Lighting",        dockRightBottom);
+        ImGui::DockBuilderDockWindow("Details",         dockRightBottom);
         ImGui::DockBuilderFinish(dockspaceId);
     }
 
@@ -206,8 +251,7 @@ private:
         if (sceneActive && m_viewportRT.GetSRV())
         {
             ImGui::Image(reinterpret_cast<ImTextureID>(m_viewportRT.GetSRV()), avail);
-            Editor::DrawLightIndicators(m_scene, ImGui::GetItemRectMin(),
-                                        ImGui::GetItemRectMax());
+            DrawViewportOverlays();
         }
         else
         {
@@ -216,6 +260,23 @@ private:
 
         ImGui::End();
         ImGui::PopStyleVar();
+    }
+
+    // Gizmo, light indicators, and click picking on top of the viewport image.
+    void DrawViewportOverlays()
+    {
+        const ImVec2 imageMin = ImGui::GetItemRectMin();
+        const ImVec2 imageMax = ImGui::GetItemRectMax();
+        const bool imageClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+
+        const bool gizmoBusy = Editor::DrawGizmo(m_scene, m_selection, m_undo,
+                                                 m_gizmoOp, imageMin, imageMax);
+        const bool lightClicked =
+            Editor::DrawLightIndicators(m_scene, imageMin, imageMax, m_selection);
+
+        if (imageClicked && !gizmoBusy && !lightClicked && !ImGui::GetIO().KeyAlt)
+            m_selection = Editor::PickScene(m_scene, imageMin, imageMax,
+                                            ImGui::GetMousePos());
     }
 
     void DrawViewportLoadingOverlay()
@@ -306,6 +367,9 @@ private:
 
     SE::SceneRuntime      m_scene;
     Editor::EditorCamera  m_editorCam;
+    Editor::Selection     m_selection;
+    Editor::UndoStack     m_undo;
+    Editor::GizmoOp       m_gizmoOp = Editor::GizmoOp::Translate;
     SE::RenderTarget      m_viewportRT;
     ImVec2           m_viewportSize    = ImVec2(1280.0f, 720.0f);
     bool             m_viewportHovered = false;
