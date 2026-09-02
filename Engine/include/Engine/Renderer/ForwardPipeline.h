@@ -38,6 +38,11 @@ public:
     // Also binds a default ForwardShadowCB (b4) with zero point shadow casters.
     void Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, DirectX::XMMATRIX proj);
 
+    // Matrices for motion vector output (TAA). Call after Begin(). Both must be
+    // jitter-free; without this call velocity resolves to zero.
+    void SetTemporalMatrices(DirectX::XMMATRIX prevViewProj,
+                             DirectX::XMMATRIX viewProjNoJitter);
+
     // Bind equirectangular HDR panorama for IBL (t4). Pass nullptr to unbind.
     void BindEnvironment(ID3D11DeviceContext* ctx,
                          ID3D11ShaderResourceView* irradianceSRV,
@@ -70,8 +75,11 @@ public:
 
     // --- Queued rendering (M42) ---
     // Submit a mesh for sorted draw. Call Flush() after all submits to actually draw.
+    // prevModel: last frame's model matrix for per-object motion vectors;
+    // nullptr means the object did not move (velocity from camera only).
     void SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
-                    const std::vector<SubMat>& mats, bool transparent = false);
+                    const std::vector<SubMat>& mats, bool transparent = false,
+                    const DirectX::XMMATRIX* prevModel = nullptr);
     void Flush(ID3D11DeviceContext* ctx);
 
     // --- Immediate rendering (legacy) ---
@@ -125,6 +133,9 @@ private:
         DirectX::XMFLOAT4X4 model;
         DirectX::XMFLOAT4X4 view;
         DirectX::XMFLOAT4X4 projection;
+        DirectX::XMFLOAT4X4 prevModel;         // last frame's model matrix
+        DirectX::XMFLOAT4X4 viewProjNoJitter;  // current frame, no TAA jitter
+        DirectX::XMFLOAT4X4 prevViewProj;      // last frame, no TAA jitter
     };
     struct MaterialParamsCBData
     {
@@ -157,6 +168,9 @@ private:
     ConstantBuffer<TransformCBData>           m_transformCB;
     void ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mode);
     void BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat);
+    void UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model);
+    void UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model,
+                           DirectX::XMMATRIX prevModel);
 
     ConstantBuffer<MaterialParamsCBData>      m_materialCB;
     DirectX::XMFLOAT3 m_globalTint = { 1.0f, 1.0f, 1.0f };
@@ -185,6 +199,8 @@ private:
 
     DirectX::XMMATRIX m_view = {};
     DirectX::XMMATRIX m_proj = {};
+    DirectX::XMMATRIX m_viewProjNoJitter = DirectX::XMMatrixIdentity();
+    DirectX::XMMATRIX m_prevViewProj = DirectX::XMMatrixIdentity();
     Frustum                  m_frustum;
 
     RenderQueue              m_queue;

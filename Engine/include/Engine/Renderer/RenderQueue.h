@@ -9,6 +9,7 @@ namespace SE {
 struct RenderItem
 {
     DirectX::XMMATRIX  model;
+    DirectX::XMMATRIX  prevModel;      // last frame's model matrix (motion vectors)
     uint32_t           meshIndex;     // index into an external mesh/material array
     uint32_t           subMeshIndex;
     float              sortDepth;     // camera-space Z for sorting

@@ -35,6 +35,7 @@
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/VolumetricFog.h"
 #include "Engine/Renderer/FXAA.h"
+#include "Engine/Renderer/TAA.h"
 #include "Engine/Renderer/ParticleSystem.h"
 #include "Engine/Renderer/SpotLight.h"
 #include "Engine/Input/GamepadState.h"
@@ -98,6 +99,14 @@ public:
 
         // FXAA
         if (!m_fxaa.Init(device, GetShaders())) return false;
+
+        // Velocity buffer (UV-space motion vectors) + TAA
+        if (!m_velocityRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
+                DXGI_FORMAT_R16G16_FLOAT))
+            return false;
+        if (!m_taa.Init(device, GetShaders(),
+                GetWindow().GetWidth(), GetWindow().GetHeight())) return false;
+        m_fxaa.enabled = false; // TAA is the default AA path
 
         // LDR intermediate RT for FXAA input
         if (!m_ldrRT.Init(device, GetWindow().GetWidth(), GetWindow().GetHeight(),
@@ -537,6 +546,8 @@ protected:
             m_completeSceneLoadNextFrame = false;
             m_initialSceneLoad = false;
             m_loadingScenePath.clear();
+            m_taa.ResetHistory();
+            m_havePrevViewProj = false; // camera jumps on scene load
             SE_LOG_INFO("TestScene ready — %s", m_currentDesc.name.c_str());
         }
 
@@ -672,6 +683,19 @@ protected:
 
         XMMATRIX view = m_camera->GetViewMatrix();
         XMMATRIX proj = m_camera->GetProjectionMatrix(aspect);
+        // Sub-pixel jitter for TAA: offset clip-space XY after projection.
+        m_viewProjNoJitter = view * proj;
+        if (!m_havePrevViewProj)
+        {
+            m_prevViewProjNoJitter = m_viewProjNoJitter;
+            m_havePrevViewProj = true;
+        }
+        if (m_taa.enabled)
+        {
+            const XMFLOAT2 jitter =
+                m_taa.NextJitter(GetWindow().GetWidth(), GetWindow().GetHeight());
+            proj = proj * XMMatrixTranslation(jitter.x, jitter.y, 0.0f);
+        }
         m_cachedProj = proj;
         m_cachedView = view;  // Store for volumetric fog in OnPostProcess
 
@@ -796,13 +820,16 @@ protected:
 
         // --- Forward path (HDR + PBR + IBL) ---
         {
-            ID3D11RenderTargetView* rtvs[2] = { m_forwardHDR_RT.GetRTV(), m_normalRT.GetRTV() };
+            ID3D11RenderTargetView* rtvs[3] = { m_forwardHDR_RT.GetRTV(), m_normalRT.GetRTV(),
+                                                m_velocityRT.GetRTV() };
             ID3D11DepthStencilView* dsv = m_forwardHDR_RT.GetDSV();
             const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
             const float clearNorm[4] = { 0.5f, 0.5f, 0.5f, 1.0f };
-            ctx->OMSetRenderTargets(2, rtvs, dsv);
+            const float clearVel[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            ctx->OMSetRenderTargets(3, rtvs, dsv);
             ctx->ClearRenderTargetView(rtvs[0], black);
             ctx->ClearRenderTargetView(rtvs[1], clearNorm);
+            ctx->ClearRenderTargetView(rtvs[2], clearVel);
             ctx->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
             D3D11_VIEWPORT vp = {};
             vp.Width = (float)m_forwardHDR_RT.GetWidth();
@@ -824,6 +851,7 @@ protected:
         m_shadowMap.BindForLitPass(ctx);
         m_lights.BindPS(ctx, m_camera->eye, m_shadowMap.GetLightViewProj());
         m_pipeline.Begin(ctx, view, proj);
+        m_pipeline.SetTemporalMatrices(m_prevViewProjNoJitter, m_viewProjNoJitter);
         m_pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
         m_pipeline.BindPointShadows(ctx, ptSRVs[0], ptSRVs[1], numPtShadows, m_pointShadowBias);
         m_spotLight.BindForLitPass(ctx);
@@ -977,6 +1005,9 @@ protected:
             m_forwardHDR_RT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT, true, true);
             m_normalRT.Shutdown();
             m_normalRT.Init(dev, w, h, DXGI_FORMAT_R16G16B16A16_FLOAT);
+            m_velocityRT.Shutdown();
+            m_velocityRT.Init(dev, w, h, DXGI_FORMAT_R16G16_FLOAT);
+            m_taa.Resize(dev, w, h);
             m_bloom.Resize(dev, w, h);
             m_ssao.Resize(dev, w, h);
             m_volFog.Resize(dev, w, h);
@@ -996,8 +1027,8 @@ protected:
 
         // Unbind MRT — only need single RTV for post-process
         {
-            ID3D11RenderTargetView* nullRTV[2] = { nullptr, nullptr };
-            ctx->OMSetRenderTargets(2, nullRTV, nullptr);
+            ID3D11RenderTargetView* nullRTV[3] = { nullptr, nullptr, nullptr };
+            ctx->OMSetRenderTargets(3, nullRTV, nullptr);
         }
 
         // Screen-Space Ambient Occlusion.
@@ -1033,6 +1064,15 @@ protected:
                            m_spotLight.enabled ? 1 : 0, m_spotLight.GetViewProj(),
                            cascadeVP, splitFar);
         }
+
+        // TAA before bloom so bloom receives a temporally stable image.
+        if (m_taa.enabled)
+        {
+            XMMATRIX invVP = XMMatrixInverse(nullptr, m_viewProjNoJitter);
+            m_taa.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_velocityRT.GetSRV(),
+                        invVP, m_prevViewProjNoJitter);
+        }
+        m_prevViewProjNoJitter = m_viewProjNoJitter;
 
         if (m_bloom.enabled)
             m_bloom.Apply(ctx, hdrRT);
@@ -1550,6 +1590,18 @@ private:
                 ImGui::SliderFloat("Distance Density", &m_volFog.distanceDensity, 0.0f, 8.0f, "%.2f");
             }
         }
+        if (ImGui::CollapsingHeader("TAA"))
+        {
+            if (ImGui::Checkbox("Enable TAA", &m_taa.enabled) && m_taa.enabled)
+                m_taa.ResetHistory();
+            if (m_taa.enabled)
+            {
+                ImGui::SliderFloat("History Blend", &m_taa.blendFactor, 0.5f, 0.98f, "%.2f");
+                ImGui::SliderFloat("Clamp Width", &m_taa.clampGamma, 0.5f, 2.5f, "%.2f");
+                if (ImGui::Button("Reset History"))
+                    m_taa.ResetHistory();
+            }
+        }
         if (ImGui::CollapsingHeader("FXAA"))
         {
             ImGui::Checkbox("Enable FXAA", &m_fxaa.enabled);
@@ -1802,7 +1854,12 @@ private:
     SE::SSAO                     m_ssao;
     SE::VolumetricFog            m_volFog;
     SE::FXAA                     m_fxaa;
+    SE::TAA                      m_taa;
+    SE::RenderTarget             m_velocityRT;
     SE::RenderTarget             m_ldrRT;
+    DirectX::XMMATRIX            m_viewProjNoJitter = DirectX::XMMatrixIdentity();
+    DirectX::XMMATRIX            m_prevViewProjNoJitter = DirectX::XMMatrixIdentity();
+    bool                         m_havePrevViewProj = false;
     SE::RenderTarget             m_planarReflectionRT;
     int                          m_planarObjectIndex = -1;
     float                        m_planarReflectionY = 0.0f;

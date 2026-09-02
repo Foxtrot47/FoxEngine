@@ -226,6 +226,9 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
 {
     m_view = view;
     m_proj = proj;
+    // Zero-velocity defaults; SetTemporalMatrices() overrides for TAA frames.
+    m_viewProjNoJitter = DirectX::XMMatrixMultiply(view, proj);
+    m_prevViewProj     = m_viewProjNoJitter;
     m_frustum.ExtractFromVP(DirectX::XMMatrixMultiply(view, proj));
     m_queue.Clear();
     m_queuedDraws.clear();
@@ -312,8 +315,36 @@ void ForwardPipeline::BindPointShadows(ID3D11DeviceContext* ctx,
     m_shadowCB.BindPS(ctx, 4);
 }
 
+void ForwardPipeline::SetTemporalMatrices(DirectX::XMMATRIX prevViewProj,
+                                          DirectX::XMMATRIX viewProjNoJitter)
+{
+    m_prevViewProj     = prevViewProj;
+    m_viewProjNoJitter = viewProjNoJitter;
+}
+
+void ForwardPipeline::UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model)
+{
+    UploadTransformCB(ctx, model, model);
+}
+
+void ForwardPipeline::UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model,
+                                        DirectX::XMMATRIX prevModel)
+{
+    using namespace DirectX;
+    TransformCBData cb;
+    XMStoreFloat4x4(&cb.model,            model);
+    XMStoreFloat4x4(&cb.view,             m_view);
+    XMStoreFloat4x4(&cb.projection,       m_proj);
+    XMStoreFloat4x4(&cb.prevModel,        prevModel);
+    XMStoreFloat4x4(&cb.viewProjNoJitter, m_viewProjNoJitter);
+    XMStoreFloat4x4(&cb.prevViewProj,     m_prevViewProj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+}
+
 void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
-                                  const std::vector<SubMat>& mats, bool transparent)
+                                  const std::vector<SubMat>& mats, bool transparent,
+                                  const DirectX::XMMATRIX* prevModel)
 {
     using namespace DirectX;
 
@@ -356,6 +387,7 @@ void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
     {
         RenderItem item;
         item.model        = model;
+        item.prevModel    = prevModel ? *prevModel : model;
         item.meshIndex    = drawIdx;
         item.subMeshIndex = i;
         item.sortDepth    = depth;
@@ -422,12 +454,7 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
     {
         auto& draw = m_queuedDraws[item.meshIndex];
 
-        TransformCBData cb;
-        XMStoreFloat4x4(&cb.model,      item.model);
-        XMStoreFloat4x4(&cb.view,       m_view);
-        XMStoreFloat4x4(&cb.projection, m_proj);
-        m_transformCB.Update(ctx, cb);
-        m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+        UploadTransformCB(ctx, item.model, item.prevModel);
 
         auto& mat = (*draw.mats)[item.subMeshIndex];
 
@@ -476,12 +503,7 @@ void ForwardPipeline::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
 {
     using namespace DirectX;
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,      model);
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, model);
 
     for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
     {
@@ -505,14 +527,7 @@ void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,
-        XMMatrixScaling(radius, radius, radius) *
-        XMMatrixTranslation(position.x, position.y, position.z));
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
 
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
@@ -534,14 +549,7 @@ void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,
-        XMMatrixScaling(radius, radius, radius) *
-        XMMatrixTranslation(position.x, position.y, position.z));
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireSphereVB.Bind(ctx);
@@ -570,14 +578,7 @@ void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
     float hy = (mx.y - mn.y) * 0.5f, cy = (mn.y + mx.y) * 0.5f;
     float hz = (mx.z - mn.z) * 0.5f, cz = (mn.z + mx.z) * 0.5f;
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,
-        XMMatrixScaling(hx, hy, hz) *
-        XMMatrixTranslation(cx, cy, cz));
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixScaling(hx, hy, hz) * XMMatrixTranslation(cx, cy, cz));
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireAABBVB.Bind(ctx);
@@ -600,12 +601,7 @@ void ForwardPipeline::DrawWireBox(ID3D11DeviceContext* ctx,
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,      world);
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, world);
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireAABBVB.Bind(ctx);
@@ -630,12 +626,7 @@ void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
     m_defaultNormal->BindPS(ctx, 2);
 
     // Identity model — vertices are supplied in world space.
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,      XMMatrixIdentity());
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixIdentity());
 
     MeshVertex verts[2] = {};
     verts[0].x = from.x; verts[0].y = from.y; verts[0].z = from.z;
@@ -668,14 +659,7 @@ void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,
-        XMMatrixScaling(radius, radius, radius) *
-        XMMatrixTranslation(center.x, center.y, center.z));
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(center.x, center.y, center.z));
 
     // Reuse ring 0 of the wire sphere mesh — it sits in the XZ plane (y=0).
     // 32 segments × 2 indices per line = 64 indices.
@@ -702,14 +686,7 @@ void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
     mat.emissive  ? mat.emissive->BindPS(ctx, 9)  : m_defaultBlack->BindPS(ctx, 9);
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,
-        XMMatrixScaling(radius, radius, radius) *
-        XMMatrixTranslation(position.x, position.y, position.z));
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
 
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
@@ -732,14 +709,7 @@ void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
     mat.emissive  ? mat.emissive->BindPS(ctx, 9)  : m_defaultBlack->BindPS(ctx, 9);
 
-    TransformCBData cb;
-    XMStoreFloat4x4(&cb.model,
-        XMMatrixScaling(halfSizeX, 1.0f, halfSizeZ) *
-        XMMatrixTranslation(center.x, center.y, center.z));
-    XMStoreFloat4x4(&cb.view,       m_view);
-    XMStoreFloat4x4(&cb.projection, m_proj);
-    m_transformCB.Update(ctx, cb);
-    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+    UploadTransformCB(ctx, XMMatrixScaling(halfSizeX, 1.0f, halfSizeZ) * XMMatrixTranslation(center.x, center.y, center.z));
 
     m_planeVB.Bind(ctx);
     m_planeIB.Bind(ctx);

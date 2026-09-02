@@ -8,6 +8,9 @@ cbuffer TransformCB : register(b0)
     row_major matrix Model;
     row_major matrix View;
     row_major matrix Projection;
+    row_major matrix PrevModel;         // last frame's model matrix
+    row_major matrix ViewProjNoJitter;  // current frame, no TAA jitter
+    row_major matrix PrevViewProj;      // last frame, no TAA jitter
 };
 
 cbuffer LightCB : register(b1)
@@ -103,6 +106,8 @@ struct PSIn
     float3 B        : TEXCOORD3;
     float3 N        : TEXCOORD4;
     float  ViewZ    : TEXCOORD5;
+    float4 CurrClip : TEXCOORD6;  // jitter-free clip pos, current frame
+    float4 PrevClip : TEXCOORD7;  // jitter-free clip pos, last frame
 };
 
 PSIn VS_Main(VSIn input)
@@ -113,6 +118,8 @@ PSIn VS_Main(VSIn input)
     float4 viewPos = mul(world, View);
     o.ViewZ      = viewPos.z;
     o.Position   = mul(viewPos, Projection);
+    o.CurrClip   = mul(world, ViewProjNoJitter);
+    o.PrevClip   = mul(mul(float4(input.Position, 1.0f), PrevModel), PrevViewProj);
     o.TexCoord   = input.TexCoord;
     float3x3 m3  = (float3x3)Model;
     o.T = normalize(mul(input.Tangent,   m3));
@@ -229,13 +236,22 @@ float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
 
 struct PSOut
 {
-    float4 color   : SV_TARGET0;
-    float4 normal  : SV_TARGET1;  // view-space normal (xyz) + roughness (w)
+    float4 color    : SV_TARGET0;
+    float4 normal   : SV_TARGET1;  // view-space normal (xyz) + roughness (w)
+    float2 velocity : SV_TARGET2;  // UV-space motion, current - previous
 };
+
+float2 ComputeVelocity(float4 currClip, float4 prevClip)
+{
+    float2 currNDC = currClip.xy / currClip.w;
+    float2 prevNDC = prevClip.xy / prevClip.w;
+    return (currNDC - prevNDC) * float2(0.5f, -0.5f);
+}
 
 PSOut PS_Main(PSIn input)
 {
     PSOut o;
+    o.velocity = ComputeVelocity(input.CurrClip, input.PrevClip);
     if (ClipEnabled > 0.5f)
         clip(input.WorldPos.y - PlaneY - 0.01f);
     if (Unlit > 0.5f)
