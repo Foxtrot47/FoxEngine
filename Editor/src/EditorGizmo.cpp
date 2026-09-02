@@ -350,6 +350,65 @@ bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
     return ImGuizmo::IsOver() || usingNow;
 }
 
+namespace {
+
+// World-space framing sphere of a mesh: transform the 8 local AABB corners.
+void MeshBounds(const SE::SceneRuntime::LoadedMesh& loaded, XMFLOAT3& outCenter,
+                float& outRadius)
+{
+    const SE::AABB& b = loaded.mesh->GetBounds();
+    XMMATRIX world = loaded.transform->GetWorldMatrix();
+    XMVECTOR wmin = XMVectorReplicate(FLT_MAX);
+    XMVECTOR wmax = XMVectorReplicate(-FLT_MAX);
+    for (int i = 0; i < 8; ++i)
+    {
+        XMVECTOR corner = XMVectorSet((i & 1) ? b.max.x : b.min.x,
+                                      (i & 2) ? b.max.y : b.min.y,
+                                      (i & 4) ? b.max.z : b.min.z, 1.0f);
+        corner = XMVector3TransformCoord(corner, world);
+        wmin = XMVectorMin(wmin, corner);
+        wmax = XMVectorMax(wmax, corner);
+    }
+    XMStoreFloat3(&outCenter, XMVectorScale(XMVectorAdd(wmin, wmax), 0.5f));
+    outRadius = 0.5f * XMVectorGetX(XMVector3Length(XMVectorSubtract(wmax, wmin)));
+}
+
+} // namespace
+
+bool GetSelectionBounds(SE::SceneRuntime& scene, const Selection& sel,
+                        XMFLOAT3& outCenter, float& outRadius)
+{
+    Snapshot snap;
+    if (!CaptureSnapshot(scene, sel, snap))
+        return false;
+    outCenter = snap.position;
+    outRadius = 2.0f; // sensible framing for point targets (lights, emitters)
+
+    switch (sel.kind)
+    {
+    case Selection::Kind::Mesh:
+        if (scene.loadedMeshes[sel.index].mesh)
+            MeshBounds(scene.loadedMeshes[sel.index], outCenter, outRadius);
+        break;
+    case Selection::Kind::Emitter:
+        outRadius = (std::max)(
+            scene.particleSystems[sel.index]->config.spawnRadius, 2.0f);
+        break;
+    case Selection::Kind::Object:
+    {
+        const auto& d = scene.sceneObjects[sel.index].def;
+        using Type = SE::SceneDescriptor::SceneObject::Type;
+        outRadius = d.type == Type::Sphere ? d.radius
+                                           : (std::max)(d.halfSizeX, d.halfSizeZ);
+        break;
+    }
+    default:
+        break;
+    }
+    outRadius = (std::max)(outRadius, 0.5f);
+    return true;
+}
+
 Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
                     ImVec2 mousePos)
 {
