@@ -196,10 +196,24 @@ private:
         }
         if (!m_viewportHovered || m_editorCam.IsFlying())
             return;
+        HandleViewportKeys(input);
+    }
+
+    void HandleViewportKeys(SE::InputManager& input)
+    {
         if (input.IsKeyPressed('Q')) m_gizmoOp = Editor::GizmoOp::None;
         if (input.IsKeyPressed('W')) m_gizmoOp = Editor::GizmoOp::Translate;
         if (input.IsKeyPressed('E')) m_gizmoOp = Editor::GizmoOp::Rotate;
         if (input.IsKeyPressed('R')) m_gizmoOp = Editor::GizmoOp::Scale;
+        if (input.IsKeyPressed('F')) FocusSelection();
+    }
+
+    void FocusSelection()
+    {
+        DirectX::XMFLOAT3 center;
+        float radius;
+        if (Editor::GetSelectionBounds(m_scene, m_selection, center, radius))
+            m_editorCam.FocusOn(center, radius);
     }
 
     void BuildDefaultLayout(ImGuiID dockspaceId)

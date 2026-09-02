@@ -69,6 +69,13 @@ void EditorCamera::SyncFromCamera(const SE::CameraComponent& cam)
     }
 }
 
+void EditorCamera::FocusOn(const XMFLOAT3& center, float radius)
+{
+    orbitDistance = (std::max)(radius * 2.2f, k_minOrbitDistance);
+    XMStoreFloat3(&m_eye, XMVectorSubtract(XMLoadFloat3(&center),
+                                           XMVectorScale(Forward(), orbitDistance)));
+}
+
 XMVECTOR EditorCamera::Forward() const
 {
     const float yaw   = XMConvertToRadians(m_yawDeg);

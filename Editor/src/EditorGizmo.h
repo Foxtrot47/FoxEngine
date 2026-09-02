@@ -1,4 +1,5 @@
 #pragma once
+#include <DirectXMath.h>
 #include <imgui.h>
 #include "EditorSelection.h"
 #include "EditorUndo.h"
@@ -22,5 +23,10 @@ bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
 // mousePos. Returns a None selection when nothing is hit.
 Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
                     ImVec2 mousePos);
+
+// World-space framing sphere of the selection (for F focus). Returns false
+// for selections without a focusable position (None, Camera, Sun).
+bool GetSelectionBounds(SE::SceneRuntime& scene, const Selection& sel,
+                        DirectX::XMFLOAT3& outCenter, float& outRadius);
 
 } // namespace Editor

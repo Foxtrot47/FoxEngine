@@ -26,6 +26,10 @@ public:
     // Derive yaw/pitch/eye from a scene camera (call when a scene finishes loading).
     void SyncFromCamera(const SE::CameraComponent& cam);
 
+    // Frame a target (UE 'F'): keep the view direction, move the camera to a
+    // bounds-proportional distance, and make the target the orbit pivot.
+    void FocusOn(const DirectX::XMFLOAT3& center, float radius);
+
     // Drives cam.eye/target/up. viewportHovered gates the start of any drag;
     // an active drag continues until its mouse button is released.
     void Update(float dt, SE::InputManager& input, SE::CameraComponent& cam,
