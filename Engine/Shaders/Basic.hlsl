@@ -296,6 +296,16 @@ PSOut PS_Main(PSIn input)
         metallic  = saturate(metalSample * Metallic);
         F0        = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
     }
+    // Geometric specular AA: widen roughness where the shaded normal changes
+    // faster than a pixel, so sub-pixel highlights stop shimmering (thin bars,
+    // high-curvature edges). Kaplanyan-style normal-variance kernel.
+    {
+        float3 dndx = ddx(N);
+        float3 dndy = ddy(N);
+        float  variance = dot(dndx, dndx) + dot(dndy, dndy);
+        float  kernelRoughness = min(2.0f * variance, 0.18f);
+        roughness = sqrt(saturate(roughness * roughness + kernelRoughness));
+    }
 
     // Cascaded directional shadow (PCF 3×3)
     float shadow = 1.0f;
