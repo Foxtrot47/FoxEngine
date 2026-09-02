@@ -9,7 +9,7 @@
       "scale": 1.0
     }
   },
-  "skybox": "Assets/SunTemple/SunTemple_Skybox.dds",
+  "skybox": "Assets/Textures/citrus_orchard_road_puresky_2k.dds",
   "camera": {
     "eye": [0, 3, -10],
     "yaw": 0,
