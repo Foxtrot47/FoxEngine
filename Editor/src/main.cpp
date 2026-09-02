@@ -12,6 +12,8 @@
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scene/SceneRuntime.h"
 #include "EditorTheme.h"
+#include "EditorCamera.h"
+#include "EditorPanels.h"
 
 class EditorApp : public SE::Engine
 {
@@ -67,8 +69,8 @@ protected:
         if (sceneActive && m_viewportRT.GetRTV())
         {
             float dt = GetClock().GetDeltaTime();
-            m_scene.camCtrl.Update(dt, GetInput(), *m_scene.camera,
-                                   GetWindow().GetHandle(), !m_viewportHovered);
+            m_editorCam.Update(dt, GetInput(), *m_scene.camera,
+                               GetWindow().GetHandle(), m_viewportHovered);
             m_scene.Update(dt, static_cast<float>(GetClock().GetTotalTime()));
             m_scene.Render(static_cast<float>(m_viewportRT.GetWidth()) /
                            static_cast<float>(m_viewportRT.GetHeight()));
@@ -94,6 +96,7 @@ private:
     {
         for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
             if (m_sceneFiles[i] == m_scene.currentScenePath) { m_selectedScene = i; break; }
+        m_editorCam.SyncFromCamera(*m_scene.camera);
     }
 
     void BindViewportRT()
@@ -135,6 +138,12 @@ private:
         DrawViewportPanel(sceneActive);
         DrawScenePanel();
         DrawStatsPanel();
+        Editor::DrawCameraPanel(m_scene, m_editorCam);
+        Editor::DrawMaterialPanel(m_scene);
+        Editor::DrawPhysicsPanel(m_scene);
+        Editor::DrawLightingPanel(m_scene);
+        Editor::DrawPostProcessPanel(m_scene, m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
+        Editor::DrawParticlesPanel(m_scene, GetAssets(), GetRenderer().GetDevice(), GetShaders());
     }
 
     void DrawMainMenu()
@@ -167,11 +176,21 @@ private:
         ImGuiID dockRight;
         ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Right, 0.22f, &dockRight, &dockCenter);
         ImGuiID dockRightTop, dockRightBottom;
-        ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Up, 0.35f, &dockRightTop, &dockRightBottom);
+        ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Up, 0.30f, &dockRightTop, &dockRightBottom);
 
         ImGui::DockBuilderDockWindow("Viewport", dockCenter);
-        ImGui::DockBuilderDockWindow("Scene",    dockRightTop);
-        ImGui::DockBuilderDockWindow("Stats",    dockRightBottom);
+
+        // Top tabs: Scene active (last docked = default tab)
+        ImGui::DockBuilderDockWindow("Stats",  dockRightTop);
+        ImGui::DockBuilderDockWindow("Camera", dockRightTop);
+        ImGui::DockBuilderDockWindow("Scene",  dockRightTop);
+
+        // Bottom tabs: Lighting active (last docked = default tab)
+        ImGui::DockBuilderDockWindow("Particles",       dockRightBottom);
+        ImGui::DockBuilderDockWindow("Physics",         dockRightBottom);
+        ImGui::DockBuilderDockWindow("Material",        dockRightBottom);
+        ImGui::DockBuilderDockWindow("Post Processing", dockRightBottom);
+        ImGui::DockBuilderDockWindow("Lighting",        dockRightBottom);
         ImGui::DockBuilderFinish(dockspaceId);
     }
 
@@ -187,6 +206,8 @@ private:
         if (sceneActive && m_viewportRT.GetSRV())
         {
             ImGui::Image(reinterpret_cast<ImTextureID>(m_viewportRT.GetSRV()), avail);
+            Editor::DrawLightIndicators(m_scene, ImGui::GetItemRectMin(),
+                                        ImGui::GetItemRectMax());
         }
         else
         {
@@ -283,8 +304,9 @@ private:
         ImGui::End();
     }
 
-    SE::SceneRuntime m_scene;
-    SE::RenderTarget m_viewportRT;
+    SE::SceneRuntime      m_scene;
+    Editor::EditorCamera  m_editorCam;
+    SE::RenderTarget      m_viewportRT;
     ImVec2           m_viewportSize    = ImVec2(1280.0f, 720.0f);
     bool             m_viewportHovered = false;
     bool             m_firstFrame      = true;
