@@ -31,7 +31,9 @@ bool BeginScenePanel(const char* name, SE::SceneRuntime& scene)
     return false;
 }
 
-void DrawSunSection(SE::SceneRuntime& scene)
+} // namespace
+
+void DrawSunProps(SE::SceneRuntime& scene)
 {
     auto& lights = scene.lights;
     ImGui::SliderFloat("Elevation",    &lights.elevDeg,  -90.0f, 90.0f,  "%.1f deg");
@@ -44,7 +46,7 @@ void DrawSunSection(SE::SceneRuntime& scene)
     ImGui::SliderFloat("Shadow Bias", &scene.pointShadowBias, 0.001f, 0.1f, "%.4f");
 }
 
-void DrawSpotLightSection(SE::SceneRuntime& scene)
+void DrawSpotLightProps(SE::SceneRuntime& scene)
 {
     auto& spot = scene.spotLight;
     ImGui::Checkbox("Enable Spot", &spot.enabled);
@@ -69,40 +71,47 @@ void DrawSpotLightSection(SE::SceneRuntime& scene)
     ImGui::SliderFloat("Spot Bias", &spot.shadowBias, 0.0001f, 0.01f, "%.4f");
 }
 
-void DrawPointLightsSection(SE::SceneRuntime& scene)
+void DrawPointLightProps(SE::SceneRuntime& scene, int index)
 {
     auto& lights = scene.lights;
-    ImGui::SliderInt("Active", &lights.numLights, 0, 8);
-    for (int i = 0; i < lights.numLights; ++i)
+    ImGui::DragFloat3("Position", &lights.lights[index].position.x, 1.0f, -1000.0f, 1000.0f);
+    if (index < static_cast<int>(scene.pointLightDescs.size()))
+    {
+        // Scene-driven light: edit the base color; the per-frame
+        // flicker factor is applied on top of it.
+        auto& source = scene.pointLightDescs[index];
+        ImGui::ColorEdit3("Color", source.color.data(),
+                          ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+        ImGui::Checkbox("Flicker", &source.flicker);
+        if (source.flicker)
+        {
+            ImGui::SliderFloat("Amplitude", &source.flickerAmplitude, 0.0f, 1.0f);
+            ImGui::SliderFloat("Frequency", &source.flickerFrequency, 0.5f, 20.0f);
+        }
+    }
+    else
+    {
+        ImGui::ColorEdit3("Color", &lights.lights[index].color.x,
+                          ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+    }
+    ImGui::SliderFloat("Radius",  &lights.lights[index].radius, 0.5f, 500.0f);
+    if (index < 2)
+        ImGui::Checkbox("Cast Shadow", &scene.lightCastsShadow[index]);
+}
+
+namespace {
+
+void DrawPointLightsSection(SE::SceneRuntime& scene)
+{
+    ImGui::SliderInt("Active", &scene.lights.numLights, 0, 8);
+    for (int i = 0; i < scene.lights.numLights; ++i)
     {
         ImGui::PushID(i);
         char label[24];
         sprintf_s(label, "Point Light %d", i + 1);
         if (ImGui::TreeNode(label))
         {
-            ImGui::DragFloat3("Position", &lights.lights[i].position.x, 1.0f, -1000.0f, 1000.0f);
-            if (i < static_cast<int>(scene.pointLightDescs.size()))
-            {
-                // Scene-driven light: edit the base color; the per-frame
-                // flicker factor is applied on top of it.
-                auto& source = scene.pointLightDescs[i];
-                ImGui::ColorEdit3("Color", source.color.data(),
-                                  ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-                ImGui::Checkbox("Flicker", &source.flicker);
-                if (source.flicker)
-                {
-                    ImGui::SliderFloat("Amplitude", &source.flickerAmplitude, 0.0f, 1.0f);
-                    ImGui::SliderFloat("Frequency", &source.flickerFrequency, 0.5f, 20.0f);
-                }
-            }
-            else
-            {
-                ImGui::ColorEdit3("Color", &lights.lights[i].color.x,
-                                  ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
-            }
-            ImGui::SliderFloat("Radius",  &lights.lights[i].radius, 0.5f, 500.0f);
-            if (i < 2)
-                ImGui::Checkbox("Cast Shadow", &scene.lightCastsShadow[i]);
+            DrawPointLightProps(scene, i);
             ImGui::TreePop();
         }
         ImGui::PopID();
@@ -370,9 +379,9 @@ void DrawLightingPanel(SE::SceneRuntime& scene)
     if (!BeginScenePanel("Lighting", scene))
         return;
     if (ImGui::CollapsingHeader("Sun", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawSunSection(scene);
+        DrawSunProps(scene);
     if (ImGui::CollapsingHeader("Spot Light"))
-        DrawSpotLightSection(scene);
+        DrawSpotLightProps(scene);
     if (ImGui::CollapsingHeader("Point Lights"))
         DrawPointLightsSection(scene);
     if (ImGui::CollapsingHeader("Debug"))
@@ -468,6 +477,17 @@ void DrawPostProcessPanel(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t o
     ImGui::End();
 }
 
+void DrawEmitterProps(SE::SceneRuntime& scene, int index, SE::AssetManager& assets,
+                      ID3D11Device* device, SE::ShaderLibrary& shaders)
+{
+    if (index < 0 || index >= (int)scene.particleSystems.size())
+        return;
+    auto& ps = *scene.particleSystems[index];
+    DrawEmitterPreset(scene, index, ps, assets, device, shaders);
+    ImGui::Separator();
+    DrawEmitterConfig(ps);
+}
+
 void DrawParticlesPanel(SE::SceneRuntime& scene, SE::AssetManager& assets,
                         ID3D11Device* device, SE::ShaderLibrary& shaders)
 {
@@ -488,80 +508,125 @@ void DrawParticlesPanel(SE::SceneRuntime& scene, SE::AssetManager& assets,
     ImGui::Separator();
     for (int i = 0; i < (int)scene.particleSystems.size(); ++i)
     {
-        auto& ps = *scene.particleSystems[i];
         ImGui::PushID(i);
         char label[32];
         sprintf_s(label, "Emitter %d", i);
         if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen))
-        {
-            DrawEmitterPreset(scene, i, ps, assets, device, shaders);
-            ImGui::Separator();
-            DrawEmitterConfig(ps);
-        }
+            DrawEmitterProps(scene, i, assets, device, shaders);
         ImGui::PopID();
     }
     ImGui::End();
 }
 
-void DrawLightIndicators(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax)
+namespace {
+
+// Shared context for viewport overlay drawing: projection into the image
+// rect plus click hit-testing against indicator circles.
+struct IndicatorContext
 {
-    if (!scene.HasScene())
-        return;
+    ImDrawList* dl;
+    ImVec2      imageMin;
+    float       sw, sh;
+    XMMATRIX    viewProj;
+    ImVec2      mouse;
+    bool        tryClick;
 
-    const XMMATRIX vp = XMMatrixMultiply(scene.GetView(), scene.GetProj());
-    const float sw = imageMax.x - imageMin.x;
-    const float sh = imageMax.y - imageMin.y;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    dl->PushClipRect(imageMin, imageMax, true);
-
-    auto project = [&](XMVECTOR wp, float& sx, float& sy) -> bool
+    bool Project(XMVECTOR wp, float& sx, float& sy) const
     {
-        XMVECTOR cp = XMVector4Transform(wp, vp);
+        XMVECTOR cp = XMVector4Transform(wp, viewProj);
         float    cw = XMVectorGetW(cp);
         if (cw <= 0.0f) return false;
         sx = imageMin.x + ( XMVectorGetX(cp) / cw * 0.5f + 0.5f) * sw;
         sy = imageMin.y + (-XMVectorGetY(cp) / cw * 0.5f + 0.5f) * sh;
         return true;
-    };
-
-    // Sun
-    {
-        float er = XMConvertToRadians(scene.lights.elevDeg);
-        float ar = XMConvertToRadians(scene.lights.azimDeg);
-        XMVECTOR dir    = XMVectorSet(cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar), 0.0f);
-        XMVECTOR eyeV   = XMVectorSet(scene.camera->eye.x, scene.camera->eye.y, scene.camera->eye.z, 1.0f);
-        XMVECTOR sunPos = XMVectorSetW(XMVectorAdd(eyeV, XMVectorScale(dir, 80.0f)), 1.0f);
-        float sx, sy;
-        if (project(sunPos, sx, sy))
-        {
-            dl->AddCircleFilled({ sx, sy }, 10.0f, IM_COL32(255, 220, 50, 255));
-            for (int r = 0; r < 8; ++r)
-            {
-                float a = r * 3.14159f / 4.0f;
-                dl->AddLine({ sx + cosf(a) * 12.0f, sy + sinf(a) * 12.0f },
-                            { sx + cosf(a) * 17.0f, sy + sinf(a) * 17.0f },
-                            IM_COL32(255, 220, 50, 200), 1.5f);
-            }
-            dl->AddText({ sx + 14.0f, sy - 7.0f }, IM_COL32_WHITE, "Sun");
-        }
     }
 
-    // Point lights
+    bool HitTest(float sx, float sy) const
+    {
+        const float dx = mouse.x - sx, dy = mouse.y - sy;
+        return tryClick && (dx * dx + dy * dy) <= 12.0f * 12.0f;
+    }
+};
+
+bool DrawSunIndicator(SE::SceneRuntime& scene, Selection& sel,
+                      const IndicatorContext& ctx)
+{
+    float er = XMConvertToRadians(scene.lights.elevDeg);
+    float ar = XMConvertToRadians(scene.lights.azimDeg);
+    XMVECTOR dir    = XMVectorSet(cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar), 0.0f);
+    XMVECTOR eyeV   = XMVectorSet(scene.camera->eye.x, scene.camera->eye.y, scene.camera->eye.z, 1.0f);
+    XMVECTOR sunPos = XMVectorSetW(XMVectorAdd(eyeV, XMVectorScale(dir, 80.0f)), 1.0f);
+    float sx, sy;
+    if (!ctx.Project(sunPos, sx, sy))
+        return false;
+
+    const bool clicked = ctx.HitTest(sx, sy);
+    if (clicked)
+        sel.Set(Selection::Kind::Sun);
+    if (sel.Is(Selection::Kind::Sun))
+        ctx.dl->AddCircle({ sx, sy }, 20.0f, IM_COL32(0, 122, 204, 255), 0, 2.0f);
+    ctx.dl->AddCircleFilled({ sx, sy }, 10.0f, IM_COL32(255, 220, 50, 255));
+    for (int r = 0; r < 8; ++r)
+    {
+        float a = r * 3.14159f / 4.0f;
+        ctx.dl->AddLine({ sx + cosf(a) * 12.0f, sy + sinf(a) * 12.0f },
+                        { sx + cosf(a) * 17.0f, sy + sinf(a) * 17.0f },
+                        IM_COL32(255, 220, 50, 200), 1.5f);
+    }
+    ctx.dl->AddText({ sx + 14.0f, sy - 7.0f }, IM_COL32_WHITE, "Sun");
+    return clicked;
+}
+
+bool DrawPointLightIndicators(SE::SceneRuntime& scene, Selection& sel,
+                              const IndicatorContext& ctx)
+{
+    bool clickConsumed = false;
     for (int i = 0; i < scene.lights.numLights; ++i)
     {
         const auto& pl = scene.lights.lights[i];
         float sx, sy;
-        if (!project(XMVectorSet(pl.position.x, pl.position.y, pl.position.z, 1.0f), sx, sy))
+        if (!ctx.Project(XMVectorSet(pl.position.x, pl.position.y, pl.position.z, 1.0f), sx, sy))
             continue;
+        if (ctx.HitTest(sx, sy))
+        {
+            sel.Set(Selection::Kind::PointLight, i);
+            clickConsumed = true;
+        }
         ImU32 fill = ImGui::ColorConvertFloat4ToU32({ pl.color.x, pl.color.y, pl.color.z, 1.0f });
-        dl->AddCircleFilled({ sx, sy }, 7.0f, fill);
-        dl->AddCircle({ sx, sy }, 8.0f, IM_COL32(255, 255, 255, 200), 0, 1.5f);
+        if (sel.Is(Selection::Kind::PointLight, i))
+            ctx.dl->AddCircle({ sx, sy }, 13.0f, IM_COL32(0, 122, 204, 255), 0, 2.0f);
+        ctx.dl->AddCircleFilled({ sx, sy }, 7.0f, fill);
+        ctx.dl->AddCircle({ sx, sy }, 8.0f, IM_COL32(255, 255, 255, 200), 0, 1.5f);
         char tag[8];
         sprintf_s(tag, "PL%d", i + 1);
-        dl->AddText({ sx + 11.0f, sy - 7.0f }, IM_COL32_WHITE, tag);
+        ctx.dl->AddText({ sx + 11.0f, sy - 7.0f }, IM_COL32_WHITE, tag);
     }
+    return clickConsumed;
+}
 
-    dl->PopClipRect();
+} // namespace
+
+bool DrawLightIndicators(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
+                         Selection& sel)
+{
+    if (!scene.HasScene())
+        return false;
+
+    IndicatorContext ctx;
+    ctx.dl       = ImGui::GetWindowDrawList();
+    ctx.imageMin = imageMin;
+    ctx.sw       = imageMax.x - imageMin.x;
+    ctx.sh       = imageMax.y - imageMin.y;
+    ctx.viewProj = XMMatrixMultiply(scene.GetView(), scene.GetProj());
+    ctx.mouse    = ImGui::GetMousePos();
+    ctx.tryClick = ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                   !ImGui::GetIO().KeyAlt;
+
+    ctx.dl->PushClipRect(imageMin, imageMax, true);
+    bool clickConsumed = DrawSunIndicator(scene, sel, ctx);
+    clickConsumed |= DrawPointLightIndicators(scene, sel, ctx);
+    ctx.dl->PopClipRect();
+    return clickConsumed;
 }
 
 } // namespace Editor
