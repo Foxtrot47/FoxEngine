@@ -49,6 +49,20 @@ AssetHandle<Texture2D> FindTexture(AssetManager& assets, const std::string& path
     return normalized.empty() ? AssetHandle<Texture2D>{} : assets.FindTexture(Wide(normalized));
 }
 
+void ResolveEnvironmentTextures(AssetManager& assets, PreparedLevel& prepared)
+{
+    const std::string environmentPath = prepared.descriptor.skybox.empty()
+        ? prepared.descriptor.reflectionPanorama : prepared.descriptor.skybox;
+    prepared.environment = FindTexture(assets, environmentPath);
+    if (!prepared.environment) prepared.environment = assets.GetDefaultBlack();
+    // A dedicated reflection panorama drives IBL (e.g. an interior probe);
+    // the skybox remains the visual background.
+    prepared.iblEnvironment = prepared.descriptor.reflectionPanorama.empty()
+        ? prepared.environment
+        : FindTexture(assets, prepared.descriptor.reflectionPanorama);
+    if (!prepared.iblEnvironment) prepared.iblEnvironment = prepared.environment;
+}
+
 ForwardPipeline::SubMat ResolveObjectMaterial(AssetManager& assets,
                                               const SceneDescriptor::SceneObject& object)
 {
@@ -426,10 +440,7 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
         m_prepared->objectMaterials.push_back(ResolveObjectMaterial(assets, object));
     for (const auto& particle : m_prepared->descriptor.particles)
         m_prepared->particleTextures.push_back(FindTexture(assets, particle.texture));
-    const std::string environmentPath = m_prepared->descriptor.skybox.empty()
-        ? m_prepared->descriptor.reflectionPanorama : m_prepared->descriptor.skybox;
-    m_prepared->environment = FindTexture(assets, environmentPath);
-    if (!m_prepared->environment) m_prepared->environment = assets.GetDefaultBlack();
+    ResolveEnvironmentTextures(assets, *m_prepared);
     m_status.timings.push_back({ "GPU uploads", m_uploadMilliseconds });
     m_prepared->diagnostics.insert(m_prepared->diagnostics.end(),
                                    m_status.warnings.begin(), m_status.warnings.end());

@@ -355,10 +355,11 @@ public:
         m_selectedParticlePreset = std::move(newSelectedParticlePreset);
         m_loadedMeshes     = std::move(newLoadedMeshes);
         m_environmentTexture = std::move(prepared.environment);
+        m_iblTexture = std::move(prepared.iblEnvironment);
         m_levelDiagnostics = std::move(prepared.diagnostics);
         m_skybox.SetPanorama(m_environmentTexture ? m_environmentTexture->GetSRV() : nullptr);
         if (!m_environmentLighting.Build(device, GetRenderer().GetContext(),
-                                         m_environmentTexture ? m_environmentTexture->GetSRV() : nullptr))
+                                         m_iblTexture ? m_iblTexture->GetSRV() : nullptr))
             SE_LOG_WARN("Environment lighting generation failed; using neutral fallback");
 
         m_planarObjectIndex = -1;
@@ -1053,7 +1054,8 @@ protected:
                                        m_spotLight.color.z * m_spotLight.intensity };
             m_volFog.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(),
                            m_shadowMap.GetShadowSRV(), m_shadowMap.GetShadowSampler(),
-                           m_skybox.GetPanoramaSRV(), m_spotLight.GetSRV(),
+                           m_iblTexture ? m_iblTexture->GetSRV() : m_skybox.GetPanoramaSRV(),
+                           m_spotLight.GetSRV(),
                            m_cachedView, m_cachedProj, m_camera->eye,
                            lightDir, lightColor,
                            m_spotLight.position, m_spotLight.direction, spotColor,
@@ -1803,6 +1805,7 @@ private:
 
     SE::SkyboxRenderer                       m_skybox;
     SE::AssetHandle<SE::Texture2D>           m_environmentTexture;
+    SE::AssetHandle<SE::Texture2D>           m_iblTexture;
     SE::EnvironmentLighting                  m_environmentLighting;
     SE::LightEnvironment                     m_lights;
     SE::ForwardPipeline                      m_pipeline;

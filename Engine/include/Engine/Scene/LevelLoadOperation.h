@@ -48,6 +48,7 @@ struct PreparedLevel
     std::vector<ForwardPipeline::SubMat> objectMaterials;
     std::vector<AssetHandle<Texture2D>> particleTextures;
     AssetHandle<Texture2D> environment;
+    AssetHandle<Texture2D> iblEnvironment; // reflectionPanorama override, else == environment
     std::vector<AssetHandle<Texture2D>> textures;
     std::vector<LevelDiagnostic> diagnostics;
     std::vector<LevelStageTiming> timings;
