@@ -5,21 +5,33 @@ namespace SE {
 
 bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
                          DXGI_FORMAT format, bool withDepth, bool depthReadable,
-                         bool generateMips)
+                         bool generateMips, bool withUAV)
 {
     m_width  = width;
     m_height = height;
 
-    // Color texture (SRV + RTV)
+    if (!InitColor(device, format, generateMips, withUAV)) return false;
+    if (withDepth && !InitDepth(device, depthReadable)) return false;
+
+    SE_LOG_INFO("RenderTarget initialised — %ux%u, format=%u, depth=%s%s",
+        width, height, (unsigned)format, withDepth ? "yes" : "no",
+        depthReadable ? " (readable)" : "");
+    return true;
+}
+
+bool RenderTarget::InitColor(ID3D11Device* device, DXGI_FORMAT format,
+                             bool generateMips, bool withUAV)
+{
     D3D11_TEXTURE2D_DESC td = {};
-    td.Width            = width;
-    td.Height           = height;
+    td.Width            = m_width;
+    td.Height           = m_height;
     td.MipLevels        = generateMips ? 0 : 1;
     td.ArraySize        = 1;
     td.Format           = format;
     td.SampleDesc.Count = 1;
     td.Usage            = D3D11_USAGE_DEFAULT;
-    td.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    td.BindFlags        = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE
+                          | (withUAV ? D3D11_BIND_UNORDERED_ACCESS : 0u);
     td.MiscFlags        = generateMips ? D3D11_RESOURCE_MISC_GENERATE_MIPS : 0;
 
     HRESULT hr = device->CreateTexture2D(&td, nullptr, m_tex.GetAddressOf());
@@ -30,60 +42,59 @@ bool RenderTarget::Init(ID3D11Device* device, uint32_t width, uint32_t height,
 
     hr = device->CreateShaderResourceView(m_tex.Get(), nullptr, m_srv.GetAddressOf());
     if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateSRV failed (0x%08X)", hr); return false; }
+    return true;
+}
 
-    // Optional depth buffer
-    if (withDepth)
+bool RenderTarget::InitDepth(ID3D11Device* device, bool depthReadable)
+{
+    D3D11_TEXTURE2D_DESC dd = {};
+    dd.Width            = m_width;
+    dd.Height           = m_height;
+    dd.MipLevels        = 1;
+    dd.ArraySize        = 1;
+    dd.SampleDesc.Count = 1;
+    dd.Usage            = D3D11_USAGE_DEFAULT;
+
+    if (depthReadable)
     {
-        D3D11_TEXTURE2D_DESC dd = {};
-        dd.Width            = width;
-        dd.Height           = height;
-        dd.MipLevels        = 1;
-        dd.ArraySize        = 1;
-        dd.SampleDesc.Count = 1;
-        dd.Usage            = D3D11_USAGE_DEFAULT;
-
-        if (depthReadable)
-        {
-            // Use typeless format so we can create both DSV and SRV views.
-            dd.Format    = DXGI_FORMAT_R32_TYPELESS;
-            dd.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-        }
-        else
-        {
-            dd.Format    = DXGI_FORMAT_D24_UNORM_S8_UINT;
-            dd.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-        }
-
-        hr = device->CreateTexture2D(&dd, nullptr, m_depthTex.GetAddressOf());
-        if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: depth CreateTexture2D failed (0x%08X)", hr); return false; }
-
-        D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-        dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-        dsvDesc.Format        = depthReadable ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_D24_UNORM_S8_UINT;
-        hr = device->CreateDepthStencilView(m_depthTex.Get(), &dsvDesc, m_dsv.GetAddressOf());
-        if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateDSV failed (0x%08X)", hr); return false; }
-
-        if (depthReadable)
-        {
-            // Create a read-only DSV so depth can be bound as SRV simultaneously
-            D3D11_DEPTH_STENCIL_VIEW_DESC roDesc = dsvDesc;
-            roDesc.Flags = D3D11_DSV_READ_ONLY_DEPTH;
-            hr = device->CreateDepthStencilView(m_depthTex.Get(), &roDesc, m_dsvReadOnly.GetAddressOf());
-            if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateReadOnlyDSV failed (0x%08X)", hr); return false; }
-
-            D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-            srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
-            srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
-            srvDesc.Texture2D.MipLevels       = 1;
-            srvDesc.Texture2D.MostDetailedMip = 0;
-            hr = device->CreateShaderResourceView(m_depthTex.Get(), &srvDesc, m_depthSrv.GetAddressOf());
-            if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: depth CreateSRV failed (0x%08X)", hr); return false; }
-        }
+        // Use typeless format so we can create both DSV and SRV views.
+        dd.Format    = DXGI_FORMAT_R32_TYPELESS;
+        dd.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+    }
+    else
+    {
+        dd.Format    = DXGI_FORMAT_D24_UNORM_S8_UINT;
+        dd.BindFlags = D3D11_BIND_DEPTH_STENCIL;
     }
 
-    SE_LOG_INFO("RenderTarget initialised — %ux%u, format=%u, depth=%s%s",
-        width, height, (unsigned)format, withDepth ? "yes" : "no",
-        depthReadable ? " (readable)" : "");
+    HRESULT hr = device->CreateTexture2D(&dd, nullptr, m_depthTex.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: depth CreateTexture2D failed (0x%08X)", hr); return false; }
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    dsvDesc.Format        = depthReadable ? DXGI_FORMAT_D32_FLOAT : DXGI_FORMAT_D24_UNORM_S8_UINT;
+    hr = device->CreateDepthStencilView(m_depthTex.Get(), &dsvDesc, m_dsv.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateDSV failed (0x%08X)", hr); return false; }
+
+    return !depthReadable || InitReadableDepthViews(device, dsvDesc);
+}
+
+bool RenderTarget::InitReadableDepthViews(ID3D11Device* device,
+                                          const D3D11_DEPTH_STENCIL_VIEW_DESC& dsvDesc)
+{
+    // Create a read-only DSV so depth can be bound as SRV simultaneously
+    D3D11_DEPTH_STENCIL_VIEW_DESC roDesc = dsvDesc;
+    roDesc.Flags = D3D11_DSV_READ_ONLY_DEPTH;
+    HRESULT hr = device->CreateDepthStencilView(m_depthTex.Get(), &roDesc, m_dsvReadOnly.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: CreateReadOnlyDSV failed (0x%08X)", hr); return false; }
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format                    = DXGI_FORMAT_R32_FLOAT;
+    srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MipLevels       = 1;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    hr = device->CreateShaderResourceView(m_depthTex.Get(), &srvDesc, m_depthSrv.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("RenderTarget: depth CreateSRV failed (0x%08X)", hr); return false; }
     return true;
 }
 

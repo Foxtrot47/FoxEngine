@@ -13,7 +13,7 @@ public:
     bool Init(ID3D11Device* device, uint32_t width, uint32_t height,
               DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM,
               bool withDepth = false, bool depthReadable = false,
-              bool generateMips = false);
+              bool generateMips = false, bool withUAV = false);
     void Shutdown();
 
     // Save current RTV/DSV/viewport, bind this target, optionally clear.
@@ -36,10 +36,15 @@ public:
     ID3D11DepthStencilView*   GetDSV()      const { return m_dsv.Get(); }
     ID3D11DepthStencilView*   GetReadOnlyDSV() const { return m_dsvReadOnly.Get(); }
     ID3D11Texture2D*          GetTexture()  const { return m_tex.Get(); }
+    ID3D11Texture2D*          GetDepthTexture() const { return m_depthTex.Get(); }
     uint32_t GetWidth()  const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
 
 private:
+    bool InitColor(ID3D11Device* device, DXGI_FORMAT format, bool generateMips, bool withUAV);
+    bool InitDepth(ID3D11Device* device, bool depthReadable);
+    bool InitReadableDepthViews(ID3D11Device* device, const D3D11_DEPTH_STENCIL_VIEW_DESC& dsvDesc);
+
     ComPtr<ID3D11Texture2D>          m_tex;
     ComPtr<ID3D11RenderTargetView>   m_rtv;
     ComPtr<ID3D11ShaderResourceView> m_srv;
