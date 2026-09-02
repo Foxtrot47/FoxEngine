@@ -6,6 +6,7 @@ add_library(FoxEngine STATIC ${ENGINE_SOURCES})
 
 target_include_directories(FoxEngine
     PUBLIC  include
+    PUBLIC  ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/include
     PRIVATE src
 )
 
@@ -23,6 +24,10 @@ target_link_libraries(FoxEngine PUBLIC
     imgui::imgui
     Microsoft::DirectXTex
     nlohmann_json::nlohmann_json
+    debug     ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/lib/ffx_fsr3upscaler_x64d.lib
+    optimized ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/lib/ffx_fsr3upscaler_x64.lib
+    debug     ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/lib/ffx_backend_dx11_x64d.lib
+    optimized ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/lib/ffx_backend_dx11_x64.lib
 )
 
 target_compile_definitions(FoxEngine PUBLIC
