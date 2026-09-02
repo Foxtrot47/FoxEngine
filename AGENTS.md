@@ -158,11 +158,12 @@ M69: Smoke particles with expanding billboard puffs
 M70: More particle effects (explosions, sparks/trails, dust)
 M71: Particle asset serialization / default presets
 M72: Material workflow correctness (metallic/roughness, packed MR, specular/glossiness; node-transform baking at import)
+M62: TAA (jittered projection, per-object motion vectors, variance-clipped resolve) + geometric specular AA
 
 ### Next Up
 
+- M63: FSR 3.1 upscaling (D3D11 backend, upscale-only — frame generation needs DX12/Vulkan)
 - M61: Decals
-- M62: TAA
 
 ### Deferred
 - Phase 10: Animation (implement when needed)
