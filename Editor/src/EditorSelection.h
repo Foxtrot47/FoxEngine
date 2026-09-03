@@ -6,7 +6,8 @@ namespace Editor {
 // details panel, viewport picking, and gizmo.
 struct Selection
 {
-    enum class Kind { None, Camera, Sun, SpotLight, PointLight, Mesh, Object, Emitter };
+    enum class Kind { None, World, Camera, Sun, SpotLight, PointLight, Mesh,
+                      Object, Emitter, Ball };
 
     Kind kind  = Kind::None;
     int  index = 0;

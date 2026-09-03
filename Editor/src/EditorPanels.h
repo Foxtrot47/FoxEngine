@@ -1,5 +1,4 @@
 #pragma once
-#include <cstdint>
 #include <d3d11.h>
 #include <imgui.h>
 #include "EditorSelection.h"
@@ -12,20 +11,11 @@ class ShaderLibrary;
 
 namespace Editor {
 
-class EditorCamera;
+// Begins a panel window; returns false (window already ended) when no scene
+// is loaded.
+bool BeginScenePanel(const char* name, SE::SceneRuntime& scene);
 
-// Scene tuning panels. Each panel owns its own ImGui::Begin/End and shows a
-// placeholder when no scene is loaded.
-void DrawCameraPanel(SE::SceneRuntime& scene, EditorCamera& cam);
-void DrawMaterialPanel(SE::SceneRuntime& scene);
-void DrawPhysicsPanel(SE::SceneRuntime& scene);
-void DrawLightingPanel(SE::SceneRuntime& scene);
-void DrawPostProcessPanel(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeight);
-void DrawParticlesPanel(SE::SceneRuntime& scene, SE::AssetManager& assets,
-                        ID3D11Device* device, SE::ShaderLibrary& shaders);
-
-// Shared property editors, used by both the palette panels and the Details
-// panel for the corresponding selection kinds.
+// Shared property editors used by the Details panel per selection kind.
 void DrawSunProps(SE::SceneRuntime& scene);
 void DrawSpotLightProps(SE::SceneRuntime& scene);
 void DrawPointLightProps(SE::SceneRuntime& scene, int index);
