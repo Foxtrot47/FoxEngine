@@ -1,5 +1,6 @@
 #include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/SceneLoader.h"
+#include "Engine/Scene/SceneSaver.h"
 #include "Engine/Scene/LevelWorld.h"
 #include "Engine/Scene/LevelRuntimeComponents.h"
 #include "Engine/Scene/TransformComponent.h"
@@ -280,6 +281,110 @@ static void TestRepositoryScenes()
     }
 }
 
+// Every repository scene must survive descriptor -> SceneSaver -> loader ->
+// descriptor with its content intact.
+static void TestSaveRoundTrip()
+{
+    for (const char* path : {
+        "Assets/Scenes/bistro.json",
+        "Assets/Scenes/showcase.json",
+        "Assets/Scenes/sponza.json",
+        "Assets/Scenes/suntemple.json"
+    })
+    {
+        SE::SceneDescriptor original;
+        Require(SE::SceneLoader::LoadFromFile(path, original),
+                "round trip: scene failed to load");
+
+        const std::string text = SE::SceneSaver::ToJson(original);
+        const auto reparsed = LevelAssetLoader::Parse(json::parse(text), path);
+        Require(reparsed.Succeeded(), "round trip: saved level failed validation");
+
+        SE::SceneDescriptor loaded;
+        Require(SE::SceneLoader::BuildDescriptor(reparsed.asset, loaded),
+                "round trip: saved level failed to rebuild a descriptor");
+
+        Require(loaded.name == original.name, "round trip: name changed");
+        Require(loaded.skybox == original.skybox, "round trip: skybox changed");
+        Require(loaded.reflectionPanorama == original.reflectionPanorama,
+                "round trip: reflection panorama changed");
+        Require(loaded.iblIntensity == original.iblIntensity,
+                "round trip: IBL intensity changed");
+        Require(loaded.meshes.size() == original.meshes.size(),
+                "round trip: mesh count changed");
+        for (size_t i = 0; i < original.meshes.size(); ++i)
+        {
+            Require(loaded.meshes[i].path == original.meshes[i].path,
+                    "round trip: mesh path changed");
+            Require(loaded.meshes[i].position == original.meshes[i].position &&
+                    loaded.meshes[i].rotation == original.meshes[i].rotation &&
+                    loaded.meshes[i].scale == original.meshes[i].scale,
+                    "round trip: mesh transform changed");
+            Require(loaded.meshes[i].alphaCutoff == original.meshes[i].alphaCutoff,
+                    "round trip: mesh alpha cutoff changed");
+        }
+        Require(loaded.pointLights.size() == original.pointLights.size(),
+                "round trip: point light count changed");
+        for (size_t i = 0; i < original.pointLights.size(); ++i)
+        {
+            Require(loaded.pointLights[i].position == original.pointLights[i].position &&
+                    loaded.pointLights[i].color == original.pointLights[i].color &&
+                    loaded.pointLights[i].radius == original.pointLights[i].radius,
+                    "round trip: point light changed");
+            Require(loaded.pointLights[i].flicker == original.pointLights[i].flicker,
+                    "round trip: point light flicker changed");
+        }
+        Require(loaded.objects.size() == original.objects.size(),
+                "round trip: object count changed");
+        for (size_t i = 0; i < original.objects.size(); ++i)
+        {
+            Require(loaded.objects[i].type == original.objects[i].type &&
+                    loaded.objects[i].position == original.objects[i].position,
+                    "round trip: object changed");
+            Require(loaded.objects[i].albedoPath == original.objects[i].albedoPath &&
+                    loaded.objects[i].planarReflection == original.objects[i].planarReflection,
+                    "round trip: object material changed");
+        }
+        Require(loaded.particles.size() == original.particles.size(),
+                "round trip: emitter count changed");
+        for (size_t i = 0; i < original.particles.size(); ++i)
+        {
+            Require(loaded.particles[i].texture == original.particles[i].texture &&
+                    loaded.particles[i].emitRate == original.particles[i].emitRate &&
+                    loaded.particles[i].blendMode == original.particles[i].blendMode &&
+                    loaded.particles[i].spawnShape == original.particles[i].spawnShape,
+                    "round trip: emitter changed");
+        }
+        Require(loaded.camera.eye == original.camera.eye &&
+                loaded.camera.nearZ == original.camera.nearZ &&
+                loaded.camera.farZ == original.camera.farZ,
+                "round trip: camera changed");
+        Require(loaded.sun.elevation == original.sun.elevation &&
+                loaded.sun.intensity == original.sun.intensity,
+                "round trip: sun changed");
+        Require(loaded.physics.ballRadius == original.physics.ballRadius &&
+                loaded.physics.gravity == original.physics.gravity &&
+                loaded.physics.floor.min == original.physics.floor.min &&
+                loaded.physics.floor.max == original.physics.floor.max,
+                "round trip: physics changed");
+        Require(loaded.toneMapping.op == original.toneMapping.op &&
+                loaded.toneMapping.exposure == original.toneMapping.exposure,
+                "round trip: tone mapping changed");
+        Require(loaded.bloom.enabled == original.bloom.enabled &&
+                loaded.bloom.threshold == original.bloom.threshold,
+                "round trip: bloom changed");
+        Require(loaded.fog.enabled == original.fog.enabled &&
+                loaded.fog.density == original.fog.density &&
+                loaded.fog.noiseScale == original.fog.noiseScale,
+                "round trip: fog changed");
+
+        // A second save of the reloaded descriptor must be byte-identical —
+        // the editor's dirty check depends on deterministic serialization.
+        Require(SE::SceneSaver::ToJson(loaded) == text,
+                "round trip: serialization is not stable");
+    }
+}
+
 static void TestBistroRuntimeDescriptor()
 {
     SE::SceneDescriptor descriptor;
@@ -513,6 +618,7 @@ static void RunTests()
     TestAtmosphereSchema();
     TestLegacyConversion();
     TestRepositoryScenes();
+    TestSaveRoundTrip();
     TestBistroRuntimeDescriptor();
     TestDependencyPlan();
     TestCpuMeshImport();

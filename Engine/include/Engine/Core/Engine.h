@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include "Engine/Core/Window.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Core/Clock.h"
@@ -29,6 +30,9 @@ public:
     AssetManager&        GetAssets()         { return m_assets; }
     ShaderLibrary&       GetShaders()        { return m_shaders; }
 
+    // Leading part of the window title; the run loop appends frame timings.
+    void SetTitleBase(const std::wstring& base) { m_titleBase = base; }
+
 protected:
     virtual void OnUpdate() {}
 
@@ -38,6 +42,7 @@ protected:
     virtual void OnPostProcess() { m_renderer.ResolveToBackBuffer(); }
 
 private:
+    std::wstring  m_titleBase = L"FoxEngine";
     Window        m_window;
     Clock         m_clock;
     Renderer      m_renderer;
