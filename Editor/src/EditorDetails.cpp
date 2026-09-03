@@ -1,5 +1,6 @@
 #include "EditorDetails.h"
 #include "EditorPanels.h"
+#include "EditorSettings.h"
 
 #include "Engine/Scene/SceneRuntime.h"
 #include <array>
@@ -102,12 +103,33 @@ void DrawObjectDetails(SE::SceneRuntime& scene, int index)
     ImGui::SliderFloat("Emissive Intensity", &def.emissiveIntensity, 0.0f, 20.0f);
 }
 
+void DrawBallDetails(SE::SceneRuntime& scene)
+{
+    ImGui::Text("Ball (physics body)");
+    ImGui::Separator();
+    ImGui::DragFloat3("Spawn Pos",    &scene.ballSpawn.x,                1.0f);
+    ImGui::SliderFloat("Radius",      &scene.ballRadius,                 0.1f, 10.0f);
+    ImGui::SliderFloat("Mass",        &scene.ballRigidBody->mass,        0.1f, 10.0f);
+    ImGui::SliderFloat("Restitution", &scene.ballRigidBody->restitution, 0.0f, 1.0f);
+    ImGui::SliderFloat("Friction",    &scene.ballRigidBody->friction,    0.0f, 1.0f);
+    ImGui::Text("pos (%.1f, %.1f, %.1f)",
+        scene.ballTransform->position.x, scene.ballTransform->position.y,
+        scene.ballTransform->position.z);
+    ImGui::Text("vel (%.2f, %.2f, %.2f)",
+        scene.ballRigidBody->velocity.x, scene.ballRigidBody->velocity.y,
+        scene.ballRigidBody->velocity.z);
+    if (ImGui::Button("Reset"))     scene.ResetBall();
+    ImGui::SameLine();
+    if (ImGui::Button("Launch up")) scene.ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
+}
+
 void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                           SE::AssetManager& assets, ID3D11Device* device,
                           SE::ShaderLibrary& shaders)
 {
     switch (sel.kind)
     {
+    case Selection::Kind::World:      DrawWorldProps(scene); break;
     case Selection::Kind::Camera:     DrawCameraDetails(scene); break;
     case Selection::Kind::Sun:        DrawSunProps(scene); break;
     case Selection::Kind::SpotLight:  DrawSpotLightProps(scene); break;
@@ -125,6 +147,9 @@ void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel, UndoStack& un
         break;
     case Selection::Kind::Emitter:
         DrawEmitterProps(scene, sel.index, assets, device, shaders);
+        break;
+    case Selection::Kind::Ball:
+        DrawBallDetails(scene);
         break;
     default:
         ImGui::TextDisabled("Nothing selected");

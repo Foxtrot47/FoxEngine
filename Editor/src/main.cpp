@@ -14,6 +14,7 @@
 #include "EditorTheme.h"
 #include "EditorCamera.h"
 #include "EditorPanels.h"
+#include "EditorSettings.h"
 #include "EditorSelection.h"
 #include "EditorUndo.h"
 #include "EditorGizmo.h"
@@ -139,24 +140,20 @@ private:
         DrawMainMenu();
 
         ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
-        if (m_firstFrame)
+        if (m_firstFrame || m_resetLayout)
         {
-            m_firstFrame = false;
-            BuildDefaultLayout(dockspaceId);
+            BuildDefaultLayout(dockspaceId, m_resetLayout);
+            m_firstFrame  = false;
+            m_resetLayout = false;
         }
 
         DrawViewportPanel(sceneActive);
         DrawScenePanel();
-        DrawStatsPanel();
         Editor::DrawOutlinerPanel(m_scene, m_selection);
         Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
                                  GetRenderer().GetDevice(), GetShaders());
-        Editor::DrawCameraPanel(m_scene, m_editorCam);
-        Editor::DrawMaterialPanel(m_scene);
-        Editor::DrawPhysicsPanel(m_scene);
-        Editor::DrawLightingPanel(m_scene);
-        Editor::DrawPostProcessPanel(m_scene, m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
-        Editor::DrawParticlesPanel(m_scene, GetAssets(), GetRenderer().GetDevice(), GetShaders());
+        Editor::DrawSettingsPanel(m_scene, m_viewportRT.GetWidth(),
+                                  m_viewportRT.GetHeight());
     }
 
     void DrawMainMenu()
@@ -169,15 +166,42 @@ private:
                 PostMessageW(GetWindow().GetHandle(), WM_CLOSE, 0, 0);
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Edit"))
+        DrawEditMenu();
+        DrawToolsMenu();
+        if (ImGui::BeginMenu("Window"))
         {
-            if (ImGui::MenuItem("Undo", "Ctrl+Z", false, m_undo.CanUndo()))
-                m_undo.Undo();
-            if (ImGui::MenuItem("Redo", "Ctrl+Y", false, m_undo.CanRedo()))
-                m_undo.Redo();
+            if (ImGui::MenuItem("Reset Layout"))
+                m_resetLayout = true;
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
+    }
+
+    void DrawEditMenu()
+    {
+        if (!ImGui::BeginMenu("Edit"))
+            return;
+        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, m_undo.CanUndo()))
+            m_undo.Undo();
+        if (ImGui::MenuItem("Redo", "Ctrl+Y", false, m_undo.CanRedo()))
+            m_undo.Redo();
+        ImGui::EndMenu();
+    }
+
+    void DrawToolsMenu()
+    {
+        if (!ImGui::BeginMenu("Tools"))
+            return;
+        const bool hasScene = m_scene.HasScene();
+        if (ImGui::MenuItem("Fire All Single Emitters", nullptr, false, hasScene))
+        {
+            for (auto& emitter : m_scene.particleSystems)
+                if (emitter->config.emitMode == 1)
+                    emitter->Burst(8);
+        }
+        if (ImGui::MenuItem("Rescan Particle Presets", nullptr, false, hasScene))
+            m_scene.RefreshParticlePresets();
+        ImGui::EndMenu();
     }
 
     // UE-style bindings: Q/W/E/R select gizmo op over the viewport,
@@ -216,13 +240,13 @@ private:
             m_editorCam.FocusOn(center, radius);
     }
 
-    void BuildDefaultLayout(ImGuiID dockspaceId)
+    void BuildDefaultLayout(ImGuiID dockspaceId, bool force)
     {
         FILE* f = nullptr;
         fopen_s(&f, "editor.ini", "r");
         const bool hasIni = (f != nullptr);
         if (f) fclose(f);
-        if (hasIni)
+        if (hasIni && !force)
             return;
 
         ImGui::DockBuilderRemoveNode(dockspaceId);
@@ -238,18 +262,12 @@ private:
         ImGui::DockBuilderDockWindow("Viewport", dockCenter);
 
         // Top tabs: Outliner active (last docked = default tab)
-        ImGui::DockBuilderDockWindow("Stats",    dockRightTop);
-        ImGui::DockBuilderDockWindow("Camera",   dockRightTop);
         ImGui::DockBuilderDockWindow("Scene",    dockRightTop);
         ImGui::DockBuilderDockWindow("Outliner", dockRightTop);
 
         // Bottom tabs: Details active (last docked = default tab)
-        ImGui::DockBuilderDockWindow("Particles",       dockRightBottom);
-        ImGui::DockBuilderDockWindow("Physics",         dockRightBottom);
-        ImGui::DockBuilderDockWindow("Material",        dockRightBottom);
-        ImGui::DockBuilderDockWindow("Post Processing", dockRightBottom);
-        ImGui::DockBuilderDockWindow("Lighting",        dockRightBottom);
-        ImGui::DockBuilderDockWindow("Details",         dockRightBottom);
+        ImGui::DockBuilderDockWindow("Settings", dockRightBottom);
+        ImGui::DockBuilderDockWindow("Details",  dockRightBottom);
         ImGui::DockBuilderFinish(dockspaceId);
     }
 
@@ -265,7 +283,12 @@ private:
         if (sceneActive && m_viewportRT.GetSRV())
         {
             ImGui::Image(reinterpret_cast<ImTextureID>(m_viewportRT.GetSRV()), avail);
-            DrawViewportOverlays();
+            const ImVec2 imageMin   = ImGui::GetItemRectMin();
+            const ImVec2 imageMax   = ImGui::GetItemRectMax();
+            const bool imageClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+            DrawViewportOverlays(imageMin, imageMax, imageClicked);
+            DrawViewportToolbar(imageMin, imageMax);
+            DrawViewportStats(imageMin, imageMax);
         }
         else
         {
@@ -277,12 +300,8 @@ private:
     }
 
     // Gizmo, light indicators, and click picking on top of the viewport image.
-    void DrawViewportOverlays()
+    void DrawViewportOverlays(ImVec2 imageMin, ImVec2 imageMax, bool imageClicked)
     {
-        const ImVec2 imageMin = ImGui::GetItemRectMin();
-        const ImVec2 imageMax = ImGui::GetItemRectMax();
-        const bool imageClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
-
         const bool gizmoBusy = Editor::DrawGizmo(m_scene, m_selection, m_undo,
                                                  m_gizmoOp, imageMin, imageMax);
         const bool lightClicked =
@@ -291,6 +310,52 @@ private:
         if (imageClicked && !gizmoBusy && !lightClicked && !ImGui::GetIO().KeyAlt)
             m_selection = Editor::PickScene(m_scene, imageMin, imageMax,
                                             ImGui::GetMousePos());
+    }
+
+    // UE-style viewport camera dropdown (top-right overlay button).
+    void DrawViewportToolbar(ImVec2 imageMin, ImVec2 imageMax)
+    {
+        ImGui::SetCursorScreenPos({ imageMax.x - 84.0f, imageMin.y + 6.0f });
+        if (ImGui::Button("Camera"))
+            ImGui::OpenPopup("##viewport_camera");
+        if (!ImGui::BeginPopup("##viewport_camera"))
+            return;
+        ImGui::TextDisabled("RMB fly  Alt+LMB orbit  MMB pan  F focus");
+        ImGui::Separator();
+        ImGui::PushItemWidth(160.0f);
+        ImGui::SliderFloat("Fly Speed",   &m_editorCam.moveSpeed,   1.0f, 200.0f);
+        ImGui::SliderFloat("Sensitivity", &m_editorCam.sensitivity, 0.05f, 0.5f);
+        if (m_scene.HasScene())
+        {
+            ImGui::Separator();
+            ImGui::SliderFloat("Field of View", &m_scene.camera->fovDeg,
+                               20.0f, 120.0f, "%.0f deg");
+            ImGui::SliderFloat("Near Z", &m_scene.camera->nearZ, 0.001f, 10.0f, "%.3f");
+            ImGui::SliderFloat("Far Z",  &m_scene.camera->farZ, 100.0f, 20000.0f, "%.0f");
+        }
+        ImGui::PopItemWidth();
+        ImGui::EndPopup();
+    }
+
+    // Frame/scene stats overlaid at the bottom-left of the viewport image.
+    void DrawViewportStats(ImVec2 imageMin, ImVec2 imageMax)
+    {
+        uint32_t subMeshCount = 0;
+        for (const auto& loaded : m_scene.loadedMeshes)
+            if (loaded.mesh)
+                subMeshCount += loaded.mesh->GetSubMeshCount();
+
+        char line[160];
+        sprintf_s(line, "%.1f fps  %.2f ms   |   %ux%u   |   meshes %u  tex %u  submeshes %u",
+                  GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f,
+                  m_viewportRT.GetWidth(), m_viewportRT.GetHeight(),
+                  GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount(),
+                  subMeshCount);
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 pos = { imageMin.x + 8.0f, imageMax.y - 24.0f };
+        dl->AddText({ pos.x + 1.0f, pos.y + 1.0f }, IM_COL32(0, 0, 0, 200), line);
+        dl->AddText(pos, IM_COL32(220, 220, 220, 230), line);
     }
 
     void DrawViewportLoadingOverlay()
@@ -363,22 +428,6 @@ private:
         ImGui::End();
     }
 
-    void DrawStatsPanel()
-    {
-        ImGui::Begin("Stats");
-        ImGui::Text("%.1f fps  |  %.2f ms",
-                    GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f);
-        ImGui::Text("Viewport: %ux%u", m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
-        uint32_t subMeshCount = 0;
-        for (const auto& loaded : m_scene.loadedMeshes)
-            if (loaded.mesh)
-                subMeshCount += loaded.mesh->GetSubMeshCount();
-        ImGui::Text("Meshes: %u  Textures: %u  Submeshes: %u",
-                    GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount(),
-                    subMeshCount);
-        ImGui::End();
-    }
-
     SE::SceneRuntime      m_scene;
     Editor::EditorCamera  m_editorCam;
     Editor::Selection     m_selection;
@@ -388,6 +437,7 @@ private:
     ImVec2           m_viewportSize    = ImVec2(1280.0f, 720.0f);
     bool             m_viewportHovered = false;
     bool             m_firstFrame      = true;
+    bool             m_resetLayout     = false;
 
     std::vector<std::string> m_sceneFiles;
     int                      m_selectedScene = 0;

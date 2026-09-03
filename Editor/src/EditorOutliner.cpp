@@ -90,11 +90,14 @@ void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel)
         return;
     }
 
-    ImGui::TextDisabled("%s", scene.currentDesc.name.c_str());
+    char rootLabel[128];
+    sprintf_s(rootLabel, "%s (Level)", scene.currentDesc.name.c_str());
+    SelectableRow(rootLabel, sel, Selection::Kind::World);
     ImGui::Separator();
     SelectableRow("Camera", sel, Selection::Kind::Camera);
     SelectableRow("Sun", sel, Selection::Kind::Sun);
     SelectableRow("Spot Light", sel, Selection::Kind::SpotLight);
+    SelectableRow("Ball", sel, Selection::Kind::Ball);
     DrawPointLightRows(scene, sel);
     DrawMeshRows(scene, sel);
     DrawObjectRows(scene, sel);
