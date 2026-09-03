@@ -125,11 +125,11 @@ void DrawBallDetails(SE::SceneRuntime& scene)
 
 void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                           SE::AssetManager& assets, ID3D11Device* device,
-                          SE::ShaderLibrary& shaders)
+                          SE::ShaderLibrary& shaders, uint32_t outWidth, uint32_t outHeight)
 {
     switch (sel.kind)
     {
-    case Selection::Kind::World:      DrawWorldProps(scene); break;
+    case Selection::Kind::World:      DrawWorldProps(scene, outWidth, outHeight); break;
     case Selection::Kind::Camera:     DrawCameraDetails(scene); break;
     case Selection::Kind::Sun:        DrawSunProps(scene); break;
     case Selection::Kind::SpotLight:  DrawSpotLightProps(scene); break;
@@ -161,13 +161,14 @@ void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel, UndoStack& un
 
 void DrawDetailsPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                       SE::AssetManager& assets, ID3D11Device* device,
-                      SE::ShaderLibrary& shaders)
+                      SE::ShaderLibrary& shaders, uint32_t outWidth, uint32_t outHeight)
 {
     ImGui::Begin("Details");
     if (!scene.HasScene())
         ImGui::TextDisabled("No scene loaded");
     else
-        DrawSelectionDetails(scene, sel, undo, assets, device, shaders);
+        DrawSelectionDetails(scene, sel, undo, assets, device, shaders,
+                             outWidth, outHeight);
     ImGui::End();
 }
 

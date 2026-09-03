@@ -14,7 +14,6 @@
 #include "EditorTheme.h"
 #include "EditorCamera.h"
 #include "EditorPanels.h"
-#include "EditorSettings.h"
 #include "EditorSelection.h"
 #include "EditorUndo.h"
 #include "EditorGizmo.h"
@@ -151,9 +150,8 @@ private:
         DrawScenePanel();
         Editor::DrawOutlinerPanel(m_scene, m_selection);
         Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
-                                 GetRenderer().GetDevice(), GetShaders());
-        Editor::DrawSettingsPanel(m_scene, m_viewportRT.GetWidth(),
-                                  m_viewportRT.GetHeight());
+                                 GetRenderer().GetDevice(), GetShaders(),
+                                 m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
     }
 
     void DrawMainMenu()
@@ -265,9 +263,7 @@ private:
         ImGui::DockBuilderDockWindow("Scene",    dockRightTop);
         ImGui::DockBuilderDockWindow("Outliner", dockRightTop);
 
-        // Bottom tabs: Details active (last docked = default tab)
-        ImGui::DockBuilderDockWindow("Settings", dockRightBottom);
-        ImGui::DockBuilderDockWindow("Details",  dockRightBottom);
+        ImGui::DockBuilderDockWindow("Details", dockRightBottom);
         ImGui::DockBuilderFinish(dockspaceId);
     }
 
