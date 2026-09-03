@@ -1,4 +1,5 @@
 #include "EditorTheme.h"
+#include "EditorIcons.h"
 
 #include <imgui.h>
 #include <cstdint>
@@ -113,11 +114,28 @@ void ApplyGeometry(ImGuiStyle& style)
 
 void LoadFonts()
 {
+    ImGuiIO& io = ImGui::GetIO();
+
     // Segoe UI (Windows system font), rasterized through FreeType. Falls back
     // to the bundled ProggyClean when the font file is unavailable.
     const char* segoe = "C:/Windows/Fonts/segoeui.ttf";
     if (std::filesystem::exists(segoe))
-        ImGui::GetIO().Fonts->AddFontFromFileTTF(segoe, 17.0f);
+        io.Fonts->AddFontFromFileTTF(segoe, 17.0f);
+    else
+        io.Fonts->AddFontDefault();
+
+    // Material Icons merged into the UI font (cwd is the project root).
+    const char* icons = "ThirdParty/fonts/MaterialIcons-Regular.ttf";
+    if (std::filesystem::exists(icons))
+    {
+        static const ImWchar ranges[] = { k_iconRangeMin, k_iconRangeMax, 0 };
+        ImFontConfig cfg;
+        cfg.MergeMode        = true;
+        cfg.PixelSnapH       = true;
+        cfg.GlyphMinAdvanceX = 17.0f;
+        cfg.GlyphOffset      = ImVec2(0.0f, 3.0f); // sit icons on the text baseline
+        io.Fonts->AddFontFromFileTTF(icons, 17.0f, &cfg, ranges);
+    }
 }
 
 } // namespace

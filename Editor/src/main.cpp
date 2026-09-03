@@ -318,11 +318,12 @@ private:
         ImGui::SetCursorScreenPos({ imageMax.x - 84.0f, imageMin.y + 6.0f });
         if (ImGui::Button("Camera"))
             ImGui::OpenPopup("##viewport_camera");
+        ImGui::SetNextWindowSize({ 340.0f, 0.0f });
         if (!ImGui::BeginPopup("##viewport_camera"))
             return;
         ImGui::TextDisabled("RMB fly  Alt+LMB orbit  MMB pan  F focus");
         ImGui::Separator();
-        ImGui::PushItemWidth(160.0f);
+        ImGui::PushItemWidth(210.0f);
         ImGui::SliderFloat("Fly Speed",   &m_editorCam.moveSpeed,   1.0f, 200.0f);
         ImGui::SliderFloat("Sensitivity", &m_editorCam.sensitivity, 0.05f, 0.5f);
         if (m_scene.HasScene())

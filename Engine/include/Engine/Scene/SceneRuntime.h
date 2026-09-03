@@ -57,12 +57,14 @@ public:
         AssetHandle<Mesh>                    mesh;
         std::vector<ForwardPipeline::SubMat> materials;
         TransformComponent*                  transform = nullptr;
+        bool                                 visible   = true;
     };
 
     struct LoadedObject
     {
         SceneDescriptor::SceneObject def;
         ForwardPipeline::SubMat      mat;
+        bool                         visible = true;
     };
 
     ~SceneRuntime();
@@ -156,6 +158,7 @@ public:
     RigidBodyComponent*     ballRigidBody = nullptr;
     DirectX::XMFLOAT3       ballSpawn     = { 0.0f, 30.0f, 0.0f };
     float                   ballRadius    = 1.0f;
+    bool                    ballVisible   = true;
     float                   floorY        = 0.0f;
     OBB                     obbFloor;
     CharacterController     cc;
