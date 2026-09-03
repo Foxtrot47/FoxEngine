@@ -201,7 +201,8 @@ private:
 
         DrawViewportPanel(sceneActive);
         DrawScenePanel();
-        Editor::DrawOutlinerPanel(m_scene, m_selection);
+        if (Editor::DrawOutlinerPanel(m_scene, m_selection, SpawnPosition()))
+            m_undo.Clear(); // index-based undo entries are stale after a delete
         Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
                                  GetRenderer().GetDevice(), GetShaders(),
                                  m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
@@ -274,6 +275,9 @@ private:
             if (input.IsKeyPressed('S')) SaveScene();
             return;
         }
+        if (input.IsKeyPressed(VK_DELETE) &&
+            Editor::DeleteSelection(m_scene, m_selection))
+            m_undo.Clear();
         if (!m_viewportHovered || m_editorCam.IsFlying())
             return;
         HandleViewportKeys(input);
@@ -286,6 +290,21 @@ private:
         if (input.IsKeyPressed('E')) m_gizmoOp = Editor::GizmoOp::Rotate;
         if (input.IsKeyPressed('R')) m_gizmoOp = Editor::GizmoOp::Scale;
         if (input.IsKeyPressed('F')) FocusSelection();
+    }
+
+    // New entities spawn a few metres in front of the editor camera.
+    DirectX::XMFLOAT3 SpawnPosition() const
+    {
+        using namespace DirectX;
+        if (!m_scene.HasScene() || !m_scene.camera)
+            return { 0.0f, 0.0f, 0.0f };
+        const auto& cam = *m_scene.camera;
+        const XMVECTOR eye = XMLoadFloat3(&cam.eye);
+        const XMVECTOR dir = XMVector3Normalize(
+            XMVectorSubtract(XMLoadFloat3(&cam.target), eye));
+        XMFLOAT3 out;
+        XMStoreFloat3(&out, XMVectorAdd(eye, XMVectorScale(dir, 8.0f)));
+        return out;
     }
 
     void FocusSelection()
