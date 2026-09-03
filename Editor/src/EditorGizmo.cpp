@@ -200,7 +200,9 @@ PickRay BuildPickRay(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
     return { pNear, XMVector3Normalize(XMVectorSubtract(pFar, pNear)) };
 }
 
-bool RayAABB(XMVECTOR origin, XMVECTOR dir, const SE::AABB& box, float& tOut)
+// tOut is the entry distance (0 when the origin is inside); tExitOut the exit.
+bool RayAABB(XMVECTOR origin, XMVECTOR dir, const SE::AABB& box, float& tOut,
+             float* tExitOut = nullptr)
 {
     const float ro[3] = { XMVectorGetX(origin), XMVectorGetY(origin), XMVectorGetZ(origin) };
     const float rd[3] = { XMVectorGetX(dir),    XMVectorGetY(dir),    XMVectorGetZ(dir) };
@@ -225,6 +227,8 @@ bool RayAABB(XMVECTOR origin, XMVECTOR dir, const SE::AABB& box, float& tOut)
             return false;
     }
     tOut = tMin;
+    if (tExitOut)
+        *tExitOut = tMax;
     return true;
 }
 
@@ -238,9 +242,14 @@ float HitDistanceMesh(const PickRay& ray, const SE::SceneRuntime::LoadedMesh& lo
     XMMATRIX invWorld = XMMatrixInverse(nullptr, world);
     XMVECTOR lo = XMVector3TransformCoord(ray.origin, invWorld);
     XMVECTOR ld = XMVector3TransformNormal(ray.dir, invWorld);
-    float t;
-    if (!RayAABB(lo, ld, loaded.mesh->GetBounds(), t))
+    float t, tExit;
+    if (!RayAABB(lo, ld, loaded.mesh->GetBounds(), t, &tExit))
         return FLT_MAX;
+    // Camera inside the mesh bounds (typical for level geometry): score the
+    // exit distance so entities inside the AABB stay clickable and the mesh
+    // acts as the fallback hit.
+    if (t <= 0.0f)
+        t = tExit;
     XMVECTOR hitWorld = XMVector3TransformCoord(XMVectorAdd(lo, XMVectorScale(ld, t)), world);
     return XMVectorGetX(XMVector3Length(XMVectorSubtract(hitWorld, ray.origin)));
 }
@@ -455,7 +464,33 @@ Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
             p, { scene.ballRadius, scene.ballRadius, scene.ballRadius });
         float t;
         if (RayAABB(ray.origin, ray.dir, box, t) && t < best)
+        {
+            best = t;
             result.Set(Selection::Kind::Ball);
+        }
+    }
+    // Invisible helpers last: small proxy boxes for point lights and emitters.
+    for (int i = 0; i < scene.lights.numLights; ++i)
+    {
+        const auto& p = scene.lights.lights[i].position;
+        SE::AABB box = SE::AABB::FromCenterExtents(p, { 0.5f, 0.5f, 0.5f });
+        float t;
+        if (RayAABB(ray.origin, ray.dir, box, t) && t < best)
+        {
+            best = t;
+            result.Set(Selection::Kind::PointLight, i);
+        }
+    }
+    for (int i = 0; i < (int)scene.particleSystems.size(); ++i)
+    {
+        const auto& p = scene.particleSystems[i]->config.position;
+        SE::AABB box = SE::AABB::FromCenterExtents(p, { 0.5f, 0.5f, 0.5f });
+        float t;
+        if (RayAABB(ray.origin, ray.dir, box, t) && t < best)
+        {
+            best = t;
+            result.Set(Selection::Kind::Emitter, i);
+        }
     }
     return result;
 }
