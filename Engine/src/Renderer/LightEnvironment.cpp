@@ -21,9 +21,10 @@ void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 camera
     LightCBData lc;
     lc.lightDir      = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
     lc.iblIntensity  = iblIntensity;
-    lc.lightColor    = { lightColor[0] * lightIntensity,
-                         lightColor[1] * lightIntensity,
-                         lightColor[2] * lightIntensity };
+    const float sunScale = sunEnabled ? lightIntensity : 0.0f;
+    lc.lightColor    = { lightColor[0] * sunScale,
+                         lightColor[1] * sunScale,
+                         lightColor[2] * sunScale };
     lc.diffuseIBLSaturation = diffuseIBLSaturation;
     lc.cameraPos     = cameraPos;
     lc.debugLightMode = debugLightMode;
@@ -37,7 +38,8 @@ void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 camera
     {
         pl.lights[i].pos    = lights[i].position;
         pl.lights[i].radius = lights[i].radius;
-        pl.lights[i].color  = lights[i].color;
+        pl.lights[i].color  = lights[i].enabled ? lights[i].color
+                                                : DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
         pl.lights[i]._pad   = 0.0f;
     }
     m_pointLightCB.Update(ctx, pl);

@@ -13,9 +13,11 @@ public:
         DirectX::XMFLOAT3 position = { 0.0f, 2.0f, 0.0f };
         DirectX::XMFLOAT3 color    = { 1.0f, 1.0f, 1.0f };
         float             radius   = 10.0f;
+        bool              enabled  = true; // disabled lights contribute nothing
     };
 
     // Directional light
+    bool  sunEnabled      = true;
     float elevDeg         = 40.0f;
     float azimDeg         = 30.0f;
     float lightIntensity  = 3.0f;   // multiplier on lightColor

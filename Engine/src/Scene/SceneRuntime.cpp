@@ -334,6 +334,8 @@ void SceneRuntime::SetupPlanarReflection(ID3D11Device* device)
 
 void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
 {
+    lights.sunEnabled = true;
+    ballVisible = true;
     lights.elevDeg = desc.sun.elevation;
     lights.azimDeg = desc.sun.azimuth;
     lights.lightIntensity = desc.sun.intensity;
@@ -351,6 +353,7 @@ void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
         lights.lights[i].position = { light.position[0], light.position[1], light.position[2] };
         lights.lights[i].color = { light.color[0], light.color[1], light.color[2] };
         lights.lights[i].radius = light.radius;
+        lights.lights[i].enabled = true;
         lightCastsShadow[i] = light.castShadow;
     }
     toneMap.op = static_cast<ToneMap::Operator>(desc.toneMapping.op);
@@ -664,9 +667,10 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
         {
             shadowMap.BeginCascade(ctx, c);
             for (const auto& loaded : loadedMeshes)
-                if (loaded.def.castShadows && loaded.mesh && loaded.transform)
+                if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
                     shadowMap.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
-            shadowMap.DrawSphere(ctx, ballTransform->position, ballRadius);
+            if (ballVisible)
+                shadowMap.DrawSphere(ctx, ballTransform->position, ballRadius);
             shadowMap.EndCascade(ctx);
         }
     }
@@ -681,7 +685,7 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
             {
                 pointShadowMaps[li].BeginFace(ctx, face, light.position, light.radius);
                 for (const auto& loaded : loadedMeshes)
-                    if (loaded.def.castShadows && loaded.mesh && loaded.transform)
+                    if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
                         pointShadowMaps[li].DrawMesh(
                             ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
                 pointShadowMaps[li].EndFace(ctx);
@@ -694,7 +698,7 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
     {
         spotLight.BeginShadowPass(ctx);
         for (const auto& loaded : loadedMeshes)
-            if (loaded.def.castShadows && loaded.mesh && loaded.transform)
+            if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
                 spotLight.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
         spotLight.EndShadowPass(ctx);
     }
@@ -737,14 +741,16 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
     pipeline.SetReflectionPass(ctx, true, m_planarReflectionY);
 
     for (const auto& loaded : loadedMeshes)
-        if (loaded.mesh && loaded.transform)
+        if (loaded.visible && loaded.mesh && loaded.transform)
             pipeline.SubmitMesh(*loaded.mesh, loaded.transform->GetWorldMatrix(), loaded.materials);
     if (!loadedMeshes.empty()) pipeline.Flush(ctx);
-    pipeline.DrawSphere(ctx, ballTransform->position, ballRadius, { 1.0f, 0.45f, 0.05f });
+    if (ballVisible)
+        pipeline.DrawSphere(ctx, ballTransform->position, ballRadius, { 1.0f, 0.45f, 0.05f });
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
     {
         if (static_cast<int>(objectIndex) == m_planarObjectIndex) continue;
         auto& object = sceneObjects[objectIndex];
+        if (!object.visible) continue;
         XMFLOAT3 pos = { object.def.position[0], object.def.position[1], object.def.position[2] };
         XMFLOAT3 tint = { object.def.tint[0], object.def.tint[1], object.def.tint[2] };
         XMFLOAT3 emissive = { object.def.emissiveColor[0], object.def.emissiveColor[1], object.def.emissiveColor[2] };
@@ -810,17 +816,19 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
         { matTint[0], matTint[1], matTint[2] }, roughnessScale, metallic,
         debugShadow ? 1.0f : 0.0f);
     for (const auto& loaded : loadedMeshes)
-        if (loaded.mesh && loaded.transform)
+        if (loaded.visible && loaded.mesh && loaded.transform)
             pipeline.SubmitMesh(
                 *loaded.mesh, loaded.transform->GetWorldMatrix(), loaded.materials);
     if (!loadedMeshes.empty())
         pipeline.Flush(ctx);
-    pipeline.DrawSphere(ctx, ballTransform->position, ballRadius, { 1.0f, 0.45f, 0.05f });
+    if (ballVisible)
+        pipeline.DrawSphere(ctx, ballTransform->position, ballRadius, { 1.0f, 0.45f, 0.05f });
 
     // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
     {
         auto& lo = sceneObjects[objectIndex];
+        if (!lo.visible) continue;
         using Type = SceneDescriptor::SceneObject::Type;
         XMFLOAT3 pos  = { lo.def.position[0], lo.def.position[1], lo.def.position[2] };
         XMFLOAT3 tint = { lo.def.tint[0],     lo.def.tint[1],     lo.def.tint[2] };
