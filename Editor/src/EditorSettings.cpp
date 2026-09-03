@@ -1,5 +1,4 @@
 #include "EditorSettings.h"
-#include "EditorPanels.h"
 
 #include "Engine/Scene/SceneRuntime.h"
 #include <imgui.h>
@@ -178,11 +177,18 @@ void DrawWorldPhysicsSection(SE::SceneRuntime& scene)
 
 } // namespace
 
-void DrawSettingsPanel(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeight)
+void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeight)
 {
-    if (!BeginScenePanel("Settings", scene))
-        return;
-    if (ImGui::CollapsingHeader("Tone Mapping", ImGuiTreeNodeFlags_DefaultOpen))
+    ImGui::Text("%s", scene.currentDesc.name.c_str());
+    ImGui::TextDisabled("World Settings");
+    ImGui::Separator();
+    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
+        DrawWorldMaterialSection(scene);
+    if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+        DrawWorldLightingSection(scene);
+    if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen))
+        DrawWorldPhysicsSection(scene);
+    if (ImGui::CollapsingHeader("Tone Mapping"))
         DrawToneMapSection(scene);
     if (ImGui::CollapsingHeader("Bloom"))
         DrawBloomSection(scene);
@@ -194,20 +200,6 @@ void DrawSettingsPanel(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outH
         DrawTemporalAASection(scene, outWidth, outHeight);
     if (ImGui::CollapsingHeader("FXAA"))
         DrawFxaaSection(scene);
-    ImGui::End();
-}
-
-void DrawWorldProps(SE::SceneRuntime& scene)
-{
-    ImGui::Text("%s", scene.currentDesc.name.c_str());
-    ImGui::TextDisabled("World Settings");
-    ImGui::Separator();
-    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawWorldMaterialSection(scene);
-    if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawWorldLightingSection(scene);
-    if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawWorldPhysicsSection(scene);
 }
 
 } // namespace Editor
