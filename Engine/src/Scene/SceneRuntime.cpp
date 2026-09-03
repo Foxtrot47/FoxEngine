@@ -665,6 +665,106 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     desc.fog.distanceDensity = volFog.distanceDensity;
 }
 
+bool SceneRuntime::AddPointLight(const XMFLOAT3& position)
+{
+    if (lights.numLights >= 8)
+        return false;
+    SceneDescriptor::PointLightDesc def;
+    def.position = { position.x, position.y, position.z };
+
+    // Keep descs aligned with the bound light slots before appending.
+    pointLightDescs.resize(lights.numLights);
+    pointLightDescs.push_back(def);
+
+    const int i = lights.numLights++;
+    lights.lights[i].position = position;
+    lights.lights[i].color = { def.color[0], def.color[1], def.color[2] };
+    lights.lights[i].radius = def.radius;
+    lights.lights[i].enabled = true;
+    lightCastsShadow[i] = def.castShadow;
+    return true;
+}
+
+void SceneRuntime::RemovePointLight(int index)
+{
+    if (index < 0 || index >= lights.numLights)
+        return;
+    if (index < static_cast<int>(pointLightDescs.size()))
+        pointLightDescs.erase(pointLightDescs.begin() + index);
+    for (int i = index; i < lights.numLights - 1; ++i)
+    {
+        lights.lights[i] = lights.lights[i + 1];
+        lightCastsShadow[i] = lightCastsShadow[i + 1];
+    }
+    --lights.numLights;
+    lights.lights[lights.numLights] = {};
+    lightCastsShadow[lights.numLights] = false;
+}
+
+bool SceneRuntime::AddParticleEmitter(const XMFLOAT3& position)
+{
+    if (!m_renderer || !m_shaders)
+        return false;
+    SceneDescriptor::ParticleEmitterDesc def;
+    def.position = { position.x, position.y, position.z };
+    def.shaderMode = 1; // procedural ember — visible without an assigned texture
+
+    auto ps = std::make_unique<ParticleSystem>();
+    ApplyParticleDescToSystem(def, *ps);
+    if (!ps->Init(m_renderer->GetDevice(), *m_shaders))
+        return false;
+    particleSystems.push_back(std::move(ps));
+    particleEmitterDescs.push_back(def);
+    selectedParticlePreset.push_back(-1);
+    return true;
+}
+
+void SceneRuntime::RemoveParticleEmitter(int index)
+{
+    if (index < 0 || index >= static_cast<int>(particleSystems.size()))
+        return;
+    particleSystems.erase(particleSystems.begin() + index);
+    if (index < static_cast<int>(particleEmitterDescs.size()))
+        particleEmitterDescs.erase(particleEmitterDescs.begin() + index);
+    if (index < static_cast<int>(selectedParticlePreset.size()))
+        selectedParticlePreset.erase(selectedParticlePreset.begin() + index);
+}
+
+bool SceneRuntime::AddSceneObject(SceneDescriptor::SceneObject::Type type,
+                                  const XMFLOAT3& position)
+{
+    if (!m_assets)
+        return false;
+    LoadedObject lo;
+    lo.def.type = type;
+    lo.def.position = { position.x, position.y, position.z };
+    lo.mat.albedo = m_assets->GetDefaultWhite();
+    lo.mat.normal = m_assets->GetDefaultNormal();
+    lo.mat.roughness = m_assets->GetDefaultWhite();
+    lo.mat.metallic = m_assets->GetDefaultBlack();
+    lo.mat.emissive = m_assets->GetDefaultBlack();
+    sceneObjects.push_back(std::move(lo));
+    return true;
+}
+
+void SceneRuntime::RemoveSceneObject(int index)
+{
+    if (index < 0 || index >= static_cast<int>(sceneObjects.size()))
+        return;
+    sceneObjects.erase(sceneObjects.begin() + index);
+    if (m_planarObjectIndex == index)
+        m_planarObjectIndex = -1;
+    else if (m_planarObjectIndex > index)
+        --m_planarObjectIndex;
+}
+
+void SceneRuntime::RemoveMesh(int index)
+{
+    if (index < 0 || index >= static_cast<int>(loadedMeshes.size()))
+        return;
+    loadedMeshes.erase(loadedMeshes.begin() + index);
+}
+
 void SceneRuntime::RefreshParticlePresets()
 {
     particlePresetFiles = SceneLoader::ScanParticlePresetDirectory("Assets/Particles/Presets");

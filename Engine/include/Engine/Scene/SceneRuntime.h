@@ -111,6 +111,18 @@ public:
     // back into currentDesc so the edited scene can be serialized.
     void SyncDescriptorFromRuntime();
 
+    // Runtime entity add/remove (editor tooling). Add* returns false when the
+    // entity cannot be created (light capacity, missing device). Remove*
+    // ignores out-of-range indices.
+    bool AddPointLight(const DirectX::XMFLOAT3& position);
+    void RemovePointLight(int index);
+    bool AddParticleEmitter(const DirectX::XMFLOAT3& position);
+    void RemoveParticleEmitter(int index);
+    bool AddSceneObject(SceneDescriptor::SceneObject::Type type,
+                        const DirectX::XMFLOAT3& position);
+    void RemoveSceneObject(int index);
+    void RemoveMesh(int index);
+
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
     AssetHandle<Texture2D> environmentTexture;
