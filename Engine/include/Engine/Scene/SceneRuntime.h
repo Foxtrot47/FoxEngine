@@ -104,6 +104,12 @@ public:
     void RefreshParticlePresets();
     static void ApplyParticleDescToSystem(const SceneDescriptor::ParticleEmitterDesc& d,
                                           ParticleSystem& ps);
+    static void SyncParticleDescFromSystem(const ParticleSystem& ps,
+                                           SceneDescriptor::ParticleEmitterDesc& d);
+
+    // Stamps live tuning state (lights, post-process, physics, entity defs)
+    // back into currentDesc so the edited scene can be serialized.
+    void SyncDescriptorFromRuntime();
 
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;

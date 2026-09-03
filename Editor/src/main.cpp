@@ -11,6 +11,7 @@
 #include "Engine/Assets/AssetManager.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scene/SceneRuntime.h"
+#include "Engine/Scene/SceneSaver.h"
 #include "EditorTheme.h"
 #include "EditorCamera.h"
 #include "EditorPanels.h"
@@ -41,6 +42,7 @@ public:
     {
         // Keep editor dock layout separate from TestGame's imgui.ini.
         ImGui::GetIO().IniFilename = "editor.ini";
+        SetTitleBase(L"FoxEditor");
         Editor::ApplyTheme();
 
         if (!m_scene.Init(GetRenderer(), GetShaders(), GetAssets(), GetInput(),
@@ -72,6 +74,8 @@ protected:
         UpdateViewportRT();
 
         const bool sceneActive = m_scene.HasScene() && !m_scene.IsLoading();
+        if (sceneActive)
+            UpdateDirtyFlag();
         if (sceneActive && m_viewportRT.GetRTV())
         {
             float dt = GetClock().GetDeltaTime();
@@ -105,6 +109,55 @@ private:
         m_editorCam.SyncFromCamera(*m_scene.camera);
         m_selection.Clear();
         m_undo.Clear(); // undo entries point into the previous scene
+        TakeSavedSnapshot();
+    }
+
+    // --- Scene save + dirty tracking ---
+
+    void SaveScene()
+    {
+        if (!m_scene.HasScene() || m_scene.IsLoading())
+            return;
+        m_scene.SyncDescriptorFromRuntime();
+        if (SE::SceneSaver::SaveToFile(m_scene.currentScenePath, m_scene.currentDesc))
+            TakeSavedSnapshot();
+    }
+
+    // Snapshot the serialized scene as the clean state and clear the marker.
+    void TakeSavedSnapshot()
+    {
+        m_scene.SyncDescriptorFromRuntime();
+        m_savedSceneJson = SE::SceneSaver::ToJson(m_scene.currentDesc);
+        m_sceneDirty       = false;
+        m_dirtyCheckFrames = 0;
+        UpdateWindowTitle();
+    }
+
+    // Serialize-and-compare dirty check, throttled — catches every edit path
+    // (details, gizmos, undo/redo) without per-widget change wiring.
+    void UpdateDirtyFlag()
+    {
+        if (++m_dirtyCheckFrames < 30)
+            return;
+        m_dirtyCheckFrames = 0;
+        m_scene.SyncDescriptorFromRuntime();
+        const bool dirty = SE::SceneSaver::ToJson(m_scene.currentDesc) != m_savedSceneJson;
+        if (dirty != m_sceneDirty)
+        {
+            m_sceneDirty = dirty;
+            UpdateWindowTitle();
+        }
+    }
+
+    void UpdateWindowTitle()
+    {
+        auto pos = m_scene.currentScenePath.find_last_of("\\/");
+        std::string file = (pos != std::string::npos)
+            ? m_scene.currentScenePath.substr(pos + 1) : m_scene.currentScenePath;
+        std::wstring title = L"FoxEditor \u2014 " + std::wstring(file.begin(), file.end());
+        if (m_sceneDirty)
+            title += L"*";
+        SetTitleBase(title);
     }
 
     void BindViewportRT()
@@ -160,6 +213,10 @@ private:
             return;
         if (ImGui::BeginMenu("File"))
         {
+            const bool canSave = m_scene.HasScene() && !m_scene.IsLoading();
+            if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, canSave))
+                SaveScene();
+            ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4"))
                 PostMessageW(GetWindow().GetHandle(), WM_CLOSE, 0, 0);
             ImGui::EndMenu();
@@ -214,6 +271,7 @@ private:
         {
             if (input.IsKeyPressed('Z')) m_undo.Undo();
             if (input.IsKeyPressed('Y')) m_undo.Redo();
+            if (input.IsKeyPressed('S')) SaveScene();
             return;
         }
         if (!m_viewportHovered || m_editorCam.IsFlying())
@@ -438,6 +496,9 @@ private:
 
     std::vector<std::string> m_sceneFiles;
     int                      m_selectedScene = 0;
+    std::string              m_savedSceneJson;
+    bool                     m_sceneDirty       = false;
+    int                      m_dirtyCheckFrames = 0;
 };
 
 // Set working directory to project root (walk up from exe location until we

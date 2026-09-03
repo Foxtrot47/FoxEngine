@@ -75,8 +75,9 @@ void Engine::Run()
         fpsTimer += m_clock.GetDeltaTime();
         if (fpsTimer >= 1.0f)
         {
-            wchar_t title[128];
-            swprintf_s(title, L"FoxEngine  |  %.1f fps  |  %.2f ms",
+            wchar_t title[256];
+            swprintf_s(title, L"%s  |  %.1f fps  |  %.2f ms",
+                       m_titleBase.c_str(),
                        m_clock.GetFPS(),
                        m_clock.GetDeltaTime() * 1000.0f);
             SetWindowTextW(m_window.GetHandle(), title);

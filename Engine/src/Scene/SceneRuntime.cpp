@@ -550,6 +550,121 @@ void SceneRuntime::ApplyParticleDescToSystem(const SceneDescriptor::ParticleEmit
     ps.config.lightingInfluence = d.lightingInfluence;
 }
 
+void SceneRuntime::SyncParticleDescFromSystem(const ParticleSystem& ps,
+                                              SceneDescriptor::ParticleEmitterDesc& d)
+{
+    const ParticleEmitterConfig& c = ps.config;
+    d.position = { c.position.x, c.position.y, c.position.z };
+    d.emitRate = c.emitRate;
+    d.maxParticles = c.maxParticles;
+    d.lifetimeMin = c.lifetimeMin;
+    d.lifetimeMax = c.lifetimeMax;
+    d.velocityMin = { c.velocityMin.x, c.velocityMin.y, c.velocityMin.z };
+    d.velocityMax = { c.velocityMax.x, c.velocityMax.y, c.velocityMax.z };
+    d.sizeStart = c.sizeStart;
+    d.sizeEnd = c.sizeEnd;
+    d.colorStart = { c.colorStart.x, c.colorStart.y, c.colorStart.z, c.colorStart.w };
+    d.colorEnd = { c.colorEnd.x, c.colorEnd.y, c.colorEnd.z, c.colorEnd.w };
+    d.gravity = { c.gravity.x, c.gravity.y, c.gravity.z };
+    d.spawnRadius = c.spawnRadius;
+    d.spawnShape = c.spawnShape;
+    d.spawnBoxExtents = { c.spawnBoxExtents.x, c.spawnBoxExtents.y, c.spawnBoxExtents.z };
+    d.atlasColumns = c.atlasColumns;
+    d.atlasRows = c.atlasRows;
+    d.atlasFrameCount = c.atlasFrameCount;
+    d.atlasSpeed = c.atlasSpeed;
+    d.textureRotationDegrees = c.textureRotationDegrees;
+    d.softDistance = c.softDistance;
+    d.aspectRatio = c.aspectRatio;
+    d.blendMode = c.blendMode;
+    d.drag = c.drag;
+    d.shaderMode = c.shaderMode;
+    d.emitMode = c.emitMode;
+    d.rotationDegrees = c.rotationDegrees;
+    d.randomRotation = c.randomRotation;
+    d.tracerStretch = c.tracerStretch;
+    d.lightingInfluence = c.lightingInfluence;
+}
+
+void SceneRuntime::SyncDescriptorFromRuntime()
+{
+    if (!HasScene())
+        return;
+    SceneDescriptor& desc = currentDesc;
+
+    // Sun + IBL
+    desc.sun.elevation = lights.elevDeg;
+    desc.sun.azimuth = lights.azimDeg;
+    desc.sun.intensity = lights.lightIntensity;
+    desc.sun.color = { lights.lightColor[0], lights.lightColor[1], lights.lightColor[2] };
+    desc.iblIntensity = lights.iblIntensity;
+    desc.diffuseIBLSaturation = lights.diffuseIBLSaturation;
+
+    // Point lights: descs hold base color + flicker settings; position and
+    // radius are edited on the bound lights, shadow casting in the flag array.
+    desc.pointLights = pointLightDescs;
+    const int syncCount =
+        (std::min)(static_cast<int>(desc.pointLights.size()), lights.numLights);
+    for (int i = 0; i < syncCount; ++i)
+    {
+        auto& light = desc.pointLights[i];
+        const auto& bound = lights.lights[i];
+        light.position = { bound.position.x, bound.position.y, bound.position.z };
+        light.radius = bound.radius;
+        light.castShadow = lightCastsShadow[i];
+    }
+
+    // Camera: the fly pose is runtime-only, but clip planes are edited.
+    desc.camera.nearZ = camera->nearZ;
+    desc.camera.farZ = camera->farZ;
+
+    // Entity definitions edited in place by tooling
+    desc.meshes.clear();
+    for (const auto& loaded : loadedMeshes)
+        desc.meshes.push_back(loaded.def);
+    desc.objects.clear();
+    for (const auto& object : sceneObjects)
+        desc.objects.push_back(object.def);
+
+    // Particles: live edits target ParticleSystem::config
+    for (size_t i = 0; i < particleSystems.size() && i < particleEmitterDescs.size(); ++i)
+        SyncParticleDescFromSystem(*particleSystems[i], particleEmitterDescs[i]);
+    desc.particles = particleEmitterDescs;
+
+    // Physics: the Floor Y slider moves the slab, thickness is preserved.
+    desc.physics.gravity = gravityEnabled;
+    desc.physics.ballRadius = ballRadius;
+    desc.physics.ballSpawn = { ballSpawn.x, ballSpawn.y, ballSpawn.z };
+    const float floorThickness = desc.physics.floor.max[1] - desc.physics.floor.min[1];
+    desc.physics.floor.max[1] = floorY;
+    desc.physics.floor.min[1] = floorY - floorThickness;
+
+    // Post-process
+    desc.toneMapping.op = static_cast<int>(toneMap.op);
+    desc.toneMapping.exposure = toneMap.exposure;
+    desc.toneMapping.gammaCorrect = toneMap.gammaCorrect;
+    desc.bloom.enabled = bloom.enabled;
+    desc.bloom.threshold = bloom.threshold;
+    desc.bloom.intensity = bloom.intensity;
+    desc.bloom.scatter = bloom.scatter;
+    desc.fog.enabled = volFog.enabled;
+    desc.fog.density = volFog.density;
+    desc.fog.anisotropy = volFog.anisotropy;
+    desc.fog.scatterIntensity = volFog.scatterIntensity;
+    desc.fog.steps = volFog.steps;
+    desc.fog.maxDistance = volFog.maxDistance;
+    std::copy(std::begin(volFog.ambientColor), std::end(volFog.ambientColor),
+              std::begin(desc.fog.ambientColor));
+    desc.fog.ambientIntensity = volFog.ambientIntensity;
+    desc.fog.heightFalloff = volFog.heightFalloff;
+    desc.fog.heightBase = volFog.heightBase;
+    desc.fog.noiseStrength = volFog.noiseStrength;
+    desc.fog.noiseScale = volFog.noiseScale;
+    desc.fog.noiseSpeed = volFog.noiseSpeed;
+    desc.fog.nearClearDistance = volFog.nearClearDistance;
+    desc.fog.distanceDensity = volFog.distanceDensity;
+}
+
 void SceneRuntime::RefreshParticlePresets()
 {
     particlePresetFiles = SceneLoader::ScanParticlePresetDirectory("Assets/Particles/Presets");
