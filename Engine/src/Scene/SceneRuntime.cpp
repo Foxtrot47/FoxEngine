@@ -992,6 +992,13 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
                     shadowMap.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
             if (ballVisible)
                 shadowMap.DrawSphere(ctx, ballTransform->position, ballRadius);
+            // Analytic spheres cast too; planes are horizontal receivers and skipped.
+            for (const auto& object : sceneObjects)
+                if (object.visible &&
+                    object.def.type == SceneDescriptor::SceneObject::Type::Sphere)
+                    shadowMap.DrawSphere(ctx,
+                        { object.def.position[0], object.def.position[1],
+                          object.def.position[2] }, object.def.radius);
             shadowMap.EndCascade(ctx);
         }
     }
