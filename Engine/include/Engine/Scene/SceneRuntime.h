@@ -129,6 +129,10 @@ public:
     int DuplicateParticleEmitter(int index);
     int DuplicateSceneObject(int index);
     int DuplicateMesh(int index);
+    // Adds an already-uploaded mesh (see MeshAddOperation) as a new entity.
+    int AddLoadedMesh(const std::string& path, AssetHandle<Mesh> mesh,
+                      std::vector<ForwardPipeline::SubMat> materials,
+                      const DirectX::XMFLOAT3& position);
 
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
@@ -175,6 +179,7 @@ public:
     std::vector<LevelDiagnostic>                   levelDiagnostics;
     SceneDescriptor                                currentDesc;
     std::string                                    currentScenePath;
+    std::string                                    lastRequestedScenePath; // for retry after a failed load
     std::string                                    sceneLoadError;
 
     // --- Physics ---

@@ -142,6 +142,7 @@ void SceneRuntime::Shutdown()
 void SceneRuntime::RequestSceneLoad(const std::string& scenePath)
 {
     m_pendingSceneLoad = scenePath;
+    lastRequestedScenePath = scenePath;
 }
 
 void SceneRuntime::BeginAsyncSceneLoad(const std::string& scenePath)
@@ -842,6 +843,31 @@ int SceneRuntime::DuplicateMesh(int index)
     }
     copy.transform = transform;
     loadedMeshes.push_back(std::move(copy));
+    return static_cast<int>(loadedMeshes.size()) - 1;
+}
+
+int SceneRuntime::AddLoadedMesh(const std::string& path, AssetHandle<Mesh> mesh,
+                                std::vector<ForwardPipeline::SubMat> materials,
+                                const DirectX::XMFLOAT3& position)
+{
+    if (!mesh)
+        return -1;
+    LoadedMesh entry;
+    entry.def.path = path;
+    const size_t slash = path.find_last_of("/\\");
+    const size_t dot = path.rfind('.');
+    const size_t start = slash == std::string::npos ? 0 : slash + 1;
+    entry.def.name = path.substr(start,
+        dot != std::string::npos && dot > start ? dot - start : std::string::npos);
+    entry.def.position = { position.x, position.y, position.z };
+    entry.mesh = std::move(mesh);
+    entry.materials = std::move(materials);
+
+    Entity* entity = world.GetScene().CreateEntity(entry.def.name);
+    auto* transform = entity->AddComponent<TransformComponent>();
+    transform->position = position;
+    entry.transform = transform;
+    loadedMeshes.push_back(std::move(entry));
     return static_cast<int>(loadedMeshes.size()) - 1;
 }
 
