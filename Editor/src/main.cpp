@@ -20,6 +20,7 @@
 #include "EditorGizmo.h"
 #include "EditorOutliner.h"
 #include "EditorDetails.h"
+#include "EditorContentBrowser.h"
 #include <ImGuizmo.h>
 
 class EditorApp : public SE::Engine
@@ -50,14 +51,14 @@ public:
                           GetWindow().GetWidth(), GetWindow().GetHeight()))
             return false;
 
-        m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
-        if (m_sceneFiles.empty())
+        const auto sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
+        if (sceneFiles.empty() && scenePath.empty())
         {
             SE_LOG_ERROR("No scene files found in Assets/Scenes/");
             return false;
         }
 
-        std::string targetScene = scenePath.empty() ? m_sceneFiles[0] : scenePath;
+        std::string targetScene = scenePath.empty() ? sceneFiles[0] : scenePath;
         m_scene.RequestSceneLoad(targetScene);
         SE_LOG_INFO("Editor initial scene queued — %s", targetScene.c_str());
         return true;
@@ -104,8 +105,6 @@ protected:
 private:
     void OnSceneReady()
     {
-        for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
-            if (m_sceneFiles[i] == m_scene.currentScenePath) { m_selectedScene = i; break; }
         m_editorCam.SyncFromCamera(*m_scene.camera);
         m_selection.Clear();
         m_undo.Clear(); // undo entries point into the previous scene
@@ -200,12 +199,15 @@ private:
         }
 
         DrawViewportPanel(sceneActive);
-        DrawScenePanel();
         if (Editor::DrawOutlinerPanel(m_scene, m_selection, SpawnPosition()))
             m_undo.Clear(); // index-based undo entries are stale after a delete
         Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
                                  GetRenderer().GetDevice(), GetShaders(),
                                  m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
+        // Mesh adds are appends, so existing undo entries stay valid.
+        m_contentBrowser.Draw(m_scene, m_selection, GetAssets(),
+                              GetRenderer().GetDevice(), GetRenderer().GetContext(),
+                              SpawnPosition());
     }
 
     void DrawMainMenu()
@@ -217,6 +219,8 @@ private:
             const bool canSave = m_scene.HasScene() && !m_scene.IsLoading();
             if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, canSave))
                 SaveScene();
+            if (ImGui::MenuItem("Reload Scene", nullptr, false, canSave))
+                m_scene.RequestSceneLoad(m_scene.currentScenePath);
             ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4"))
                 PostMessageW(GetWindow().GetHandle(), WM_CLOSE, 0, 0);
@@ -336,16 +340,17 @@ private:
         ImGuiID dockCenter = dockspaceId;
         ImGuiID dockRight;
         ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Right, 0.22f, &dockRight, &dockCenter);
+        ImGuiID dockBottom;
+        ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Down, 0.28f, &dockBottom, &dockCenter);
         ImGuiID dockRightTop, dockRightBottom;
         ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Up, 0.30f, &dockRightTop, &dockRightBottom);
 
         ImGui::DockBuilderDockWindow("Viewport", dockCenter);
 
-        // Top tabs: Outliner active (last docked = default tab)
-        ImGui::DockBuilderDockWindow("Scene",    dockRightTop);
         ImGui::DockBuilderDockWindow("Outliner", dockRightTop);
 
         ImGui::DockBuilderDockWindow("Details", dockRightBottom);
+        ImGui::DockBuilderDockWindow("Content Browser", dockBottom);
         ImGui::DockBuilderFinish(dockspaceId);
     }
 
@@ -467,50 +472,17 @@ private:
             if (ImGui::Button("Retry"))
             {
                 m_scene.sceneLoadError.clear();
-                m_scene.RequestSceneLoad(m_sceneFiles[m_selectedScene]);
+                m_scene.RequestSceneLoad(m_scene.lastRequestedScenePath);
             }
         }
         ImGui::EndGroup();
-    }
-
-    void DrawScenePanel()
-    {
-        auto getFilename = [](const std::string& path) -> std::string {
-            auto pos = path.find_last_of("\\/");
-            return (pos != std::string::npos) ? path.substr(pos + 1) : path;
-        };
-
-        ImGui::Begin("Scene");
-        if (ImGui::BeginCombo("Scene File", getFilename(m_sceneFiles[m_selectedScene]).c_str()))
-        {
-            for (int i = 0; i < (int)m_sceneFiles.size(); ++i)
-            {
-                bool selected = (i == m_selectedScene);
-                if (ImGui::Selectable(getFilename(m_sceneFiles[i]).c_str(), selected) &&
-                    i != m_selectedScene)
-                {
-                    m_scene.RequestSceneLoad(m_sceneFiles[i]);
-                }
-                if (selected) ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndCombo();
-        }
-        if (ImGui::Button("Reload"))
-            m_scene.RequestSceneLoad(m_sceneFiles[m_selectedScene]);
-        ImGui::SameLine();
-        if (ImGui::Button("Rescan"))
-            m_sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
-        ImGui::Text("Active: %s", m_scene.currentDesc.name.c_str());
-        if (!m_scene.sceneLoadError.empty())
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s",
-                               m_scene.sceneLoadError.c_str());
-        ImGui::End();
     }
 
     SE::SceneRuntime      m_scene;
     Editor::EditorCamera  m_editorCam;
     Editor::Selection     m_selection;
     Editor::UndoStack     m_undo;
+    Editor::ContentBrowser m_contentBrowser;
     Editor::GizmoOp       m_gizmoOp = Editor::GizmoOp::Translate;
     SE::RenderTarget      m_viewportRT;
     ImVec2           m_viewportSize    = ImVec2(1280.0f, 720.0f);
@@ -518,8 +490,6 @@ private:
     bool             m_firstFrame      = true;
     bool             m_resetLayout     = false;
 
-    std::vector<std::string> m_sceneFiles;
-    int                      m_selectedScene = 0;
     std::string              m_savedSceneJson;
     bool                     m_sceneDirty       = false;
     int                      m_dirtyCheckFrames = 0;

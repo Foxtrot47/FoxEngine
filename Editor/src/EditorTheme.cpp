@@ -112,6 +112,8 @@ void ApplyGeometry(ImGuiStyle& style)
     style.WindowTitleAlign  = ImVec2(0.0f, 0.5f);
 }
 
+ImFont* s_largeIcons = nullptr;
+
 void LoadFonts()
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -135,10 +137,16 @@ void LoadFonts()
         cfg.GlyphMinAdvanceX = 17.0f;
         cfg.GlyphOffset      = ImVec2(0.0f, 3.0f); // sit icons on the text baseline
         io.Fonts->AddFontFromFileTTF(icons, 17.0f, &cfg, ranges);
+
+        ImFontConfig big;
+        big.PixelSnapH = true;
+        s_largeIcons = io.Fonts->AddFontFromFileTTF(icons, 44.0f, &big, ranges);
     }
 }
 
 } // namespace
+
+ImFont* LargeIconFont() { return s_largeIcons; }
 
 void ApplyTheme()
 {

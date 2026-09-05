@@ -16,6 +16,10 @@
 #define ICON_MD_LENS              "\xEE\x8F\xBA" // U+E3FA ball
 #define ICON_MD_ADD               "\xEE\x85\x85" // U+E145 plus (add entity)
 #define ICON_MD_VISIBILITY        "\xEE\xA3\xB4" // U+E8F4 eye open
+#define ICON_MD_FOLDER            "\xEE\x8B\x87" // U+E2C7 folder
+#define ICON_MD_IMAGE             "\xEE\x8F\xB4" // U+E3F4 texture / image file
+#define ICON_MD_INSERT_DRIVE_FILE "\xEE\x89\x8D" // U+E24D generic file
+#define ICON_MD_REFRESH           "\xEE\x97\x95" // U+E5D5 refresh
 #define ICON_MD_VISIBILITY_OFF    "\xEE\xA3\xB5" // U+E8F5 eye closed
 
 namespace Editor {
