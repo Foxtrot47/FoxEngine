@@ -58,6 +58,7 @@ private:
     {
         DirectX::XMFLOAT4X4 cascadeVP[CSM_NUM_CASCADES];
         float splitDistances[4];  // view-space Z splits (padded to float4)
+        float texelSizes[4];      // world-space texel size per cascade (padded)
     };
 
     uint32_t m_resolution = 2048;
@@ -65,6 +66,7 @@ private:
 
     DirectX::XMMATRIX m_cascadeVP[CSM_NUM_CASCADES] = {};
     float             m_splits[CSM_NUM_CASCADES + 1] = {};
+    float             m_texelWorld[CSM_NUM_CASCADES] = {};
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D>           m_depthTex;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView>    m_dsv[CSM_NUM_CASCADES];

@@ -215,6 +215,7 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
             minX, maxX, minY, maxY, minZ, maxZ);
 
         m_cascadeVP[c] = XMMatrixMultiply(lightView, lightProj);
+        m_texelWorld[c] = (maxX - minX) / (float)m_resolution;
     }
 }
 
@@ -299,6 +300,9 @@ void CascadedShadowMap::BindForLitPass(ID3D11DeviceContext* ctx)
     for (int i = 0; i < CSM_NUM_CASCADES; ++i)
         data.splitDistances[i] = m_splits[i + 1];
     data.splitDistances[3] = 0.0f; // padding
+    for (int i = 0; i < CSM_NUM_CASCADES; ++i)
+        data.texelSizes[i] = m_texelWorld[i];
+    data.texelSizes[3] = 0.0f; // padding
 
     m_csmCB.Update(ctx, data);
     m_csmCB.BindPS(ctx, 6);

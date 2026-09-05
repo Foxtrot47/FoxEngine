@@ -60,6 +60,7 @@ cbuffer CSMCB : register(b6)
 {
     row_major matrix CascadeVP[3];
     float4 CascadeSplits;  // view-space far Z for each cascade
+    float4 CascadeTexel;   // world-space texel size per cascade
 };
 
 cbuffer PlanarReflectionCB : register(b7)
@@ -315,10 +316,17 @@ PSOut PS_Main(PSIn input)
         if (input.ViewZ < CascadeSplits.x)      cascade = 0;
         else if (input.ViewZ < CascadeSplits.y)  cascade = 1;
 
-        float4 sc   = mul(float4(input.WorldPos, 1.0f), CascadeVP[cascade]);
+        // Normal-offset receiver bias: push the sample point along the surface
+        // normal by ~1 shadow texel so large cascades stop self-shadowing.
+        float3 gN     = normalize(input.N);
+        float  NdotLs = saturate(dot(gN, normalize(LightDir)));
+        float  offset = CascadeTexel[cascade] * (2.0f - NdotLs);
+        float3 samplePos = input.WorldPos + gN * offset;
+
+        float4 sc   = mul(float4(samplePos, 1.0f), CascadeVP[cascade]);
         float3 ndc  = sc.xyz / sc.w;
         float2 uv   = float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
-        float  dref = ndc.z;
+        float  dref = ndc.z - 0.0008f;
         if (saturate(uv.x) == uv.x && saturate(uv.y) == uv.y && dref < 1.0f)
         {
             float w, h, elements;
