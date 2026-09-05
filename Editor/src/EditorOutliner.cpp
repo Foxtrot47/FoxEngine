@@ -4,10 +4,53 @@
 #include "Engine/Scene/SceneRuntime.h"
 #include <imgui.h>
 #include <cstdio>
+#include <cstring>
 
 namespace Editor {
 
 namespace {
+
+// Inline-rename state for the row being edited (at most one at a time).
+struct RenameState
+{
+    Selection::Kind kind  = Selection::Kind::None;
+    int             index = -1;
+    char            buf[128] = {};
+    bool            takeFocus = false;
+};
+RenameState s_rename;
+
+void BeginRename(Selection::Kind kind, int index, const std::string& current)
+{
+    s_rename.kind  = kind;
+    s_rename.index = index;
+    snprintf(s_rename.buf, sizeof(s_rename.buf), "%s", current.c_str());
+    s_rename.takeFocus = true;
+}
+
+// Persisted display-name storage for the selection, or nullptr when the
+// entity kind has no editable name.
+std::string* EntityName(SE::SceneRuntime& scene, Selection::Kind kind, int index)
+{
+    using Kind = Selection::Kind;
+    switch (kind)
+    {
+    case Kind::Mesh:
+        return index < (int)scene.loadedMeshes.size()
+            ? &scene.loadedMeshes[index].def.name : nullptr;
+    case Kind::PointLight:
+        return index < (int)scene.pointLightDescs.size()
+            ? &scene.pointLightDescs[index].name : nullptr;
+    case Kind::Object:
+        return index < (int)scene.sceneObjects.size()
+            ? &scene.sceneObjects[index].def.name : nullptr;
+    case Kind::Emitter:
+        return index < (int)scene.particleEmitterDescs.size()
+            ? &scene.particleEmitterDescs[index].name : nullptr;
+    default:
+        return nullptr;
+    }
+}
 
 struct IconDesc
 {
@@ -51,39 +94,82 @@ void DrawEyeToggle(bool* visible)
         { mn.x + (h - sz.x) * 0.5f, mn.y + (h - sz.y) * 0.5f }, col, glyph);
 }
 
-// Returns true when the row's context menu requested a delete. Deletable
-// rows also select themselves on right-click, UE-style.
-bool DrawRow(Selection& sel, Selection::Kind kind, int index, const char* label,
-             const char* typeName, const IconDesc& icon, bool* visible, bool indent,
-             bool deletable = false)
+struct RowAction
+{
+    bool remove    = false;
+    bool duplicate = false;
+};
+
+// Inline InputText shown in place of the row label while renaming. Commits
+// into *name on Enter or focus loss; Escape cancels.
+void DrawRenameInput(std::string* name)
+{
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (s_rename.takeFocus)
+    {
+        ImGui::SetKeyboardFocusHere();
+        s_rename.takeFocus = false;
+    }
+    const bool entered = ImGui::InputText("##rename", s_rename.buf,
+                                          sizeof(s_rename.buf),
+                                          ImGuiInputTextFlags_EnterReturnsTrue |
+                                          ImGuiInputTextFlags_AutoSelectAll);
+    if (!entered && !ImGui::IsItemDeactivated())
+        return;
+    if (!ImGui::IsKeyPressed(ImGuiKey_Escape) && name && s_rename.buf[0] != '\0')
+        *name = s_rename.buf;
+    s_rename = {};
+}
+
+// Rows with a non-null name are editable, UE-style: right-click selects and
+// offers Rename / Duplicate / Delete; the returned action is applied by the
+// caller after the table is finished.
+RowAction DrawRow(Selection& sel, Selection::Kind kind, int index, const char* label,
+                  const char* typeName, const IconDesc& icon, bool* visible,
+                  bool indent, std::string* name = nullptr)
 {
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(1);
-    ImGui::PushID(label);
+    ImGui::PushID((int)kind);
     ImGui::PushID(index);
 
     if (indent)
         ImGui::Indent(14.0f);
     const float rowH = ImGui::GetTextLineHeight() + 4.0f;
-    if (ImGui::Selectable("##row", sel.Is(kind, index),
-                          ImGuiSelectableFlags_SpanAllColumns |
-                          ImGuiSelectableFlags_AllowOverlap, { 0.0f, rowH }))
-        sel.Set(kind, index);
-    bool wantDelete = false;
-    if (deletable && ImGui::BeginPopupContextItem("##ctx"))
+    RowAction action;
+    const bool renaming = name && s_rename.kind == kind && s_rename.index == index;
+    if (renaming)
     {
-        sel.Set(kind, index);
-        if (ImGui::MenuItem("Delete", "Del"))
-            wantDelete = true;
-        ImGui::EndPopup();
+        DrawIconCentered(icon, rowH, rowH);
+        ImGui::SameLine(0.0f, 5.0f);
+        DrawRenameInput(name);
     }
-    ImGui::SameLine(0.0f, 0.0f);
-    DrawIconCentered(icon, rowH, rowH);
-    ImGui::SameLine(0.0f, 5.0f);
-    const ImVec2 textPos = ImGui::GetCursorScreenPos();
-    ImGui::SetCursorScreenPos(
-        { textPos.x, textPos.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f });
-    ImGui::TextUnformatted(label);
+    else
+    {
+        if (ImGui::Selectable("##row", sel.Is(kind, index),
+                              ImGuiSelectableFlags_SpanAllColumns |
+                              ImGuiSelectableFlags_AllowOverlap, { 0.0f, rowH }))
+            sel.Set(kind, index);
+        if (name && ImGui::BeginPopupContextItem("##ctx"))
+        {
+            sel.Set(kind, index);
+            if (ImGui::MenuItem("Rename", "F2"))
+                BeginRename(kind, index, *name);
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+                action.duplicate = true;
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete", "Del"))
+                action.remove = true;
+            ImGui::EndPopup();
+        }
+        ImGui::SameLine(0.0f, 0.0f);
+        DrawIconCentered(icon, rowH, rowH);
+        ImGui::SameLine(0.0f, 5.0f);
+        const ImVec2 textPos = ImGui::GetCursorScreenPos();
+        ImGui::SetCursorScreenPos(
+            { textPos.x, textPos.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f });
+        ImGui::TextUnformatted(label);
+    }
     if (indent)
         ImGui::Unindent(14.0f);
 
@@ -97,7 +183,7 @@ bool DrawRow(Selection& sel, Selection::Kind kind, int index, const char* label,
 
     ImGui::PopID();
     ImGui::PopID();
-    return wantDelete;
+    return action;
 }
 
 // Menu item with a colored icon glyph in front of the label.
@@ -148,7 +234,82 @@ void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel,
     ImGui::EndPopup();
 }
 
+// Point light, mesh, object, and emitter rows with editable names.
+RowAction DrawEntityRows(SE::SceneRuntime& scene, Selection& sel)
+{
+    using Kind = Selection::Kind;
+    RowAction action;
+    auto merge = [&action](const RowAction& a) {
+        action.remove |= a.remove;
+        action.duplicate |= a.duplicate;
+    };
+    for (int i = 0; i < scene.lights.numLights; ++i)
+    {
+        std::string& name = scene.pointLightDescs[i].name;
+        char label[32];
+        sprintf_s(label, "Point Light %d", i + 1);
+        merge(DrawRow(sel, Kind::PointLight, i,
+                name.empty() ? label : name.c_str(), "Point Light",
+                { ICON_MD_LIGHTBULB_OUTLINE, IM_COL32(255, 170, 80, 255) },
+                &scene.lights.lights[i].enabled, true, &name));
+    }
+    for (int i = 0; i < (int)scene.loadedMeshes.size(); ++i)
+        merge(DrawRow(sel, Kind::Mesh, i, scene.loadedMeshes[i].def.name.c_str(),
+                "Static Mesh", { ICON_MD_CATEGORY, IM_COL32(140, 200, 160, 255) },
+                &scene.loadedMeshes[i].visible, true,
+                &scene.loadedMeshes[i].def.name));
+    using ObjType = SE::SceneDescriptor::SceneObject::Type;
+    for (int i = 0; i < (int)scene.sceneObjects.size(); ++i)
+    {
+        const bool isSphere = scene.sceneObjects[i].def.type == ObjType::Sphere;
+        std::string& name = scene.sceneObjects[i].def.name;
+        char label[32];
+        sprintf_s(label, "%s %d", isSphere ? "Sphere" : "Plane", i + 1);
+        merge(DrawRow(sel, Kind::Object, i,
+                name.empty() ? label : name.c_str(), isSphere ? "Sphere" : "Plane",
+                { isSphere ? ICON_MD_PANORAMA_FISH_EYE : ICON_MD_CROP_LANDSCAPE,
+                  IM_COL32(150, 210, 220, 255) },
+                &scene.sceneObjects[i].visible, true, &name));
+    }
+    for (int i = 0; i < (int)scene.particleSystems.size(); ++i)
+    {
+        std::string* name = i < (int)scene.particleEmitterDescs.size()
+            ? &scene.particleEmitterDescs[i].name : nullptr;
+        char label[32];
+        sprintf_s(label, "Emitter %d", i + 1);
+        merge(DrawRow(sel, Kind::Emitter, i,
+                (name && !name->empty()) ? name->c_str() : label, "Emitter",
+                { ICON_MD_GRAIN, IM_COL32(210, 150, 255, 255) },
+                &scene.particleSystems[i]->enabled, true, name));
+    }
+    return action;
+}
+
 } // namespace
+
+void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel)
+{
+    if (std::string* name = EntityName(scene, sel.kind, sel.index))
+        BeginRename(sel.kind, sel.index, *name);
+}
+
+bool DuplicateSelection(SE::SceneRuntime& scene, Selection& sel)
+{
+    using Kind = Selection::Kind;
+    int newIndex = -1;
+    switch (sel.kind)
+    {
+    case Kind::PointLight: newIndex = scene.DuplicatePointLight(sel.index); break;
+    case Kind::Mesh:       newIndex = scene.DuplicateMesh(sel.index); break;
+    case Kind::Object:     newIndex = scene.DuplicateSceneObject(sel.index); break;
+    case Kind::Emitter:    newIndex = scene.DuplicateParticleEmitter(sel.index); break;
+    default: return false;
+    }
+    if (newIndex < 0)
+        return false;
+    sel.Set(sel.kind, newIndex);
+    return true;
+}
 
 bool DeleteSelection(SE::SceneRuntime& scene, Selection& sel)
 {
@@ -190,6 +351,10 @@ bool DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel,
     ImGui::TableSetupColumn("Item",   ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("Type",   ImGuiTableColumnFlags_WidthFixed, 96.0f);
 
+    // Defensive: keep the desc mirror sized so names stay addressable.
+    if ((int)scene.pointLightDescs.size() < scene.lights.numLights)
+        scene.pointLightDescs.resize(scene.lights.numLights);
+
     using Kind = Selection::Kind;
     DrawRow(sel, Kind::World, 0, scene.currentDesc.name.c_str(), "Level",
             { ICON_MD_PUBLIC, IM_COL32(120, 190, 255, 255) }, nullptr, false);
@@ -206,42 +371,13 @@ bool DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel,
             { ICON_MD_LENS, IM_COL32(255, 140, 60, 255) },
             &scene.ballVisible, true);
 
-    bool wantDelete = false;
-    for (int i = 0; i < scene.lights.numLights; ++i)
-    {
-        char label[32];
-        sprintf_s(label, "Point Light %d", i + 1);
-        wantDelete |= DrawRow(sel, Kind::PointLight, i, label, "Point Light",
-                { ICON_MD_LIGHTBULB_OUTLINE, IM_COL32(255, 170, 80, 255) },
-                &scene.lights.lights[i].enabled, true, true);
-    }
-    for (int i = 0; i < (int)scene.loadedMeshes.size(); ++i)
-        wantDelete |= DrawRow(sel, Kind::Mesh, i, scene.loadedMeshes[i].def.name.c_str(),
-                "Static Mesh", { ICON_MD_CATEGORY, IM_COL32(140, 200, 160, 255) },
-                &scene.loadedMeshes[i].visible, true, true);
-    using ObjType = SE::SceneDescriptor::SceneObject::Type;
-    for (int i = 0; i < (int)scene.sceneObjects.size(); ++i)
-    {
-        const bool isSphere = scene.sceneObjects[i].def.type == ObjType::Sphere;
-        char label[32];
-        sprintf_s(label, "%s %d", isSphere ? "Sphere" : "Plane", i + 1);
-        wantDelete |= DrawRow(sel, Kind::Object, i, label, isSphere ? "Sphere" : "Plane",
-                { isSphere ? ICON_MD_PANORAMA_FISH_EYE : ICON_MD_CROP_LANDSCAPE,
-                  IM_COL32(150, 210, 220, 255) },
-                &scene.sceneObjects[i].visible, true, true);
-    }
-    for (int i = 0; i < (int)scene.particleSystems.size(); ++i)
-    {
-        char label[32];
-        sprintf_s(label, "Emitter %d", i + 1);
-        wantDelete |= DrawRow(sel, Kind::Emitter, i, label, "Emitter",
-                { ICON_MD_GRAIN, IM_COL32(210, 150, 255, 255) },
-                &scene.particleSystems[i]->enabled, true, true);
-    }
+    const RowAction action = DrawEntityRows(scene, sel);
     ImGui::EndTable();
     ImGui::End();
 
-    return wantDelete && DeleteSelection(scene, sel);
+    if (action.duplicate)
+        DuplicateSelection(scene, sel);
+    return action.remove && DeleteSelection(scene, sel);
 }
 
 } // namespace Editor

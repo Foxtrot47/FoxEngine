@@ -123,6 +123,13 @@ public:
     void RemoveSceneObject(int index);
     void RemoveMesh(int index);
 
+    // Appends a copy of the entity at index (same live state, new slot) and
+    // returns the new index, or -1 on failure/capacity.
+    int DuplicatePointLight(int index);
+    int DuplicateParticleEmitter(int index);
+    int DuplicateSceneObject(int index);
+    int DuplicateMesh(int index);
+
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
     AssetHandle<Texture2D> environmentTexture;

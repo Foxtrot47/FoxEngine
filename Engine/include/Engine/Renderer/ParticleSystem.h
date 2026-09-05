@@ -75,6 +75,7 @@ public:
 
     void SetPosition(const DirectX::XMFLOAT3& pos) { m_worldPos = pos; }
     void SetTexture(AssetHandle<Texture2D> tex) { m_texture = tex; }
+    AssetHandle<Texture2D> GetTexture() const   { return m_texture; }
 
     // Emit a burst of particles on next Update()
     void Burst(int count) { m_emitAccum += static_cast<float>(count); }
