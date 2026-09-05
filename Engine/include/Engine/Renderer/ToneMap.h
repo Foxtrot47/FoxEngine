@@ -28,13 +28,26 @@ public:
     Operator op           = Operator::ACES;
     bool     gammaCorrect = false; // keep off until textures are sRGB-linearised (M52)
 
+    // Color grading
+    float temperature     = 0.0f; // -1 cool .. +1 warm
+    float tint            = 0.0f; // -1 magenta .. +1 green
+    float saturation      = 1.0f;
+    float contrast        = 1.0f;
+    float vignette        = 0.0f;
+    float vignetteFeather = 0.5f;
+
 private:
     struct CBData
     {
         float exposure;
         int   op;
         int   gammaCorrect;
-        float _pad;
+        float saturation;
+        float whiteBalance[3]; // luminance-preserving RGB gains
+        float contrast;
+        float vignette;
+        float vignetteFeather;
+        float _pad[2];
     };
 
     const ShaderPermutation*   m_perm = nullptr;

@@ -360,6 +360,12 @@ void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
     toneMap.op = static_cast<ToneMap::Operator>(desc.toneMapping.op);
     toneMap.exposure = desc.toneMapping.exposure;
     toneMap.gammaCorrect = desc.toneMapping.gammaCorrect;
+    toneMap.temperature = desc.colorGrading.temperature;
+    toneMap.tint = desc.colorGrading.tint;
+    toneMap.saturation = desc.colorGrading.saturation;
+    toneMap.contrast = desc.colorGrading.contrast;
+    toneMap.vignette = desc.colorGrading.vignette;
+    toneMap.vignetteFeather = desc.colorGrading.vignetteFeather;
     bloom.enabled = desc.bloom.enabled;
     bloom.threshold = desc.bloom.threshold;
     bloom.intensity = desc.bloom.intensity;
@@ -644,6 +650,12 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     desc.toneMapping.op = static_cast<int>(toneMap.op);
     desc.toneMapping.exposure = toneMap.exposure;
     desc.toneMapping.gammaCorrect = toneMap.gammaCorrect;
+    desc.colorGrading.temperature = toneMap.temperature;
+    desc.colorGrading.tint = toneMap.tint;
+    desc.colorGrading.saturation = toneMap.saturation;
+    desc.colorGrading.contrast = toneMap.contrast;
+    desc.colorGrading.vignette = toneMap.vignette;
+    desc.colorGrading.vignetteFeather = toneMap.vignetteFeather;
     desc.bloom.enabled = bloom.enabled;
     desc.bloom.threshold = bloom.threshold;
     desc.bloom.intensity = bloom.intensity;

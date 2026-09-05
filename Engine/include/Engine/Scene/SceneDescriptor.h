@@ -71,6 +71,16 @@ struct SceneDescriptor
     ToneMappingDesc toneMapping;
 
     // Bloom
+    struct ColorGradingDesc {
+        float temperature     = 0.0f; // -1 cool .. +1 warm
+        float tint            = 0.0f; // -1 magenta .. +1 green
+        float saturation      = 1.0f;
+        float contrast        = 1.0f;
+        float vignette        = 0.0f; // 0 off .. 1 strong
+        float vignetteFeather = 0.5f;
+    };
+    ColorGradingDesc colorGrading;
+
     struct BloomDesc {
         bool  enabled   = true;
         float threshold = 1.0f;

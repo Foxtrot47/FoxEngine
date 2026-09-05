@@ -640,6 +640,16 @@ private:
             }
             ImGui::Checkbox("Gamma Correct", &m_scene.toneMap.gammaCorrect);
         }
+        if (ImGui::CollapsingHeader("Color Grading"))
+        {
+            auto& tm = m_scene.toneMap;
+            ImGui::SliderFloat("Temperature", &tm.temperature, -1.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Tint",        &tm.tint,        -1.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Saturation",  &tm.saturation,   0.0f, 2.0f, "%.2f");
+            ImGui::SliderFloat("Contrast",    &tm.contrast,     0.5f, 1.5f, "%.2f");
+            ImGui::SliderFloat("Vignette",    &tm.vignette,     0.0f, 1.0f, "%.2f");
+            ImGui::SliderFloat("Vig Feather", &tm.vignetteFeather, 0.05f, 1.0f, "%.2f");
+        }
         if (ImGui::CollapsingHeader("Bloom"))
         {
             auto& bloom = m_scene.bloom;
