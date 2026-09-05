@@ -395,8 +395,8 @@ static void TestBistroRuntimeDescriptor()
             "Bistro exterior path mismatch");
     Require(descriptor.meshes[1].path == "Assets/Bistro/BistroInterior.fbx",
             "Bistro interior path mismatch");
-    Require(descriptor.diffuseIBLSaturation == 0.0f,
-            "Bistro diffuse IBL should be neutral");
+    Require(descriptor.diffuseIBLSaturation == 1.0f,
+            "Bistro diffuse IBL saturation mismatch");
 }
 
 static void TestDependencyPlan()
