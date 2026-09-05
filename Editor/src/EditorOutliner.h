@@ -19,4 +19,10 @@ bool DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel,
 // mesh, object, emitter) and clears the selection. Returns true on delete.
 bool DeleteSelection(SE::SceneRuntime& scene, Selection& sel);
 
+// Appends a copy of the selected entity and moves the selection to it.
+bool DuplicateSelection(SE::SceneRuntime& scene, Selection& sel);
+
+// Starts inline outliner rename for the selection when its name is editable.
+void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel);
+
 } // namespace Editor

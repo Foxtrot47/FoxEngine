@@ -273,11 +273,16 @@ private:
             if (input.IsKeyPressed('Z')) m_undo.Undo();
             if (input.IsKeyPressed('Y')) m_undo.Redo();
             if (input.IsKeyPressed('S')) SaveScene();
+            if (input.IsKeyPressed('D')) Editor::DuplicateSelection(m_scene, m_selection);
             return;
         }
         if (input.IsKeyPressed(VK_DELETE) &&
             Editor::DeleteSelection(m_scene, m_selection))
             m_undo.Clear();
+        if (input.IsKeyPressed(VK_F2))
+            Editor::RequestRenameSelection(m_scene, m_selection);
+        if (input.IsKeyPressed(VK_ESCAPE))
+            m_selection.Clear();
         if (!m_viewportHovered || m_editorCam.IsFlying())
             return;
         HandleViewportKeys(input);

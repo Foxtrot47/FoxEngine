@@ -41,6 +41,7 @@ struct LevelDirectionalLightDefinition
 
 struct LevelPointLightDefinition
 {
+    std::string name; // stamped from the owning entity, not the component JSON
     std::array<float, 3> position = { 0.0f, 5.0f, 0.0f };
     std::array<float, 3> color = { 1.0f, 1.0f, 1.0f };
     float radius = 50.0f;
@@ -82,6 +83,7 @@ struct LevelPrimitiveRendererDefinition
 
 struct LevelParticleEmitterDefinition
 {
+    std::string name; // stamped from the owning entity, not the component JSON
     std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
     float emitRate = 50.0f;
     int maxParticles = 1000;

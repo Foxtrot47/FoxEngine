@@ -232,18 +232,25 @@ ojson WriteEntities(const SceneDescriptor& desc)
         { "color", desc.sun.color }
     } } });
     for (size_t i = 0; i < desc.pointLights.size(); ++i)
-        addEntity(0, "Point Light " + std::to_string(i + 1),
+    {
+        const std::string& name = desc.pointLights[i].name;
+        addEntity(0, name.empty() ? "Point Light " + std::to_string(i + 1) : name,
                   { { "pointLight", WritePointLight(desc.pointLights[i]) } });
+    }
     for (size_t i = 0; i < desc.objects.size(); ++i)
     {
         const bool plane = desc.objects[i].type == SceneDescriptor::SceneObject::Type::Plane;
-        addEntity(0, "Object " + std::to_string(i + 1),
+        const std::string& name = desc.objects[i].name;
+        addEntity(0, name.empty() ? "Object " + std::to_string(i + 1) : name,
                   { { plane ? "planeRenderer" : "sphereRenderer",
                       WriteObject(desc.objects[i]) } });
     }
     for (size_t i = 0; i < desc.particles.size(); ++i)
-        addEntity(0, "Particle Emitter " + std::to_string(i + 1),
+    {
+        const std::string& name = desc.particles[i].name;
+        addEntity(0, name.empty() ? "Particle Emitter " + std::to_string(i + 1) : name,
                   { { "particleEmitter", WriteParticleEmitter(desc.particles[i]) } });
+    }
     return entities;
 }
 

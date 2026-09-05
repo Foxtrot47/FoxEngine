@@ -105,6 +105,8 @@ struct SceneDescriptor
     {
         enum class Type { Sphere, Plane } type = Type::Sphere;
 
+        std::string name; // stamped from the owning entity, not the component JSON
+
         std::array<float, 3> position = { 0.f, 0.f, 0.f };
         float radius    = 1.0f;   // sphere radius
         float halfSizeX = 10.0f;  // plane half-extents (plane only)

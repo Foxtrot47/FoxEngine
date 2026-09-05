@@ -128,13 +128,20 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
         if (entity.directionalLight)
             out.sun = *entity.directionalLight;
         if (entity.pointLight)
+        {
             out.pointLights.push_back(*entity.pointLight);
+            out.pointLights.back().name = entity.name;
+        }
         if (entity.particleEmitter)
+        {
             out.particles.push_back(*entity.particleEmitter);
+            out.particles.back().name = entity.name;
+        }
         if (entity.primitiveRenderer)
         {
             const auto& source = *entity.primitiveRenderer;
             SceneDescriptor::SceneObject object;
+            object.name = entity.name;
             object.type = source.type == LevelPrimitiveType::Plane
                 ? SceneDescriptor::SceneObject::Type::Plane
                 : SceneDescriptor::SceneObject::Type::Sphere;

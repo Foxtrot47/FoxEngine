@@ -765,6 +765,86 @@ void SceneRuntime::RemoveMesh(int index)
     loadedMeshes.erase(loadedMeshes.begin() + index);
 }
 
+int SceneRuntime::DuplicatePointLight(int index)
+{
+    if (index < 0 || index >= lights.numLights || lights.numLights >= 8)
+        return -1;
+    pointLightDescs.resize(lights.numLights);
+
+    // Descs hold base color/flicker; position and radius are live-edited on
+    // the bound slot, so copy those from the source light.
+    SceneDescriptor::PointLightDesc def = pointLightDescs[index];
+    const auto& source = lights.lights[index];
+    def.position = { source.position.x, source.position.y, source.position.z };
+    def.radius = source.radius;
+    pointLightDescs.push_back(def);
+
+    const int i = lights.numLights++;
+    lights.lights[i] = source;
+    lights.lights[i].enabled = true;
+    lightCastsShadow[i] = lightCastsShadow[index];
+    return i;
+}
+
+int SceneRuntime::DuplicateParticleEmitter(int index)
+{
+    if (!m_renderer || !m_shaders ||
+        index < 0 || index >= static_cast<int>(particleSystems.size()) ||
+        index >= static_cast<int>(particleEmitterDescs.size()))
+        return -1;
+
+    SceneDescriptor::ParticleEmitterDesc def = particleEmitterDescs[index];
+    SyncParticleDescFromSystem(*particleSystems[index], def);
+
+    auto ps = std::make_unique<ParticleSystem>();
+    ApplyParticleDescToSystem(def, *ps);
+    if (!ps->Init(m_renderer->GetDevice(), *m_shaders))
+        return -1;
+    ps->SetTexture(particleSystems[index]->GetTexture());
+    particleSystems.push_back(std::move(ps));
+    particleEmitterDescs.push_back(def);
+    selectedParticlePreset.push_back(
+        index < static_cast<int>(selectedParticlePreset.size())
+            ? selectedParticlePreset[index] : -1);
+    return static_cast<int>(particleSystems.size()) - 1;
+}
+
+int SceneRuntime::DuplicateSceneObject(int index)
+{
+    if (index < 0 || index >= static_cast<int>(sceneObjects.size()))
+        return -1;
+    LoadedObject copy;
+    copy.def = sceneObjects[index].def;
+    copy.def.planarReflection = false; // only one authored planar reflector
+    copy.mat = sceneObjects[index].mat;
+    sceneObjects.push_back(std::move(copy));
+    return static_cast<int>(sceneObjects.size()) - 1;
+}
+
+int SceneRuntime::DuplicateMesh(int index)
+{
+    if (index < 0 || index >= static_cast<int>(loadedMeshes.size()))
+        return -1;
+    const LoadedMesh& source = loadedMeshes[index];
+    LoadedMesh copy;
+    copy.def = source.def;
+    copy.def.sourceEntityID = 0; // a fresh id is assigned on save
+    copy.mesh = source.mesh;
+    copy.materials = source.materials;
+
+    Entity* entity = world.GetScene().CreateEntity(copy.def.name);
+    auto* transform = entity->AddComponent<TransformComponent>();
+    if (source.transform)
+    {
+        transform->position = source.transform->position;
+        transform->eulerDeg = source.transform->eulerDeg;
+        transform->scale    = source.transform->scale;
+    }
+    copy.transform = transform;
+    loadedMeshes.push_back(std::move(copy));
+    return static_cast<int>(loadedMeshes.size()) - 1;
+}
+
 void SceneRuntime::RefreshParticlePresets()
 {
     particlePresetFiles = SceneLoader::ScanParticlePresetDirectory("Assets/Particles/Presets");
