@@ -17,6 +17,17 @@ void DrawToneMapSection(SE::SceneRuntime& scene)
     ImGui::Checkbox("Gamma Correct", &scene.toneMap.gammaCorrect);
 }
 
+void DrawColorGradingSection(SE::SceneRuntime& scene)
+{
+    auto& tm = scene.toneMap;
+    ImGui::SliderFloat("Temperature", &tm.temperature, -1.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Tint",        &tm.tint,        -1.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Saturation",  &tm.saturation,   0.0f, 2.0f, "%.2f");
+    ImGui::SliderFloat("Contrast",    &tm.contrast,     0.5f, 1.5f, "%.2f");
+    ImGui::SliderFloat("Vignette",    &tm.vignette,     0.0f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Vig Feather", &tm.vignetteFeather, 0.05f, 1.0f, "%.2f");
+}
+
 void DrawBloomSection(SE::SceneRuntime& scene)
 {
     auto& bloom = scene.bloom;
@@ -190,6 +201,8 @@ void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeig
         DrawWorldPhysicsSection(scene);
     if (ImGui::CollapsingHeader("Tone Mapping"))
         DrawToneMapSection(scene);
+    if (ImGui::CollapsingHeader("Color Grading"))
+        DrawColorGradingSection(scene);
     if (ImGui::CollapsingHeader("Bloom"))
         DrawBloomSection(scene);
     if (ImGui::CollapsingHeader("SSAO"))

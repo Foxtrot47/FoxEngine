@@ -25,6 +25,14 @@
       "exposure": 1.0,
       "gammaCorrect": false
     },
+    "colorGrading": {
+      "temperature": 0.25,
+      "tint": 0.0,
+      "saturation": 1.15,
+      "contrast": 1.06,
+      "vignette": 0.35,
+      "vignetteFeather": 0.6
+    },
     "bloom": {
       "enabled": true,
       "threshold": 1.0,

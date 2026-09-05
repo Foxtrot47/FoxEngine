@@ -592,7 +592,7 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
             environment[field] = root[field];
     if (!environment.empty())
         settings["environment"] = std::move(environment);
-    for (const char* field : { "toneMapping", "bloom", "fog", "physics" })
+    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "physics" })
         if (root.contains(field))
             settings[field] = root[field];
 

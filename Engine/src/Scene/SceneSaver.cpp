@@ -56,6 +56,14 @@ ojson WriteSettings(const SceneDescriptor& desc)
         { "exposure", desc.toneMapping.exposure },
         { "gammaCorrect", desc.toneMapping.gammaCorrect }
     };
+    settings["colorGrading"] = {
+        { "temperature", desc.colorGrading.temperature },
+        { "tint", desc.colorGrading.tint },
+        { "saturation", desc.colorGrading.saturation },
+        { "contrast", desc.colorGrading.contrast },
+        { "vignette", desc.colorGrading.vignette },
+        { "vignetteFeather", desc.colorGrading.vignetteFeather }
+    };
     settings["bloom"] = {
         { "enabled", desc.bloom.enabled },
         { "threshold", desc.bloom.threshold },

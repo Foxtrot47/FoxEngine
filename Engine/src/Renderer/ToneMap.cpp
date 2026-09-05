@@ -18,7 +18,24 @@ void ToneMap::Apply(ID3D11DeviceContext* ctx,
                     ID3D11ShaderResourceView* hdrSRV,
                     uint32_t width, uint32_t height)
 {
-    CBData cb = { exposure, static_cast<int>(op), gammaCorrect ? 1 : 0, 0.0f };
+    CBData cb = {};
+    cb.exposure     = exposure;
+    cb.op           = static_cast<int>(op);
+    cb.gammaCorrect = gammaCorrect ? 1 : 0;
+    cb.saturation   = saturation;
+
+    // Temperature/tint to luminance-preserving RGB gains.
+    float wr = 1.0f + 0.30f * temperature - 0.15f * tint;
+    float wg = 1.0f + 0.30f * tint;
+    float wb = 1.0f - 0.30f * temperature - 0.15f * tint;
+    const float luma = 0.2126f * wr + 0.7152f * wg + 0.0722f * wb;
+    cb.whiteBalance[0] = wr / luma;
+    cb.whiteBalance[1] = wg / luma;
+    cb.whiteBalance[2] = wb / luma;
+
+    cb.contrast        = contrast;
+    cb.vignette        = vignette;
+    cb.vignetteFeather = vignetteFeather;
     m_cb.Update(ctx, cb);
     m_cb.BindPS(ctx, 0);
 

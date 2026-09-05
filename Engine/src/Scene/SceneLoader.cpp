@@ -69,7 +69,7 @@ static json BuildSettingsJson(const LevelAsset& asset)
             if (environment.contains(field))
                 root[field] = environment[field];
     }
-    for (const char* field : { "physics", "toneMapping", "bloom", "fog" })
+    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog" })
         if (asset.settings.contains(field))
             root[field] = asset.settings[field];
 
@@ -206,6 +206,18 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
         }
         if (tm.contains("exposure"))     out.toneMapping.exposure     = tm["exposure"].get<float>();
         if (tm.contains("gammaCorrect")) out.toneMapping.gammaCorrect = tm["gammaCorrect"].get<bool>();
+    }
+
+    // Color grading
+    if (root.contains("colorGrading"))
+    {
+        auto& cg = root["colorGrading"];
+        if (cg.contains("temperature"))     out.colorGrading.temperature     = cg["temperature"].get<float>();
+        if (cg.contains("tint"))            out.colorGrading.tint            = cg["tint"].get<float>();
+        if (cg.contains("saturation"))      out.colorGrading.saturation      = cg["saturation"].get<float>();
+        if (cg.contains("contrast"))        out.colorGrading.contrast        = cg["contrast"].get<float>();
+        if (cg.contains("vignette"))        out.colorGrading.vignette        = cg["vignette"].get<float>();
+        if (cg.contains("vignetteFeather")) out.colorGrading.vignetteFeather = cg["vignetteFeather"].get<float>();
     }
 
     // Bloom
