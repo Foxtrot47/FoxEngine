@@ -10,15 +10,23 @@ bool VolumetricFog::Init(ID3D11Device* device, ShaderLibrary& shaders,
 {
     m_width  = width;
     m_height = height;
+    m_fogWidth  = width  > 1 ? width  / 2 : 1;
+    m_fogHeight = height > 1 ? height / 2 : 1;
 
-    // RGBA16F: RGB = accumulated in-scattered light (HDR), A = transmittance.
-    if (!m_fogRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
+    // Half-res RGBA16F: RGB = accumulated in-scattered light (HDR), A = transmittance.
+    // The march is ALU-bound, so quarter the pixel count and reconstruct with a
+    // depth-aware upsample at composite time.
+    if (!m_fogRT.Init(device, m_fogWidth, m_fogHeight, DXGI_FORMAT_R16G16B16A16_FLOAT))
         return false;
 
     m_fogPerm = shaders.Get(L"Engine/Shaders/VolumetricFog.hlsl");
     if (!m_fogPerm) { SE_LOG_ERROR("VolumetricFog: failed to compile VolumetricFog.hlsl"); return false; }
 
+    m_upsamplePerm = shaders.Get(L"Engine/Shaders/VolumetricFogUpsample.hlsl");
+    if (!m_upsamplePerm) { SE_LOG_ERROR("VolumetricFog: failed to compile VolumetricFogUpsample.hlsl"); return false; }
+
     if (!m_cb.Create(device)) return false;
+    if (!m_upsampleCB.Create(device)) return false;
     if (!m_quad.Init(device, shaders)) return false;
 
     // Point-clamp sampler for exact depth, shadow, and blur taps (s0).
@@ -53,7 +61,8 @@ bool VolumetricFog::Init(ID3D11Device* device, ShaderLibrary& shaders,
     hr = device->CreateBlendState(&bd, m_compositeBlend.GetAddressOf());
     if (FAILED(hr)) { SE_LOG_ERROR("VolumetricFog: blend state failed"); return false; }
 
-    SE_LOG_INFO("VolumetricFog initialised — %ux%u", width, height);
+    SE_LOG_INFO("VolumetricFog initialised — march %ux%u, output %ux%u",
+                m_fogWidth, m_fogHeight, m_width, m_height);
     return true;
 }
 
@@ -61,8 +70,10 @@ void VolumetricFog::Resize(ID3D11Device* device, uint32_t width, uint32_t height
 {
     m_width  = width;
     m_height = height;
+    m_fogWidth  = width  > 1 ? width  / 2 : 1;
+    m_fogHeight = height > 1 ? height / 2 : 1;
     m_fogRT.Shutdown();
-    m_fogRT.Init(device, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    m_fogRT.Init(device, m_fogWidth, m_fogHeight, DXGI_FORMAT_R16G16B16A16_FLOAT);
 }
 
 void VolumetricFog::Shutdown()
@@ -117,7 +128,7 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
     cb.stepCount        = (float)(steps < 1 ? 1 : steps);
     cb.fogAmbient       = { ambientColor[0], ambientColor[1], ambientColor[2] };
     cb.ambientIntensity = ambientIntensity;
-    cb.screenSize       = { (float)m_width, (float)m_height };
+    cb.screenSize       = { (float)m_fogWidth, (float)m_fogHeight };
     cb.maxDistance      = maxDistance;
     cb.scatterIntensity = scatterIntensity;
     cb.heightFalloff    = heightFalloff;
@@ -161,8 +172,13 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
         m_fogRT.End(ctx);
     }
 
-    // --- Pass 2: composite fog into HDR buffer ---
+    // --- Pass 2: depth-aware upsample + composite into HDR buffer ---
     {
+        UpsampleCBData up = {};
+        up.lowResSize    = { (float)m_fogWidth, (float)m_fogHeight };
+        up.invLowResSize = { 1.0f / (float)m_fogWidth, 1.0f / (float)m_fogHeight };
+        m_upsampleCB.Update(ctx, up);
+
         ID3D11RenderTargetView* rtv = hdrRT.GetRTV();
         ctx->OMSetRenderTargets(1, &rtv, nullptr);
         D3D11_VIEWPORT vp = {};
@@ -174,12 +190,13 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
         float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         ctx->OMSetBlendState(m_compositeBlend.Get(), blendFactor, 0xFFFFFFFF);
 
-        ID3D11ShaderResourceView* fogSRV = m_fogRT.GetSRV();
-        ctx->PSSetShaderResources(0, 1, &fogSRV);
-        m_quad.Draw(ctx); // Fullscreen.hlsl passthrough samples t0 → blended into HDR
+        ID3D11ShaderResourceView* srvs[2] = { m_fogRT.GetSRV(), depthSRV };
+        ctx->PSSetShaderResources(0, 2, srvs);
+        m_upsampleCB.BindPS(ctx, 0);
+        m_quad.Draw(ctx, m_upsamplePerm);
 
-        ID3D11ShaderResourceView* nullSRV = nullptr;
-        ctx->PSSetShaderResources(0, 1, &nullSRV);
+        ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+        ctx->PSSetShaderResources(0, 2, nullSRVs);
         ctx->OMSetBlendState(nullptr, blendFactor, 0xFFFFFFFF);
     }
 }

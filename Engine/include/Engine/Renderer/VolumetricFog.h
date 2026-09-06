@@ -93,15 +93,25 @@ private:
         float spotShadowBias; float spotVolumetricIntensity; int spotEnabled; float _pad3; // 16
     };
 
-    RenderTarget               m_fogRT;   // RGB=in-scatter, A=transmittance
-    const ShaderPermutation*   m_fogPerm  = nullptr;
+    struct alignas(16) UpsampleCBData
+    {
+        DirectX::XMFLOAT2 lowResSize;
+        DirectX::XMFLOAT2 invLowResSize;
+    };
+
+    RenderTarget               m_fogRT;   // half-res: RGB=in-scatter, A=transmittance
+    const ShaderPermutation*   m_fogPerm      = nullptr;
+    const ShaderPermutation*   m_upsamplePerm = nullptr;
     ConstantBuffer<FogCBData>  m_cb;
+    ConstantBuffer<UpsampleCBData> m_upsampleCB;
     FullscreenQuad             m_quad;
     ComPtr<ID3D11SamplerState> m_pointSampler;
     ComPtr<ID3D11SamplerState> m_skySampler;
     ComPtr<ID3D11BlendState>   m_compositeBlend;
-    uint32_t                   m_width  = 0;
+    uint32_t                   m_width  = 0;   // full output resolution
     uint32_t                   m_height = 0;
+    uint32_t                   m_fogWidth  = 0; // half-res march resolution
+    uint32_t                   m_fogHeight = 0;
     float                      m_noiseTime = 0.0f;
 };
 
