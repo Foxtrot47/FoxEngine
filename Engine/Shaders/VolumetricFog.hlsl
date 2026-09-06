@@ -175,19 +175,12 @@ float2 SampleCascade(int cascade, float3 worldPos)
     if (saturate(uv.x) != uv.x || saturate(uv.y) != uv.y || dref <= 0.0f || dref >= 1.0f)
         return float2(0.0f, 0.0f);
 
-    float w, h, layers;
-    g_shadow.GetDimensions(w, h, layers);
-    float2 texel = 1.0f / float2(w, h);
+    // Single tap: the ray march integrates dozens of dithered samples, so
+    // per-step PCF softening is redundant and was the dominant fog cost.
+    float visibility = g_shadow.SampleCmpLevelZero(
+        g_shadowCmp, float3(uv, (float)cascade), dref);
 
-    float visibility = 0.0f;
-    [unroll] for (int dx = -1; dx <= 1; ++dx)
-    [unroll] for (int dy = -1; dy <= 1; ++dy)
-    {
-        visibility += g_shadow.SampleCmpLevelZero(
-            g_shadowCmp, float3(uv + float2(dx, dy) * texel, (float)cascade), dref);
-    }
-
-    return float2(visibility / 9.0f, 1.0f);
+    return float2(visibility, 1.0f);
 }
 
 // Sun visibility from the cascaded shadow map at a world-space point.
@@ -228,19 +221,11 @@ float SampleSpotVisibility(float3 worldPos)
     if (saturate(uv.x) != uv.x || saturate(uv.y) != uv.y || dref <= 0.0f || dref >= 1.0f)
         return 0.0f;
 
-    float w, h;
-    g_spotShadow.GetDimensions(w, h);
-    float2 texel = 1.0f / float2(w, h);
+    // Single tap — see SampleCascade: dithered march integration replaces PCF.
+    float visibility = g_spotShadow.SampleCmpLevelZero(
+        g_shadowCmp, uv, dref - SpotShadowBias);
 
-    float visibility = 0.0f;
-    [unroll] for (int dx = -1; dx <= 1; ++dx)
-    [unroll] for (int dy = -1; dy <= 1; ++dy)
-    {
-        visibility += g_spotShadow.SampleCmpLevelZero(
-            g_shadowCmp, uv + float2(dx, dy) * texel, dref - SpotShadowBias);
-    }
-
-    return visibility / 9.0f;
+    return visibility;
 }
 
 float3 SampleSpotScattering(float3 worldPos, float3 rayDir)
