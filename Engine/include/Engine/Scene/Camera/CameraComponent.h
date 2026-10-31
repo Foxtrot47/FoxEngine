@@ -14,6 +14,11 @@ struct CameraComponent : Component
     float nearZ  = 0.1f;
     float farZ   = 1000.0f;
 
+    // Orthographic projection (editor axis/isometric views). orthoHeight is the
+    // vertical world-space extent of the view volume.
+    bool  orthographic = false;
+    float orthoHeight  = 20.0f;
+
     DirectX::XMMATRIX GetViewMatrix() const
     {
         using namespace DirectX;
@@ -25,6 +30,13 @@ struct CameraComponent : Component
 
     DirectX::XMMATRIX GetProjectionMatrix(float aspect) const
     {
+        if (orthographic)
+        {
+            // Symmetric near/far so geometry "behind" the eye still renders —
+            // axis views act like an infinite ortho camera (Blender-style).
+            return DirectX::XMMatrixOrthographicLH(
+                orthoHeight * aspect, orthoHeight, -farZ, farZ);
+        }
         return DirectX::XMMatrixPerspectiveFovLH(
             DirectX::XMConvertToRadians(fovDeg), aspect, nearZ, farZ);
     }

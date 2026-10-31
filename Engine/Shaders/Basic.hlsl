@@ -255,7 +255,7 @@ PSOut PS_Main(PSIn input)
     o.velocity = ComputeVelocity(input.CurrClip, input.PrevClip);
     if (ClipEnabled > 0.5f)
         clip(input.WorldPos.y - PlaneY - 0.01f);
-    if (Unlit > 0.5f)
+    if (Unlit > 0.5f && Unlit < 1.5f)
     {
         o.color  = float4(AlbedoTint, 1.0f);
         o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -275,6 +275,17 @@ PSOut PS_Main(PSIn input)
     // Alpha test (cutout): discard fragments below threshold
     if (AlphaCutoff > 0.0f)
         clip(albedo.a - AlphaCutoff);
+
+    // Viewport overrides preserve alpha testing and never modify materials.
+    // 2 = textured unlit, 3 = flat wireframe (rasterizer supplies triangle edges).
+    if (Unlit > 1.5f)
+    {
+        float3 emission = g_emissive.Sample(g_sampler, input.TexCoord).rgb
+                        * EmissiveColor * EmissiveIntensity;
+        o.color = float4(Unlit > 2.5f ? float3(0.65f, 0.75f, 0.85f) : albedo.rgb + emission, albedo.a);
+        o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return o;
+    }
 
     // See MaterialCB Workflow comment for the t1 texture interpretations.
     float4 mrSample = g_roughness.Sample(g_sampler, input.TexCoord);

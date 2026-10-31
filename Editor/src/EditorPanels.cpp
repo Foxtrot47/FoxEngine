@@ -1,5 +1,7 @@
 #include "EditorPanels.h"
 
+#include <imgui_internal.h>
+
 #include "Engine/Scene/SceneRuntime.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Assets/AssetManager.h"
@@ -57,6 +59,7 @@ void DrawSpotLightProps(SE::SceneRuntime& scene)
         XMVECTOR dir = XMVector3Normalize(XMVectorSubtract(target, eye));
         spot.position = scene.camera->eye;
         XMStoreFloat3(&spot.direction, dir);
+        ImGui::MarkItemEdited(ImGui::GetItemID()); // record for Details undo
     }
     ImGui::DragFloat3("Spot Pos", &spot.position.x, 0.5f, -500.0f, 500.0f);
     ImGui::DragFloat3("Spot Dir", &spot.direction.x, 0.01f, -1.0f, 1.0f);
@@ -71,6 +74,7 @@ void DrawSpotLightProps(SE::SceneRuntime& scene)
 
 void DrawPointLightProps(SE::SceneRuntime& scene, int index)
 {
+    if (index < 0 || index >= scene.lights.numLights) return;
     auto& lights = scene.lights;
     ImGui::DragFloat3("Position", &lights.lights[index].position.x, 1.0f, -1000.0f, 1000.0f);
     if (index < static_cast<int>(scene.pointLightDescs.size()))
@@ -152,8 +156,11 @@ void DrawEmitterPreset(SE::SceneRuntime& scene, int i, SE::ParticleSystem& ps,
     if (selected < 0 || selected >= (int)scene.particlePresetFiles.size())
         return;
     if (ImGui::Button("Load Preset"))
+    {
         LoadPresetIntoEmitter(scene, i, ps, scene.particlePresetFiles[selected],
                               assets, device, shaders);
+        ImGui::MarkItemEdited(ImGui::GetItemID()); // record for Details undo
+    }
     ImGui::SameLine();
     if (ImGui::Button("Rescan"))
         scene.RefreshParticlePresets();

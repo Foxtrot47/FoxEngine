@@ -2,62 +2,59 @@
 #include <windows.h>
 #include <DirectXMath.h>
 
-namespace SE {
-class InputManager;
-struct CameraComponent;
-}
+namespace SE { class InputManager; struct CameraComponent; }
 
 namespace Editor {
 
-// Unreal-style viewport camera:
-//   RMB hold      — fly: mouse look, WASD move, Q down / E up,
-//                   scroll wheel adjusts fly speed
-//   Alt + LMB     — orbit around the focus point
-//   Alt + RMB     — dolly toward / away from the focus point
-//   MMB drag      — pan (track)
-//   Scroll wheel  — dolly forward / back
+// Unreal-style navigation. View presets change orientation/projection only;
+// F is the explicit frame-selection command. Orthographic orbit stays ortho.
 class EditorCamera
 {
 public:
-    float moveSpeed     = 20.0f;   // fly units/sec
-    float sensitivity   = 0.15f;   // look deg/pixel
-    float orbitDistance = 10.0f;   // distance to the orbit/dolly focus point
+    enum class ViewMode { Perspective, Isometric, Top, Bottom, Front, Back, Left, Right, Orthographic };
+    float moveSpeed = 20.0f;
+    float sensitivity = 0.15f;
+    float orbitDistance = 10.0f;
 
-    // Derive yaw/pitch/eye from a scene camera (call when a scene finishes loading).
     void SyncFromCamera(const SE::CameraComponent& cam);
-
-    // Frame a target (UE 'F'): keep the view direction, move the camera to a
-    // bounds-proportional distance, and make the target the orbit pivot.
-    void FocusOn(const DirectX::XMFLOAT3& center, float radius);
-
-    // Drives cam.eye/target/up. viewportHovered gates the start of any drag;
-    // an active drag continues until its mouse button is released.
+    void SetViewMode(ViewMode mode, SE::CameraComponent& cam);
+    void FocusOn(const DirectX::XMFLOAT3& center, float radius,
+                 SE::CameraComponent& cam, float aspect);
     void Update(float dt, SE::InputManager& input, SE::CameraComponent& cam,
-                HWND hwnd, bool viewportHovered);
+                HWND hwnd, bool viewportHovered, float viewportHeight);
+    void CancelDrag();
 
+    // View-plane motion and zoom are independent of platform input so their
+    // framing/scale invariants can be regression tested.
+    void Pan(float dx, float dy, float viewportHeight, SE::CameraComponent& cam);
+    void Zoom(float amount, SE::CameraComponent& cam);
     bool IsFlying() const { return m_drag == DragMode::Fly; }
+    bool IsNavigating() const { return m_drag != DragMode::None; }
+    ViewMode GetViewMode() const { return m_viewMode; }
 
 private:
-    enum class DragMode { None, Fly, Orbit, Dolly, Pan };
-
-    bool DragButtonHeld(SE::InputManager& input) const;
-    DragMode PickDragStart(SE::InputManager& input);
-    void UpdateDragMode(SE::InputManager& input, HWND hwnd, bool viewportHovered);
-    void UpdateFly(float dt, SE::InputManager& input, HWND hwnd);
-    void UpdateOrbit(SE::InputManager& input);
-    void UpdateDolly(SE::InputManager& input);
-    void UpdatePan(SE::InputManager& input);
-    void UpdateWheelDolly(SE::InputManager& input, bool viewportHovered);
-
+    enum class DragMode { None, Fly, Walk, Orbit, Dolly, Pan };
+    DragMode PickDrag(SE::InputManager& input, bool orthographic) const;
+    DragMode PickSingleButtonDrag(SE::InputManager& input, bool orthographic) const;
+    void UpdateDragMode(SE::InputManager& input, HWND hwnd, bool hovered, bool ortho);
+    void SetDragMode(DragMode mode, HWND hwnd);
+    void UpdateFly(float dt, SE::InputManager& input, HWND hwnd, SE::CameraComponent& cam);
+    void MoveFly(float dt, SE::InputManager& input);
+    void UpdateOrbit(float dx, float dy);
+    void UpdateWalk(float dx, float dy);
+    void WriteCamera(SE::CameraComponent& cam) const;
     DirectX::XMVECTOR Forward() const;
     DirectX::XMVECTOR Right() const;
+    DirectX::XMVECTOR Up() const;
 
-    DirectX::XMFLOAT3 m_eye      = { 0.0f, 4.0f, -22.0f };
-    float             m_yawDeg   = 0.0f;
-    float             m_pitchDeg = 0.0f;
-
-    DragMode m_drag           = DragMode::None;
-    bool     m_skipFirstWarp  = false;
+    DirectX::XMFLOAT3 m_eye = { 0.0f, 4.0f, -22.0f };
+    float m_yawDeg = 0.0f;
+    float m_pitchDeg = 0.0f;
+    bool m_haveOrthoExtent = false;
+    DragMode m_drag = DragMode::None;
+    bool m_skipFirstWarp = false;
+    POINT m_cursorBeforeFly = {};
+    ViewMode m_viewMode = ViewMode::Perspective;
 };
 
 } // namespace Editor

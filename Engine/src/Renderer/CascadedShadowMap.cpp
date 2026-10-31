@@ -132,12 +132,21 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
                                 XMMATRIX cameraProj,
                                 float cameraNear, float cameraFar)
 {
-    // Compute PSSM split distances
+    const bool orthographic = XMVectorGetW(cameraProj.r[3]) != 0.0f;
+    if (orthographic)
+    {
+        const float depthScale = XMVectorGetZ(cameraProj.r[2]);
+        const float depthOffset = XMVectorGetZ(cameraProj.r[3]);
+        cameraNear = -depthOffset / depthScale;
+        cameraFar = (1.0f - depthOffset) / depthScale;
+    }
+    // PSSM for perspective; linear slices for the parallel ortho volume,
+    // including its negative near plane. Log splits cannot represent that.
     for (int i = 0; i <= CSM_NUM_CASCADES; ++i)
     {
         float p = (float)i / (float)CSM_NUM_CASCADES;
-        float logSplit = cameraNear * powf(cameraFar / cameraNear, p);
         float linSplit = cameraNear + (cameraFar - cameraNear) * p;
+        float logSplit = orthographic ? linSplit : cameraNear * powf(cameraFar / cameraNear, p);
         m_splits[i] = splitLambda * logSplit + (1.0f - splitLambda) * linSplit;
     }
 
@@ -161,8 +170,13 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
 
         // 8 frustum corners in view space
         XMFLOAT3 corners[8];
-        float xn = nearZ * tanHalfFovX, yn = nearZ * tanHalfFovY;
-        float xf = farZ  * tanHalfFovX, yf = farZ  * tanHalfFovY;
+        float xn = tanHalfFovX, yn = tanHalfFovY;
+        float xf = tanHalfFovX, yf = tanHalfFovY;
+        if (!orthographic)
+        {
+            xn *= nearZ; yn *= nearZ;
+            xf *= farZ; yf *= farZ;
+        }
         corners[0] = { -xn, -yn, nearZ };
         corners[1] = {  xn, -yn, nearZ };
         corners[2] = {  xn,  yn, nearZ };

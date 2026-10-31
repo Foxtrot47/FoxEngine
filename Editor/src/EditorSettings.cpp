@@ -188,31 +188,36 @@ void DrawWorldPhysicsSection(SE::SceneRuntime& scene)
 
 } // namespace
 
-void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeight)
+void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeight,
+                    const ImGuiTextFilter& filter)
 {
     ImGui::Text("%s", scene.currentDesc.name.c_str());
     ImGui::TextDisabled("World Settings");
     ImGui::Separator();
-    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawWorldMaterialSection(scene);
-    if (ImGui::CollapsingHeader("Lighting", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawWorldLightingSection(scene);
-    if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen))
-        DrawWorldPhysicsSection(scene);
-    if (ImGui::CollapsingHeader("Tone Mapping"))
-        DrawToneMapSection(scene);
-    if (ImGui::CollapsingHeader("Color Grading"))
-        DrawColorGradingSection(scene);
-    if (ImGui::CollapsingHeader("Bloom"))
-        DrawBloomSection(scene);
-    if (ImGui::CollapsingHeader("SSAO"))
-        DrawSsaoSection(scene);
-    if (ImGui::CollapsingHeader("Volumetric Fog"))
-        DrawFogSection(scene);
-    if (ImGui::CollapsingHeader("Temporal AA / Upscaling"))
-        DrawTemporalAASection(scene, outWidth, outHeight);
-    if (ImGui::CollapsingHeader("FXAA"))
-        DrawFxaaSection(scene);
+    struct Section { const char* name; const char* keywords; void (*draw)(SE::SceneRuntime&); };
+    static const Section sections[] = {
+        { "Materials", "Materials Tint Roughness Metallic", DrawWorldMaterialSection },
+        { "Lighting", "Lighting Sun IBL Shadow Debug", DrawWorldLightingSection },
+        { "Physics", "Physics Gravity Floor Colliders Raycast", DrawWorldPhysicsSection },
+        { "Tone Mapping", "Tone Mapping Exposure Gamma", DrawToneMapSection },
+        { "Color Grading", "Color Grading Temperature Tint Saturation Contrast Vignette", DrawColorGradingSection },
+        { "Bloom", "Bloom Intensity Threshold", DrawBloomSection },
+        { "SSAO", "SSAO Ambient Occlusion Radius Bias Power", DrawSsaoSection },
+        { "Volumetric Fog", "Volumetric Fog Density Height Noise Distance Scattering", DrawFogSection },
+        { "FXAA", "FXAA Anti Aliasing", DrawFxaaSection }
+    };
+    for (const auto& section : sections)
+    {
+        if (!filter.PassFilter(section.keywords)) continue;
+        if (filter.IsActive()) ImGui::SetNextItemOpen(true);
+        if (ImGui::CollapsingHeader(section.name)) section.draw(scene);
+    }
+    if (filter.PassFilter("Temporal AA Upscaling FSR TAA Sharpening"))
+    {
+        if (filter.IsActive()) ImGui::SetNextItemOpen(true);
+        if (ImGui::CollapsingHeader("Temporal AA / Upscaling"))
+            DrawTemporalAASection(scene, outWidth, outHeight);
+    }
 }
 
 } // namespace Editor

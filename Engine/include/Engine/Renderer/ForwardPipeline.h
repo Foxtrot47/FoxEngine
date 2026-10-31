@@ -18,6 +18,9 @@ namespace SE {
 class ForwardPipeline
 {
 public:
+    enum class ViewShading { Lit, Unlit, Wireframe };
+    ViewShading viewShading = ViewShading::Lit; // transient viewport override
+
     struct SubMat
     {
         AssetHandle<Texture2D> albedo;
@@ -196,6 +199,7 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D11BlendState>      m_alphaBlend;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_noCullRS;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_wireframeRS;
 
     DirectX::XMMATRIX m_view = {};
     DirectX::XMMATRIX m_proj = {};

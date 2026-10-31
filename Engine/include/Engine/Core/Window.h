@@ -30,6 +30,16 @@ public:
     void SetMessageHook(MsgHookFn fn) { m_msgHook   = fn; }
     void SetInputHook  (MsgHookFn fn) { m_inputHook = fn; }
 
+    // When enabled, WM_CLOSE is latched for ConsumeCloseRequest() instead of
+    // destroying the window, so the app can confirm first (unsaved changes).
+    void SetCloseInterception(bool enabled) { m_interceptClose = enabled; }
+    bool ConsumeCloseRequest()
+    {
+        const bool requested = m_closeRequested;
+        m_closeRequested = false;
+        return requested;
+    }
+
     void ToggleFullscreen();
 
     HWND     GetHandle()      const { return m_hwnd; }
@@ -54,6 +64,8 @@ private:
     bool      m_isFullscreen = false;
     bool      m_sizeDirty    = false;
     bool      m_quitRequested = false;
+    bool      m_interceptClose = false;
+    bool      m_closeRequested = false;
     RECT      m_windowedRect = {};
     DWORD     m_windowedStyle= 0;
 };

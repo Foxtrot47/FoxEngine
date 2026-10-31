@@ -1,296 +1,432 @@
 {
+  "format": "FoxLevel",
+  "version": 2,
   "name": "Sun Temple",
-  "mesh": {
-    "path": "Assets/SunTemple/SunTemple.fbx",
-    "alphaCutoff": 0.5,
-    "transform": {
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0],
-      "scale": 1.0
+  "settings": {
+    "environment": {
+      "skybox": "Assets/SunTemple/SunTemple_Skybox.dds",
+      "iblIntensity": 1.059999942779541,
+      "diffuseIBLSaturation": 1.0
+    },
+    "physics": {
+      "floor": {
+        "min": [
+          -50.0,
+          -0.5,
+          -50.0
+        ],
+        "max": [
+          50.0,
+          0.0,
+          50.0
+        ],
+        "friction": 0.6000000238418579,
+        "restitution": 0.30000001192092896
+      },
+      "ballSpawn": [
+        0.0,
+        15.0,
+        0.0
+      ],
+      "ballRadius": 0.5,
+      "characterSpawn": [
+        0.0,
+        3.0,
+        -10.0
+      ],
+      "gravity": true
+    },
+    "toneMapping": {
+      "operator": "ACES",
+      "exposure": 1.0499999523162842,
+      "gammaCorrect": false
+    },
+    "colorGrading": {
+      "temperature": 0.30000001192092896,
+      "tint": 0.0,
+      "saturation": 1.100000023841858,
+      "contrast": 1.0800000429153442,
+      "vignette": 0.44999998807907104,
+      "vignetteFeather": 0.550000011920929
+    },
+    "bloom": {
+      "enabled": true,
+      "threshold": 1.5,
+      "intensity": 0.11999999731779099,
+      "scatter": 0.6499999761581421
+    },
+    "fog": {
+      "enabled": false,
+      "density": 0.03200000151991844,
+      "anisotropy": 0.8399999737739563,
+      "scatterIntensity": 2.3499999046325684,
+      "steps": 64,
+      "maxDistance": 90.0,
+      "ambientColor": [
+        0.8199999928474426,
+        0.6600000262260437,
+        0.46000000834465027
+      ],
+      "ambientIntensity": 0.10000000149011612,
+      "heightFalloff": 0.0,
+      "heightBase": 0.0,
+      "noiseStrength": 0.30000001192092896,
+      "noiseScale": 0.029999999329447746,
+      "noiseSpeed": 0.3499999940395355,
+      "nearClearDistance": 0.0,
+      "distanceDensity": 0.0
     }
   },
-  "skybox": "Assets/Textures/citrus_orchard_road_puresky_2k.dds",
-  "camera": {
-    "eye": [0, 3, -10],
-    "yaw": 0,
-    "pitch": 0,
-    "nearZ": 0.1,
-    "farZ": 2000
-  },
-  "sun": {
-    "elevation": 3.9,
-    "azimuth": -10.2,
-    "intensity": 2.0,
-    "color": [1, 0.6, 0.352]
-  },
-  "iblIntensity": 1.2,
-  "pointLights": [
+  "entities": [
     {
-      "position": [-4.2, 1.4, 1.0],
-      "color": [7.5, 2.7, 0.65],
-      "radius": 14.0,
-      "castShadow": true,
-      "flicker": true,
-      "flickerAmplitude": 0.16,
-      "flickerFrequency": 7.2,
-      "flickerSeed": 11
+      "id": "0000000000000001",
+      "name": "SceneMesh",
+      "active": true,
+      "components": {
+        "transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotationDegrees": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "meshRenderer": {
+          "mesh": "Assets/SunTemple/SunTemple.fbx",
+          "alphaCutoff": 0.5,
+          "castShadows": true,
+          "receiveShadows": true
+        }
+      }
     },
     {
-      "position": [4.2, 1.4, 1.0],
-      "color": [7.5, 2.7, 0.65],
-      "radius": 14.0,
-      "castShadow": true,
-      "flicker": true,
-      "flickerAmplitude": 0.16,
-      "flickerFrequency": 6.8,
-      "flickerSeed": 29
+      "id": "0000000000000002",
+      "name": "Camera",
+      "active": true,
+      "components": {
+        "camera": {
+          "eye": [
+            0.0,
+            3.0,
+            -10.0
+          ],
+          "yaw": 0.0,
+          "pitch": 0.0,
+          "nearZ": 0.10000000149011612,
+          "farZ": 2000.0,
+          "primary": true
+        }
+      }
     },
     {
-      "position": [-5.5, 1.5, 13.0],
-      "color": [5.0, 1.65, 0.4],
-      "radius": 11.0,
-      "castShadow": false,
-      "flicker": true,
-      "flickerAmplitude": 0.12,
-      "flickerFrequency": 6.4,
-      "flickerSeed": 47
+      "id": "0000000000000003",
+      "name": "Sun",
+      "active": true,
+      "components": {
+        "directionalLight": {
+          "elevation": 3.9000000953674316,
+          "azimuth": -10.199999809265137,
+          "intensity": 0.6899999976158142,
+          "color": [
+            1.0,
+            0.6000000238418579,
+            0.35199999809265137
+          ]
+        }
+      }
     },
     {
-      "position": [5.5, 1.5, 13.0],
-      "color": [5.0, 1.65, 0.4],
-      "radius": 11.0,
-      "castShadow": false,
-      "flicker": true,
-      "flickerAmplitude": 0.12,
-      "flickerFrequency": 7.6,
-      "flickerSeed": 83
-    }
-  ],
-  "physics": {
-    "floor": {
-      "min": [-50, -0.5, -50],
-      "max": [50, 0, 50],
-      "friction": 0.6,
-      "restitution": 0.3
-    },
-    "ballSpawn": [0, 15, 0],
-    "ballRadius": 0.5,
-    "characterSpawn": [0, 3, -10],
-    "gravity": true
-  },
-  "toneMapping": {
-    "operator": "ACES",
-    "exposure": 1.2,
-    "gammaCorrect": false
-  },
-  "bloom": {
-    "enabled": true,
-    "threshold": 1.5,
-    "intensity": 0.12,
-    "scatter": 0.65
-  },
-  "fog": {
-    "enabled": true,
-    "density": 0.032,
-    "anisotropy": 0.84,
-    "scatterIntensity": 2.35,
-    "steps": 64,
-    "maxDistance": 90.0,
-    "ambientColor": [0.82, 0.66, 0.46],
-    "ambientIntensity": 0.10,
-    "heightFalloff": 0.0,
-    "heightBase": 0.0,
-    "noiseStrength": 0.30,
-    "noiseScale": 0.030,
-    "noiseSpeed": 0.35
-  },
-  "particles": [
-    {
-      "position": [-4.2, 0.45, 1.0],
-      "emit_rate": 18,
-      "max_particles": 72,
-      "lifetime_min": 0.55,
-      "lifetime_max": 1.15,
-      "velocity_min": [-0.12, 0.55, -0.12],
-      "velocity_max": [0.12, 1.45, 0.12],
-      "size_start": 0.85,
-      "size_end": 0.2,
-      "color_start": [3.8, 2.6, 1.35, 1.0],
-      "color_end": [2.2, 0.45, 0.05, 0.0],
-      "gravity": [0, 0.35, 0],
-      "spawn_radius": 0.12,
-      "texture": "Assets/Particles/flipbook_fire.dds",
-      "atlasColumns": 5,
-      "atlasRows": 5,
-      "softDistance": 0.25,
-      "drag": 0.5,
-      "blendMode": 0
+      "id": "0000000000000004",
+      "name": "Point Light 1",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            -8.00108814239502,
+            4.02634859085083,
+            2.006633758544922
+          ],
+          "color": [
+            7.5,
+            2.700000047683716,
+            0.6499999761581421
+          ],
+          "radius": 14.0,
+          "castShadow": true,
+          "flicker": true,
+          "flickerAmplitude": 0.1599999964237213,
+          "flickerFrequency": 7.199999809265137,
+          "flickerSeed": 11
+        }
+      }
     },
     {
-      "position": [4.2, 0.45, 1.0],
-      "emit_rate": 18,
-      "max_particles": 72,
-      "lifetime_min": 0.55,
-      "lifetime_max": 1.15,
-      "velocity_min": [-0.12, 0.55, -0.12],
-      "velocity_max": [0.12, 1.45, 0.12],
-      "size_start": 0.85,
-      "size_end": 0.2,
-      "color_start": [3.8, 2.6, 1.35, 1.0],
-      "color_end": [2.2, 0.45, 0.05, 0.0],
-      "gravity": [0, 0.35, 0],
-      "spawn_radius": 0.12,
-      "texture": "Assets/Particles/flipbook_fire.dds",
-      "atlasColumns": 5,
-      "atlasRows": 5,
-      "softDistance": 0.25,
-      "drag": 0.5,
-      "blendMode": 0
+      "id": "0000000000000005",
+      "name": "Point Light 2",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            5.730655670166016,
+            4.0618205070495605,
+            5.797560691833496
+          ],
+          "color": [
+            7.5,
+            2.700000047683716,
+            0.6499999761581421
+          ],
+          "radius": 14.0,
+          "castShadow": true,
+          "flicker": true,
+          "flickerAmplitude": 0.1599999964237213,
+          "flickerFrequency": 6.800000190734863,
+          "flickerSeed": 29
+        }
+      }
     },
     {
-      "position": [-4.2, 0.75, 1.0],
-      "emit_rate": 7,
-      "max_particles": 48,
-      "lifetime_min": 1.0,
-      "lifetime_max": 2.2,
-      "velocity_min": [-0.35, 0.8, -0.35],
-      "velocity_max": [0.35, 2.2, 0.35],
-      "size_start": 0.09,
-      "size_end": 0.025,
-      "color_start": [7.0, 3.2, 0.8, 1.0],
-      "color_end": [1.2, 0.15, 0.02, 0.0],
-      "gravity": [0, 0.25, 0],
-      "spawn_radius": 0.18,
-      "shaderMode": 1,
-      "blendMode": 0,
-      "drag": 0.25
+      "id": "0000000000000006",
+      "name": "Point Light 3",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            -2.0672435760498047,
+            4.085773468017578,
+            7.87904691696167
+          ],
+          "color": [
+            5.0,
+            1.649999976158142,
+            0.4000000059604645
+          ],
+          "radius": 11.0,
+          "castShadow": false,
+          "flicker": true,
+          "flickerAmplitude": 0.11999999731779099,
+          "flickerFrequency": 6.400000095367432,
+          "flickerSeed": 47
+        }
+      }
     },
     {
-      "position": [4.2, 0.75, 1.0],
-      "emit_rate": 7,
-      "max_particles": 48,
-      "lifetime_min": 1.0,
-      "lifetime_max": 2.2,
-      "velocity_min": [-0.35, 0.8, -0.35],
-      "velocity_max": [0.35, 2.2, 0.35],
-      "size_start": 0.09,
-      "size_end": 0.025,
-      "color_start": [7.0, 3.2, 0.8, 1.0],
-      "color_end": [1.2, 0.15, 0.02, 0.0],
-      "gravity": [0, 0.25, 0],
-      "spawn_radius": 0.18,
-      "shaderMode": 1,
-      "blendMode": 0,
-      "drag": 0.25
+      "id": "0000000000000007",
+      "name": "Point Light 4",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            2.033928394317627,
+            4.040034770965576,
+            7.822753429412842
+          ],
+          "color": [
+            5.0,
+            1.649999976158142,
+            0.4000000059604645
+          ],
+          "radius": 11.0,
+          "castShadow": false,
+          "flicker": true,
+          "flickerAmplitude": 0.11999999731779099,
+          "flickerFrequency": 7.599999904632568,
+          "flickerSeed": 83
+        }
+      }
     },
     {
-      "position": [-4.2, 1.0, 1.0],
-      "emit_rate": 3,
-      "max_particles": 30,
-      "lifetime_min": 2.5,
-      "lifetime_max": 4.0,
-      "velocity_min": [-0.12, 0.25, -0.12],
-      "velocity_max": [0.12, 0.65, 0.12],
-      "size_start": 0.25,
-      "size_end": 1.15,
-      "color_start": [0.16, 0.12, 0.09, 0.24],
-      "color_end": [0.08, 0.07, 0.06, 0.0],
-      "gravity": [0, 0.05, 0],
-      "spawn_radius": 0.15,
-      "texture": "Assets/Particles/smoke_puff.dds",
-      "atlasColumns": 3,
-      "atlasRows": 3,
-      "atlasSpeed": 0.55,
-      "blendMode": 1,
-      "softDistance": 0.5,
-      "drag": 0.4,
-      "lightingInfluence": 0.55
+      "id": "0000000000000008",
+      "name": "Point Light 5",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            0.0,
+            5.0,
+            0.0
+          ],
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "radius": 50.0,
+          "castShadow": false,
+          "flicker": false
+        }
+      }
     },
     {
-      "position": [4.2, 1.0, 1.0],
-      "emit_rate": 3,
-      "max_particles": 30,
-      "lifetime_min": 2.5,
-      "lifetime_max": 4.0,
-      "velocity_min": [-0.12, 0.25, -0.12],
-      "velocity_max": [0.12, 0.65, 0.12],
-      "size_start": 0.25,
-      "size_end": 1.15,
-      "color_start": [0.16, 0.12, 0.09, 0.24],
-      "color_end": [0.08, 0.07, 0.06, 0.0],
-      "gravity": [0, 0.05, 0],
-      "spawn_radius": 0.15,
-      "texture": "Assets/Particles/smoke_puff.dds",
-      "atlasColumns": 3,
-      "atlasRows": 3,
-      "atlasSpeed": 0.55,
-      "blendMode": 1,
-      "softDistance": 0.5,
-      "drag": 0.4,
-      "lightingInfluence": 0.55
+      "id": "0000000000000009",
+      "name": "Point Light 6",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            0.0,
+            5.0,
+            0.0
+          ],
+          "color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "radius": 50.0,
+          "castShadow": false,
+          "flicker": false
+        }
+      }
     },
     {
-      "position": [-5.5, 0.5, 13.0],
-      "emit_rate": 14,
-      "max_particles": 56,
-      "lifetime_min": 0.5,
-      "lifetime_max": 1.0,
-      "velocity_min": [-0.1, 0.5, -0.1],
-      "velocity_max": [0.1, 1.25, 0.1],
-      "size_start": 0.7,
-      "size_end": 0.16,
-      "color_start": [3.2, 2.2, 1.15, 1.0],
-      "color_end": [1.8, 0.35, 0.04, 0.0],
-      "gravity": [0, 0.3, 0],
-      "spawn_radius": 0.1,
-      "texture": "Assets/Particles/flipbook_fire.dds",
-      "atlasColumns": 5,
-      "atlasRows": 5,
-      "softDistance": 0.25,
-      "drag": 0.5,
-      "blendMode": 0
+      "id": "000000000000000a",
+      "name": "Particle Emitter 1",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            -7.921079158782959,
+            4.071043491363525,
+            2.014242172241211
+          ],
+          "emit_rate": 18.0,
+          "max_particles": 72,
+          "lifetime_min": 0.550000011920929,
+          "lifetime_max": 1.149999976158142,
+          "velocity_min": [
+            -0.11999999731779099,
+            0.550000011920929,
+            -0.11999999731779099
+          ],
+          "velocity_max": [
+            0.11999999731779099,
+            1.4500000476837158,
+            0.11999999731779099
+          ],
+          "size_start": 0.8500000238418579,
+          "size_end": 0.20000000298023224,
+          "color_start": [
+            3.799999952316284,
+            2.5999999046325684,
+            1.350000023841858,
+            1.0
+          ],
+          "color_end": [
+            2.200000047683716,
+            0.44999998807907104,
+            0.05000000074505806,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            0.3499999940395355,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.11999999731779099,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 5,
+          "atlasRows": 5,
+          "atlasFrameCount": 0,
+          "atlasSpeed": 1.0,
+          "textureRotationDegrees": 0.0,
+          "softDistance": 0.25,
+          "aspectRatio": 1.0,
+          "blendMode": 0,
+          "drag": 0.5,
+          "shaderMode": 0,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": true,
+          "tracerStretch": 0.0,
+          "lightingInfluence": 0.0,
+          "texture": "Assets/Particles/flipbook_fire.dds"
+        }
+      }
     },
     {
-      "position": [5.5, 0.5, 13.0],
-      "emit_rate": 14,
-      "max_particles": 56,
-      "lifetime_min": 0.5,
-      "lifetime_max": 1.0,
-      "velocity_min": [-0.1, 0.5, -0.1],
-      "velocity_max": [0.1, 1.25, 0.1],
-      "size_start": 0.7,
-      "size_end": 0.16,
-      "color_start": [3.2, 2.2, 1.15, 1.0],
-      "color_end": [1.8, 0.35, 0.04, 0.0],
-      "gravity": [0, 0.3, 0],
-      "spawn_radius": 0.1,
-      "texture": "Assets/Particles/flipbook_fire.dds",
-      "atlasColumns": 5,
-      "atlasRows": 5,
-      "softDistance": 0.25,
-      "drag": 0.5,
-      "blendMode": 0
-    },
-    {
-      "position": [0, 4.5, 9.0],
-      "emit_rate": 12,
-      "max_particles": 180,
-      "lifetime_min": 8.0,
-      "lifetime_max": 14.0,
-      "velocity_min": [-0.03, -0.015, -0.02],
-      "velocity_max": [0.05, 0.035, 0.04],
-      "size_start": 0.025,
-      "size_end": 0.04,
-      "color_start": [0.9, 0.72, 0.48, 0.18],
-      "color_end": [0.55, 0.42, 0.28, 0.0],
-      "gravity": [0, 0, 0],
-      "spawnShape": "box",
-      "spawnBoxExtents": [8.0, 3.5, 17.0],
-      "texture": "Assets/Particles/soft_circle.dds",
-      "blendMode": 1,
-      "softDistance": 0.35,
-      "randomRotation": true,
-      "lightingInfluence": 0.8
+      "id": "000000000000000b",
+      "name": "Particle Emitter 2",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            7.929018020629883,
+            3.9799892902374268,
+            2.1744096279144287
+          ],
+          "emit_rate": 18.0,
+          "max_particles": 72,
+          "lifetime_min": 0.550000011920929,
+          "lifetime_max": 1.149999976158142,
+          "velocity_min": [
+            -0.11999999731779099,
+            0.550000011920929,
+            -0.11999999731779099
+          ],
+          "velocity_max": [
+            0.11999999731779099,
+            1.4500000476837158,
+            0.11999999731779099
+          ],
+          "size_start": 0.6050000190734863,
+          "size_end": 0.06499999761581421,
+          "color_start": [
+            3.799999952316284,
+            2.5999999046325684,
+            1.350000023841858,
+            1.0
+          ],
+          "color_end": [
+            2.200000047683716,
+            0.44999998807907104,
+            0.05000000074505806,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            0.3499999940395355,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.11999999731779099,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 5,
+          "atlasRows": 5,
+          "atlasFrameCount": 0,
+          "atlasSpeed": 0.7940000295639038,
+          "textureRotationDegrees": 0.0,
+          "softDistance": 0.25,
+          "aspectRatio": 1.0,
+          "blendMode": 0,
+          "drag": 0.5,
+          "shaderMode": 0,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": true,
+          "tracerStretch": 0.0,
+          "lightingInfluence": 0.0,
+          "texture": "Assets/Particles/flipbook_fire.dds"
+        }
+      }
     }
   ]
 }

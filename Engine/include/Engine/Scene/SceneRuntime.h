@@ -101,6 +101,7 @@ public:
     DirectX::XMMATRIX GetProj() const { return m_cachedProj; }
 
     void ResetBall();
+    void ResetTemporalHistory();
     void RefreshParticlePresets();
     static void ApplyParticleDescToSystem(const SceneDescriptor::ParticleEmitterDesc& d,
                                           ParticleSystem& ps);
@@ -111,17 +112,39 @@ public:
     // back into currentDesc so the edited scene can be serialized.
     void SyncDescriptorFromRuntime();
 
+    // Entity state detached by Remove*. Insert* puts it back at the same index
+    // so editor undo can restore removed entities (GPU resources included).
+    struct DetachedPointLight
+    {
+        LightEnvironment::PointLight    light;
+        SceneDescriptor::PointLightDesc desc;
+        bool                            castShadow = false;
+    };
+    struct DetachedEmitter
+    {
+        std::unique_ptr<ParticleSystem>      system;
+        SceneDescriptor::ParticleEmitterDesc desc;
+        int                                  preset = -1;
+    };
+
     // Runtime entity add/remove (editor tooling). Add* returns false when the
     // entity cannot be created (light capacity, missing device). Remove*
-    // ignores out-of-range indices.
+    // returns an empty state for out-of-range indices; Insert* clamps the
+    // index to the current count.
     bool AddPointLight(const DirectX::XMFLOAT3& position);
-    void RemovePointLight(int index);
+    DetachedPointLight RemovePointLight(int index);
+    bool InsertPointLight(int index, const DetachedPointLight& light);
     bool AddParticleEmitter(const DirectX::XMFLOAT3& position);
-    void RemoveParticleEmitter(int index);
+    DetachedEmitter RemoveParticleEmitter(int index);
+    void InsertParticleEmitter(int index, DetachedEmitter emitter);
     bool AddSceneObject(SceneDescriptor::SceneObject::Type type,
                         const DirectX::XMFLOAT3& position);
-    void RemoveSceneObject(int index);
-    void RemoveMesh(int index);
+    LoadedObject RemoveSceneObject(int index);
+    void InsertSceneObject(int index, LoadedObject object);
+    // The mesh's world entity is kept alive, so the returned transform stays
+    // valid for a later InsertMesh.
+    LoadedMesh RemoveMesh(int index);
+    void InsertMesh(int index, LoadedMesh mesh);
 
     // Appends a copy of the entity at index (same live state, new slot) and
     // returns the new index, or -1 on failure/capacity.
@@ -198,6 +221,7 @@ public:
 
     // --- Debug toggles ---
     bool showColliders = false;
+    bool drawDebugHelpers = true; // viewport-only; never serialized
     bool castRay       = false;
     bool debugShadow   = false;
 

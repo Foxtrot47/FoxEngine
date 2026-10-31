@@ -13,11 +13,23 @@ namespace Editor {
 // Gizmo operation selected via Q/W/E/R (UE bindings).
 enum class GizmoOp { None, Translate, Rotate, Scale };
 
+struct GizmoSettings
+{
+    bool localSpace = false;
+    bool translationSnap = false;
+    bool rotationSnap = false;
+    bool scaleSnap = false;
+    float translationStep = 1.0f; // engine world units, not Unreal centimetres
+    float rotationStep = 15.0f;   // degrees
+    float scaleStep = 0.1f;       // additive scale factor
+};
+
 // Draws an ImGuizmo manipulator for the current selection into the viewport
 // image rect and applies edits (with undo capture on drag end). Returns true
 // while the gizmo is hovered or actively used, which blocks click picking.
 bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
-               GizmoOp op, ImVec2 imageMin, ImVec2 imageMax);
+               GizmoOp op, const GizmoSettings& settings,
+               ImVec2 imageMin, ImVec2 imageMax);
 
 // Ray-picks meshes and JSON scene objects through the viewport pixel under
 // mousePos. Returns a None selection when nothing is hit.
