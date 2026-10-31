@@ -217,6 +217,8 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
         rd.FrontCounterClockwise = FALSE;
         rd.DepthClipEnable = TRUE;
         SE_HR(device->CreateRasterizerState(&rd, m_noCullRS.GetAddressOf()));
+        rd.FillMode = D3D11_FILL_WIREFRAME;
+        SE_HR(device->CreateRasterizerState(&rd, m_wireframeRS.GetAddressOf()));
     }
 
     return true;
@@ -233,6 +235,7 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     m_queue.Clear();
     m_queuedDraws.clear();
     m_lastCulled = 0;
+    ApplyAlphaModeState(ctx, AlphaMode::Opaque);
 
     m_sampler.BindPS(ctx, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -414,6 +417,7 @@ void ForwardPipeline::ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mo
         ctx->RSSetState(m_noCullRS.Get());
         break;
     }
+    if (viewShading == ViewShading::Wireframe) ctx->RSSetState(m_wireframeRS.Get());
 }
 
 // Every draw must initialize MaterialCB. Leaving opaque draws untouched
@@ -426,6 +430,7 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.roughnessScale   = mat.roughnessScale * m_globalRoughnessScale;
     mc.metallic         = m_globalMetallic; // texture value scales by the global override
     mc.debugShadow      = m_globalDebugShadow;
+    mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.alphaCutoff      = mat.alphaMode == AlphaMode::Cutout ? mat.alphaCutoff : 0.0f;
     mc.emissiveIntensity = 1.0f;
     mc.emissiveColor    = { 1.0f, 1.0f, 1.0f };
@@ -483,6 +488,7 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.roughnessScale = roughnessScale;
     mc.metallic       = metallic;
     mc.debugShadow    = debugShadow;
+    mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.emissiveIntensity = emissiveIntensity;
     mc.emissiveColor  = emissiveColor;
     m_materialCB.Update(ctx, mc);

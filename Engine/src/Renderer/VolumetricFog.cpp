@@ -107,7 +107,7 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
                           int spotEnabled,
                           XMMATRIX spotViewProj,
                           const XMMATRIX cascadeVP[3],
-                          const float splitFar[2])
+                          const float splitFar[2], float deltaTime)
 {
     if (!enabled) return;
 
@@ -148,7 +148,7 @@ void VolumetricFog::Apply(ID3D11DeviceContext* ctx,
     cb.spotShadowBias  = spotShadowBias;
     cb.spotVolumetricIntensity = spotVolumetricIntensity;
     cb.spotEnabled     = spotEnabled;
-    m_noiseTime += noiseSpeed * (1.0f / 60.0f);
+    m_noiseTime += noiseSpeed * deltaTime;
     m_cb.Update(ctx, cb);
 
     // --- Pass 1: ray-march fog into m_fogRT ---

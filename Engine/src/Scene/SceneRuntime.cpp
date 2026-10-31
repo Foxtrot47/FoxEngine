@@ -161,9 +161,7 @@ bool SceneRuntime::TickSceneLoad(const std::function<bool()>& pumpMessages)
     {
         m_completeSceneLoadNextFrame = false;
         m_loadingScenePath.clear();
-        taa.ResetHistory();
-        fsr.ResetHistory();
-        m_havePrevViewProj = false; // camera jumps on scene load
+        ResetTemporalHistory(); // camera jumps on scene load
         SE_LOG_INFO("Scene ready — %s", currentDesc.name.c_str());
         becameReady = true;
     }
@@ -698,12 +696,16 @@ bool SceneRuntime::AddPointLight(const XMFLOAT3& position)
     return true;
 }
 
-void SceneRuntime::RemovePointLight(int index)
+SceneRuntime::DetachedPointLight SceneRuntime::RemovePointLight(int index)
 {
+    DetachedPointLight out;
     if (index < 0 || index >= lights.numLights)
-        return;
-    if (index < static_cast<int>(pointLightDescs.size()))
-        pointLightDescs.erase(pointLightDescs.begin() + index);
+        return out;
+    pointLightDescs.resize(lights.numLights);
+    out.light      = lights.lights[index];
+    out.desc       = pointLightDescs[index];
+    out.castShadow = lightCastsShadow[index];
+    pointLightDescs.erase(pointLightDescs.begin() + index);
     for (int i = index; i < lights.numLights - 1; ++i)
     {
         lights.lights[i] = lights.lights[i + 1];
@@ -712,6 +714,25 @@ void SceneRuntime::RemovePointLight(int index)
     --lights.numLights;
     lights.lights[lights.numLights] = {};
     lightCastsShadow[lights.numLights] = false;
+    return out;
+}
+
+bool SceneRuntime::InsertPointLight(int index, const DetachedPointLight& light)
+{
+    if (lights.numLights >= 8)
+        return false;
+    index = std::clamp(index, 0, lights.numLights);
+    pointLightDescs.resize(lights.numLights);
+    pointLightDescs.insert(pointLightDescs.begin() + index, light.desc);
+    for (int i = lights.numLights; i > index; --i)
+    {
+        lights.lights[i] = lights.lights[i - 1];
+        lightCastsShadow[i] = lightCastsShadow[i - 1];
+    }
+    lights.lights[index] = light.light;
+    lightCastsShadow[index] = light.castShadow;
+    ++lights.numLights;
+    return true;
 }
 
 bool SceneRuntime::AddParticleEmitter(const XMFLOAT3& position)
@@ -732,15 +753,38 @@ bool SceneRuntime::AddParticleEmitter(const XMFLOAT3& position)
     return true;
 }
 
-void SceneRuntime::RemoveParticleEmitter(int index)
+SceneRuntime::DetachedEmitter SceneRuntime::RemoveParticleEmitter(int index)
 {
+    DetachedEmitter out;
     if (index < 0 || index >= static_cast<int>(particleSystems.size()))
-        return;
+        return out;
+    out.system = std::move(particleSystems[index]);
     particleSystems.erase(particleSystems.begin() + index);
     if (index < static_cast<int>(particleEmitterDescs.size()))
+    {
+        out.desc = std::move(particleEmitterDescs[index]);
         particleEmitterDescs.erase(particleEmitterDescs.begin() + index);
+    }
     if (index < static_cast<int>(selectedParticlePreset.size()))
+    {
+        out.preset = selectedParticlePreset[index];
         selectedParticlePreset.erase(selectedParticlePreset.begin() + index);
+    }
+    return out;
+}
+
+void SceneRuntime::InsertParticleEmitter(int index, DetachedEmitter emitter)
+{
+    if (!emitter.system)
+        return;
+    const int count = static_cast<int>(particleSystems.size());
+    index = std::clamp(index, 0, count);
+    // Keep the parallel arrays aligned with the systems before inserting.
+    particleEmitterDescs.resize(count);
+    selectedParticlePreset.resize(count, -1);
+    particleSystems.insert(particleSystems.begin() + index, std::move(emitter.system));
+    particleEmitterDescs.insert(particleEmitterDescs.begin() + index, std::move(emitter.desc));
+    selectedParticlePreset.insert(selectedParticlePreset.begin() + index, emitter.preset);
 }
 
 bool SceneRuntime::AddSceneObject(SceneDescriptor::SceneObject::Type type,
@@ -760,22 +804,44 @@ bool SceneRuntime::AddSceneObject(SceneDescriptor::SceneObject::Type type,
     return true;
 }
 
-void SceneRuntime::RemoveSceneObject(int index)
+SceneRuntime::LoadedObject SceneRuntime::RemoveSceneObject(int index)
 {
     if (index < 0 || index >= static_cast<int>(sceneObjects.size()))
-        return;
+        return {};
+    LoadedObject out = std::move(sceneObjects[index]);
     sceneObjects.erase(sceneObjects.begin() + index);
     if (m_planarObjectIndex == index)
         m_planarObjectIndex = -1;
     else if (m_planarObjectIndex > index)
         --m_planarObjectIndex;
+    return out;
 }
 
-void SceneRuntime::RemoveMesh(int index)
+void SceneRuntime::InsertSceneObject(int index, LoadedObject object)
+{
+    index = std::clamp(index, 0, static_cast<int>(sceneObjects.size()));
+    if (m_planarObjectIndex >= index)
+        ++m_planarObjectIndex;
+    // Re-adopt a restored reflector; the planar RT outlives its removal.
+    if (object.def.planarReflection && m_planarObjectIndex < 0 &&
+        m_planarReflectionRT.GetRTV())
+        m_planarObjectIndex = index;
+    sceneObjects.insert(sceneObjects.begin() + index, std::move(object));
+}
+
+SceneRuntime::LoadedMesh SceneRuntime::RemoveMesh(int index)
 {
     if (index < 0 || index >= static_cast<int>(loadedMeshes.size()))
-        return;
+        return {};
+    LoadedMesh out = std::move(loadedMeshes[index]);
     loadedMeshes.erase(loadedMeshes.begin() + index);
+    return out;
+}
+
+void SceneRuntime::InsertMesh(int index, LoadedMesh mesh)
+{
+    index = std::clamp(index, 0, static_cast<int>(loadedMeshes.size()));
+    loadedMeshes.insert(loadedMeshes.begin() + index, std::move(mesh));
 }
 
 int SceneRuntime::DuplicatePointLight(int index)
@@ -947,6 +1013,13 @@ void SceneRuntime::UpdatePointLightFlicker(float totalTime)
 
 // --- Render ------------------------------------------------------------------
 
+void SceneRuntime::ResetTemporalHistory()
+{
+    taa.ResetHistory();
+    fsr.ResetHistory();
+    m_havePrevViewProj = false;
+}
+
 void SceneRuntime::Render(float aspect)
 {
     ID3D11DeviceContext* ctx = m_renderer->GetContext();
@@ -964,7 +1037,8 @@ void SceneRuntime::Render(float aspect)
     m_cachedProj = proj;
     m_cachedView = view;
 
-    RenderShadowMaps(ctx);
+    const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
+    if (litView) RenderShadowMaps(ctx);
 
     ID3D11ShaderResourceView* fallbackEnvironment = m_assets->GetDefaultBlack()->GetSRV();
     ID3D11ShaderResourceView* irradianceSRV = environmentLighting.GetIrradianceSRV();
@@ -974,10 +1048,10 @@ void SceneRuntime::Render(float aspect)
     if (!specularSRV) specularSRV = fallbackEnvironment;
     if (!brdfLutSRV) brdfLutSRV = fallbackEnvironment;
 
-    RenderPlanarReflection(ctx, irradianceSRV, specularSRV, brdfLutSRV);
+    if (litView) RenderPlanarReflection(ctx, irradianceSRV, specularSRV, brdfLutSRV);
     RenderForwardPass(ctx, irradianceSRV, specularSRV, brdfLutSRV);
-    RenderDebugShapes(ctx);
-    RenderParticles(ctx);
+    if (drawDebugHelpers) RenderDebugShapes(ctx);
+    if (pipeline.viewShading != ForwardPipeline::ViewShading::Wireframe) RenderParticles(ctx);
 }
 
 int SceneRuntime::CountPointShadowCasters() const
@@ -1137,7 +1211,8 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
         ctx->RSSetViewports(1, &vp);
     }
 
-    skybox.Draw(ctx, m_cachedView, m_cachedProj);
+    if (pipeline.viewShading != ForwardPipeline::ViewShading::Wireframe)
+        skybox.Draw(ctx, m_cachedView, m_cachedProj);
 
     // Collect point shadow SRVs
     const int numPtShadows = CountPointShadowCasters();
@@ -1197,6 +1272,7 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
     // Unbind point shadow SRVs
     ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
     ctx->PSSetShaderResources(5, 2, nullSRVs);
+    ctx->RSSetState(nullptr); // do not leak viewport wireframe into fullscreen post-processing
 }
 
 void SceneRuntime::RenderDebugShapes(ID3D11DeviceContext* ctx)
@@ -1286,7 +1362,7 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
     const uint32_t w = outputWidth, h = outputHeight;
 
     // FSR renders the scene at reduced resolution and upscales to the output.
-    const float fsrRatio = fsrEnabled ? FsrUpscaleRatio() : 1.0f;
+    const float fsrRatio = fsrEnabled && !camera->orthographic ? FsrUpscaleRatio() : 1.0f;
     const uint32_t rw = (std::max)(1u, static_cast<uint32_t>(w / fsrRatio));
     const uint32_t rh = (std::max)(1u, static_cast<uint32_t>(h / fsrRatio));
 
@@ -1303,12 +1379,14 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
         ctx->OMSetRenderTargets(3, nullRTV, nullptr);
     }
 
-    // Screen-Space Ambient Occlusion.
-    if (ssao.enabled)
+    const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
+    // These effects currently reconstruct perspective rays. Utility ortho
+    // views omit them rather than applying an incorrect depth interpretation.
+    if (ssao.enabled && litView && !camera->orthographic)
         ssao.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
 
     // Volumetric fog / god rays (in-scatter into hdrRT before bloom picks up shafts)
-    if (volFog.enabled)
+    if (volFog.enabled && litView && !camera->orthographic)
     {
         float er = XMConvertToRadians(lights.elevDeg);
         float ar = XMConvertToRadians(lights.azimDeg);
@@ -1335,14 +1413,14 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
                      cosf(XMConvertToRadians(spotLight.outerAngle)),
                      spotLight.shadowBias, spotLight.volumetricIntensity,
                      spotLight.enabled ? 1 : 0, spotLight.GetViewProj(),
-                     cascadeVP, splitFar);
+                     cascadeVP, splitFar, frameDt);
     }
 
     UpdateFsrLifetime(rw, rh, w, h);
 
     // Upscale (FSR) or TAA before bloom so bloom receives a temporally
     // stable image at output resolution.
-    const bool useFsr = fsrEnabled && fsr.IsInitialized() &&
+    const bool useFsr = fsrEnabled && !camera->orthographic && fsr.IsInitialized() &&
                         hdrRT.GetWidth() == fsr.RenderWidth() &&
                         hdrRT.GetHeight() == fsr.RenderHeight();
     if (useFsr)
@@ -1359,7 +1437,7 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
 
     RenderTarget& outRT = useFsr ? m_fsrOutputRT : hdrRT;
 
-    if (bloom.enabled)
+    if (bloom.enabled && litView)
         bloom.Apply(ctx, outRT);
 
     if (fxaa.enabled)
@@ -1421,7 +1499,7 @@ void SceneRuntime::ResizeRenderTargets(uint32_t rw, uint32_t rh, uint32_t w, uin
 // Create/destroy the FSR context when its configuration changes.
 void SceneRuntime::UpdateFsrLifetime(uint32_t rw, uint32_t rh, uint32_t w, uint32_t h)
 {
-    if (!fsrEnabled)
+    if (!fsrEnabled || camera->orthographic)
     {
         if (fsr.IsInitialized())
         {
@@ -1468,7 +1546,7 @@ void SceneRuntime::DispatchFsr(ID3D11DeviceContext* ctx, float frameDt)
 // Sub-pixel projection jitter for FSR (its own sequence) or TAA.
 void SceneRuntime::ApplyTemporalJitter(XMMATRIX& proj)
 {
-    if (fsrEnabled && fsr.IsInitialized())
+    if (fsrEnabled && !camera->orthographic && fsr.IsInitialized())
     {
         const XMFLOAT2 jitter = fsr.NextJitter();
         proj = proj * XMMatrixTranslation(jitter.x, jitter.y, 0.0f);

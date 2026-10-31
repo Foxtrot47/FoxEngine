@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <imgui.h>
 
+#include "EditorEntityOps.h"
 #include "EditorIcons.h"
 #include "EditorTheme.h"
 #include "Engine/Scene/SceneRuntime.h"
@@ -178,7 +179,7 @@ void ContentBrowser::DrawTileContextMenu(const Entry& entry, SE::SceneRuntime& s
         StartMeshAdd(entry.path, assets);
     if (entry.kind == FileKind::Scene &&
         ImGui::MenuItem("Open Scene", nullptr, false, !scene.IsLoading()))
-        scene.RequestSceneLoad(entry.path);
+        m_sceneOpenRequest = entry.path;
     if (entry.kind == FileKind::Folder && ImGui::MenuItem("Open"))
         NavigateTo(entry.path);
     ImGui::EndPopup();
@@ -203,7 +204,7 @@ void ContentBrowser::DrawTileInput(const Entry& entry, float tileSize,
     {
     case FileKind::Folder: NavigateTo(entry.path); break;
     case FileKind::Mesh:   if (canModify) StartMeshAdd(entry.path, assets); break;
-    case FileKind::Scene:  if (!scene.IsLoading()) scene.RequestSceneLoad(entry.path); break;
+    case FileKind::Scene:  if (!scene.IsLoading()) m_sceneOpenRequest = entry.path; break;
     default: break;
     }
 }
@@ -271,7 +272,7 @@ void ContentBrowser::DrawTile(const Entry& entry, float tileSize, float labelHei
 void ContentBrowser::DrawGrid(SE::SceneRuntime& scene, SE::AssetManager& assets,
                               bool canModify)
 {
-    const float tileSize = 84.0f;
+    const float tileSize = m_tileSize;
     const float pad = 10.0f;
     const float labelHeight = ImGui::GetTextLineHeight() + 8.0f;
     // Wrap against the visible clip edge rather than a precomputed column
@@ -281,6 +282,9 @@ void ContentBrowser::DrawGrid(SE::SceneRuntime& scene, SE::AssetManager& assets,
     bool first = true;
     for (const auto& entry : m_entries)
     {
+        if (!m_filter.PassFilter(entry.name.c_str())) continue;
+        if (m_kindFilter != 0 && entry.kind != FileKind::Folder &&
+            static_cast<int>(entry.kind) != m_kindFilter) continue;
         if (!first && ImGui::GetItemRectMax().x + pad + tileSize <= clipRight)
             ImGui::SameLine(0.0f, pad);
         DrawTile(entry, tileSize, labelHeight, scene, assets, canModify);
@@ -297,13 +301,13 @@ void ContentBrowser::StartMeshAdd(const std::string& path, SE::AssetManager& ass
     m_meshAdd.Start(path, assets.CaptureSnapshot());
 }
 
-// Pumps async import work; returns true when a finished mesh was added.
-bool ContentBrowser::PumpMeshAdd(SE::SceneRuntime& scene, Selection& sel,
+// Pumps async import work; a finished mesh is added, selected and recorded
+// on the undo stack.
+void ContentBrowser::PumpMeshAdd(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                                  SE::AssetManager& assets, ID3D11Device* device,
                                  const DirectX::XMFLOAT3& spawnPos)
 {
     m_meshAdd.PumpUploads(device, assets);
-    bool added = false;
     if (auto result = m_meshAdd.TakeResult())
     {
         const int index = scene.AddLoadedMesh(result->path, std::move(result->mesh),
@@ -311,12 +315,11 @@ bool ContentBrowser::PumpMeshAdd(SE::SceneRuntime& scene, Selection& sel,
         if (index >= 0)
         {
             sel.Set(Selection::Kind::Mesh, index);
-            added = true;
+            PushSpawnUndo(scene, undo, sel, sel, "Add Mesh");
         }
     }
     if (m_meshAdd.GetState() == SE::MeshAddState::Failed && m_statusError.empty())
         m_statusError = m_meshAdd.GetError();
-    return added;
 }
 
 void ContentBrowser::DrawStatusLine()
@@ -331,13 +334,28 @@ void ContentBrowser::DrawStatusLine()
         ImGui::TextColored({ 1.0f, 0.35f, 0.35f, 1.0f }, "%s", m_statusError.c_str());
 }
 
-bool ContentBrowser::Draw(SE::SceneRuntime& scene, Selection& sel,
+void ContentBrowser::DrawFilters()
+{
+    ImGui::SetNextItemWidth((std::max)(120.0f, ImGui::GetContentRegionAvail().x - 245.0f));
+    if (ImGui::InputTextWithHint("##search", "Search this folder...", m_filter.InputBuf,
+                                  IM_ARRAYSIZE(m_filter.InputBuf)))
+        m_filter.Build();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(115.0f);
+    ImGui::Combo("##type", &m_kindFilter, "All assets\0Meshes\0Textures\0Scenes\0Presets\0Other\0");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110.0f);
+    ImGui::SliderFloat("##size", &m_tileSize, 56.0f, 144.0f, "Size %.0f");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Thumbnail size");
+}
+
+void ContentBrowser::Draw(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                           SE::AssetManager& assets, ID3D11Device* device,
                           ID3D11DeviceContext* ctx,
                           const DirectX::XMFLOAT3& spawnPos)
 {
     m_thumbs.Update(device, ctx);
-    const bool added = PumpMeshAdd(scene, sel, assets, device, spawnPos);
+    PumpMeshAdd(scene, sel, undo, assets, device, spawnPos);
 
     ImGui::Begin("Content Browser");
     if (!m_pendingNavigate.empty())
@@ -374,6 +392,7 @@ bool ContentBrowser::Draw(SE::SceneRuntime& scene, Selection& sel,
     ImGui::SameLine();
     ImGui::BeginGroup();
     DrawBreadcrumb();
+    DrawFilters();
     if (ImGui::BeginChild("##grid", { 0.0f, -statusHeight }))
         DrawGrid(scene, assets, canModify);
     ImGui::EndChild();
@@ -381,7 +400,6 @@ bool ContentBrowser::Draw(SE::SceneRuntime& scene, Selection& sel,
 
     DrawStatusLine();
     ImGui::End();
-    return added;
 }
 
 } // namespace Editor

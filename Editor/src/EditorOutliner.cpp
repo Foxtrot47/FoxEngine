@@ -1,5 +1,7 @@
 #include "EditorOutliner.h"
+#include "EditorEntityOps.h"
 #include "EditorIcons.h"
+#include "EditorUndo.h"
 
 #include "Engine/Scene/SceneRuntime.h"
 #include <imgui.h>
@@ -19,6 +21,7 @@ struct RenameState
     bool            takeFocus = false;
 };
 RenameState s_rename;
+ImGuiTextFilter s_filter;
 
 void BeginRename(Selection::Kind kind, int index, const std::string& current)
 {
@@ -94,15 +97,24 @@ void DrawEyeToggle(bool* visible)
         { mn.x + (h - sz.x) * 0.5f, mn.y + (h - sz.y) * 0.5f }, col, glyph);
 }
 
-struct RowAction
+struct RenameCommit
 {
-    bool remove    = false;
-    bool duplicate = false;
+    bool        pending = false;
+    Selection   target;
+    std::string name;
 };
 
-// Inline InputText shown in place of the row label while renaming. Commits
-// into *name on Enter or focus loss; Escape cancels.
-void DrawRenameInput(std::string* name)
+struct RowAction
+{
+    bool         remove    = false;
+    bool         duplicate = false;
+    RenameCommit rename;
+};
+
+// Inline InputText shown in place of the row label while renaming. Enter or
+// focus loss queues the new name for the caller to apply undoably; Escape
+// cancels.
+void DrawRenameInput(RenameCommit& commit)
 {
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (s_rename.takeFocus)
@@ -116,8 +128,8 @@ void DrawRenameInput(std::string* name)
                                           ImGuiInputTextFlags_AutoSelectAll);
     if (!entered && !ImGui::IsItemDeactivated())
         return;
-    if (!ImGui::IsKeyPressed(ImGuiKey_Escape) && name && s_rename.buf[0] != '\0')
-        *name = s_rename.buf;
+    if (!ImGui::IsKeyPressed(ImGuiKey_Escape) && s_rename.buf[0] != '\0')
+        commit = { true, { s_rename.kind, s_rename.index }, s_rename.buf };
     s_rename = {};
 }
 
@@ -128,6 +140,8 @@ RowAction DrawRow(Selection& sel, Selection::Kind kind, int index, const char* l
                   const char* typeName, const IconDesc& icon, bool* visible,
                   bool indent, std::string* name = nullptr)
 {
+    const std::string searchText = std::string(label) + " " + typeName;
+    if (!s_filter.PassFilter(searchText.c_str())) return {};
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(1);
     ImGui::PushID((int)kind);
@@ -142,7 +156,7 @@ RowAction DrawRow(Selection& sel, Selection::Kind kind, int index, const char* l
     {
         DrawIconCentered(icon, rowH, rowH);
         ImGui::SameLine(0.0f, 5.0f);
-        DrawRenameInput(name);
+        DrawRenameInput(action.rename);
     }
     else
     {
@@ -203,7 +217,7 @@ bool IconMenuItem(const IconDesc& icon, const char* label, bool enabled = true)
 }
 
 // "+ Add" toolbar button: spawns a new entity at spawnPos and selects it.
-void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel,
+void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                  const DirectX::XMFLOAT3& spawnPos)
 {
     using Kind = Selection::Kind;
@@ -212,26 +226,49 @@ void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel,
         ImGui::OpenPopup("##add_entity");
     if (!ImGui::BeginPopup("##add_entity"))
         return;
+    Selection spawned;
     ImGui::SeparatorText("Shapes");
     if (IconMenuItem({ ICON_MD_PANORAMA_FISH_EYE, IM_COL32(150, 210, 220, 255) },
                      "Sphere") &&
         scene.AddSceneObject(ObjType::Sphere, spawnPos))
-        sel.Set(Kind::Object, (int)scene.sceneObjects.size() - 1);
+        spawned.Set(Kind::Object, (int)scene.sceneObjects.size() - 1);
     if (IconMenuItem({ ICON_MD_CROP_LANDSCAPE, IM_COL32(150, 210, 220, 255) },
                      "Plane") &&
         scene.AddSceneObject(ObjType::Plane, spawnPos))
-        sel.Set(Kind::Object, (int)scene.sceneObjects.size() - 1);
+        spawned.Set(Kind::Object, (int)scene.sceneObjects.size() - 1);
     ImGui::SeparatorText("Lights");
     if (IconMenuItem({ ICON_MD_LIGHTBULB_OUTLINE, IM_COL32(255, 170, 80, 255) },
                      "Point Light", scene.lights.numLights < 8) &&
         scene.AddPointLight(spawnPos))
-        sel.Set(Kind::PointLight, scene.lights.numLights - 1);
+        spawned.Set(Kind::PointLight, scene.lights.numLights - 1);
     ImGui::SeparatorText("Effects");
     if (IconMenuItem({ ICON_MD_GRAIN, IM_COL32(210, 150, 255, 255) },
                      "Particle Emitter") &&
         scene.AddParticleEmitter(spawnPos))
-        sel.Set(Kind::Emitter, (int)scene.particleSystems.size() - 1);
+        spawned.Set(Kind::Emitter, (int)scene.particleSystems.size() - 1);
     ImGui::EndPopup();
+    if (spawned.kind == Kind::None)
+        return;
+    sel = spawned;
+    PushSpawnUndo(scene, undo, sel, spawned, "Add");
+}
+
+void ApplyRename(SE::SceneRuntime& scene, UndoStack& undo, const RenameCommit& commit)
+{
+    std::string* name = EntityName(scene, commit.target.kind, commit.target.index);
+    if (!name || *name == commit.name)
+        return;
+    const Selection target = commit.target;
+    const std::string before = *name;
+    const std::string after  = commit.name;
+    *name = after;
+    auto set = [&scene, target](const std::string& value) {
+        if (std::string* n = EntityName(scene, target.kind, target.index))
+            *n = value;
+    };
+    undo.Push({ "Rename",
+                [set, before] { set(before); },
+                [set, after]  { set(after); } });
 }
 
 // Point light, mesh, object, and emitter rows with editable names.
@@ -242,6 +279,8 @@ RowAction DrawEntityRows(SE::SceneRuntime& scene, Selection& sel)
     auto merge = [&action](const RowAction& a) {
         action.remove |= a.remove;
         action.duplicate |= a.duplicate;
+        if (a.rename.pending)
+            action.rename = a.rename;
     };
     for (int i = 0; i < scene.lights.numLights; ++i)
     {
@@ -293,40 +332,7 @@ void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel)
         BeginRename(sel.kind, sel.index, *name);
 }
 
-bool DuplicateSelection(SE::SceneRuntime& scene, Selection& sel)
-{
-    using Kind = Selection::Kind;
-    int newIndex = -1;
-    switch (sel.kind)
-    {
-    case Kind::PointLight: newIndex = scene.DuplicatePointLight(sel.index); break;
-    case Kind::Mesh:       newIndex = scene.DuplicateMesh(sel.index); break;
-    case Kind::Object:     newIndex = scene.DuplicateSceneObject(sel.index); break;
-    case Kind::Emitter:    newIndex = scene.DuplicateParticleEmitter(sel.index); break;
-    default: return false;
-    }
-    if (newIndex < 0)
-        return false;
-    sel.Set(sel.kind, newIndex);
-    return true;
-}
-
-bool DeleteSelection(SE::SceneRuntime& scene, Selection& sel)
-{
-    using Kind = Selection::Kind;
-    switch (sel.kind)
-    {
-    case Kind::PointLight: scene.RemovePointLight(sel.index); break;
-    case Kind::Mesh:       scene.RemoveMesh(sel.index); break;
-    case Kind::Object:     scene.RemoveSceneObject(sel.index); break;
-    case Kind::Emitter:    scene.RemoveParticleEmitter(sel.index); break;
-    default: return false;
-    }
-    sel.Clear();
-    return true;
-}
-
-bool DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel,
+void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                        const DirectX::XMFLOAT3& spawnPos)
 {
     ImGui::Begin("Outliner");
@@ -334,22 +340,29 @@ bool DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel,
     {
         ImGui::TextDisabled("No scene loaded");
         ImGui::End();
-        return false;
+        return;
     }
 
-    DrawAddMenu(scene, sel, spawnPos);
+    DrawAddMenu(scene, sel, undo, spawnPos);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::InputTextWithHint("##search", "Search actors or types...", s_filter.InputBuf,
+                                  IM_ARRAYSIZE(s_filter.InputBuf)))
+        s_filter.Build();
 
     if (!ImGui::BeginTable("##outliner", 3,
                            ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                            ImGuiTableFlags_NoBordersInBody))
     {
         ImGui::End();
-        return false;
+        return;
     }
     const float eyeW = ImGui::GetTextLineHeight() + 8.0f;
     ImGui::TableSetupColumn("##vis",  ImGuiTableColumnFlags_WidthFixed, eyeW);
     ImGui::TableSetupColumn("Item",   ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("Type",   ImGuiTableColumnFlags_WidthFixed, 96.0f);
+    ImGui::TableSetupScrollFreeze(0, 1);
+    ImGui::TableHeadersRow();
 
     // Defensive: keep the desc mirror sized so names stay addressable.
     if ((int)scene.pointLightDescs.size() < scene.lights.numLights)
@@ -375,9 +388,12 @@ bool DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel,
     ImGui::EndTable();
     ImGui::End();
 
+    if (action.rename.pending)
+        ApplyRename(scene, undo, action.rename);
     if (action.duplicate)
-        DuplicateSelection(scene, sel);
-    return action.remove && DeleteSelection(scene, sel);
+        DuplicateSelection(scene, sel, undo);
+    if (action.remove)
+        DeleteSelection(scene, sel, undo);
 }
 
 } // namespace Editor

@@ -54,7 +54,7 @@ public:
                int spotEnabled,
                DirectX::XMMATRIX spotViewProj,
                const DirectX::XMMATRIX cascadeVP[3],
-               const float splitFar[2]);
+               const float splitFar[2], float deltaTime);
 
     bool  enabled          = true;
     float density          = 0.05f;   // extinction / scattering coefficient

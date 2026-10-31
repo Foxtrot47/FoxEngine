@@ -281,12 +281,23 @@ struct DragState
 };
 DragState s_drag;
 
+float SnapStep(GizmoOp op, const GizmoSettings& settings)
+{
+    switch (op)
+    {
+    case GizmoOp::Translate: return settings.translationSnap ? settings.translationStep : 0.0f;
+    case GizmoOp::Rotate: return settings.rotationSnap ? settings.rotationStep : 0.0f;
+    case GizmoOp::Scale: return settings.scaleSnap ? settings.scaleStep : 0.0f;
+    default: return 0.0f;
+    }
+}
+
 // Runs ImGuizmo over the viewport rect and returns true when the matrix
 // was modified this frame.
-bool RunManipulate(SE::SceneRuntime& scene, GizmoOp op, const Snapshot& current,
-                   ImVec2 imageMin, ImVec2 imageMax, XMFLOAT4X4& matrix)
+bool RunManipulate(SE::SceneRuntime& scene, GizmoOp op, const GizmoSettings& settings,
+                   const Snapshot& current, ImVec2 imageMin, ImVec2 imageMax, XMFLOAT4X4& matrix)
 {
-    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetOrthographic(scene.camera->orthographic);
     ImGuizmo::SetDrawlist();
     const float w = imageMax.x - imageMin.x;
     const float h = imageMax.y - imageMin.y;
@@ -302,11 +313,11 @@ bool RunManipulate(SE::SceneRuntime& scene, GizmoOp op, const Snapshot& current,
     const ImGuizmo::OPERATION operation =
         op == GizmoOp::Rotate ? ImGuizmo::ROTATE :
         op == GizmoOp::Scale  ? ImGuizmo::SCALE  : ImGuizmo::TRANSLATE;
-    const ImGuizmo::MODE mode =
-        operation == ImGuizmo::SCALE ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
-
+    const ImGuizmo::MODE mode = settings.localSpace ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+    const float step = SnapStep(op, settings);
+    const float snap[3] = { step, step, step };
     return ImGuizmo::Manipulate(&view.m[0][0], &proj.m[0][0], operation, mode,
-                                &matrix.m[0][0]);
+                                &matrix.m[0][0], nullptr, step > 0.0f ? snap : nullptr);
 }
 
 void ApplyManipulation(SE::SceneRuntime& scene, const Selection& sel,
@@ -344,7 +355,7 @@ void TrackDragUndo(SE::SceneRuntime& scene, UndoStack& undo, const Selection& se
 } // namespace
 
 bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
-               GizmoOp op, ImVec2 imageMin, ImVec2 imageMax)
+               GizmoOp op, const GizmoSettings& settings, ImVec2 imageMin, ImVec2 imageMax)
 {
     Snapshot current;
     if (op == GizmoOp::None || !CaptureSnapshot(scene, sel, current))
@@ -358,7 +369,7 @@ bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
         op = GizmoOp::Translate;
 
     XMFLOAT4X4 matrix;
-    const bool changed  = RunManipulate(scene, op, current, imageMin, imageMax, matrix);
+    const bool changed  = RunManipulate(scene, op, settings, current, imageMin, imageMax, matrix);
     const bool usingNow = ImGuizmo::IsUsing();
     if (changed)
         ApplyManipulation(scene, sel, matrix, current);

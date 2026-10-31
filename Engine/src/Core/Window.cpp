@@ -143,6 +143,11 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
 
     case WM_CLOSE:
+        if (self && self->m_interceptClose)
+        {
+            self->m_closeRequested = true;
+            return 0;
+        }
         DestroyWindow(hwnd);
         return 0;
     }
