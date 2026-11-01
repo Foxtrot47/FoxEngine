@@ -10,6 +10,7 @@
 #include "Engine/Scene/LevelLoadOperation.h"
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Renderer/Texture2D.h"
+#include "Engine/Scene/MeshMaterialUtil.h"
 
 #include <chrono>
 #include <cstring>
@@ -602,6 +603,33 @@ static void TestMeshCache()
     fs::remove_all(root);
 }
 
+// glTF image URIs are relative to the mesh file; the converted DDS sits beside
+// the authored image, and the Textures/ convention still wins when present.
+static void TestMaterialTexturePath()
+{
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "FoxEngineTexturePathTest";
+    fs::remove_all(root);
+    fs::create_directories(root / "textures_png");
+    std::ofstream(root / "textures_png" / "a.dds").put('x');
+    std::ofstream(root / "textures_png" / "b.png").put('x');
+    const std::string dir = root.generic_string() + "/";
+
+    Require(SE::MaterialTexturePath(dir, "textures_png/a.png") == dir + "textures_png/a.dds",
+            "relative glTF URI did not resolve to its sibling DDS");
+    Require(SE::MaterialTexturePath(dir, "textures_png\\b.png") == dir + "textures_png/b.png",
+            "relative source image was not used when no DDS exists");
+    Require(SE::MaterialTexturePath(dir, "textures_png/missing.png") == dir + "missing.dds",
+            "missing texture did not fall back to <dir>/<stem>.dds");
+
+    fs::create_directories(root / "Textures");
+    std::ofstream(root / "Textures" / "a.dds").put('x');
+    Require(SE::MaterialTexturePath(dir, "textures_png/a.png") == dir + "Textures/a.dds",
+            "Textures/<stem>.dds no longer takes precedence");
+
+    fs::remove_all(root);
+}
+
 static void TestCpuTextureDecode()
 {
     SE::TextureSourceData png;
@@ -720,6 +748,7 @@ static void RunTests()
     TestGltfPackedMRDetection();
     TestGltfSpecGlossDetection();
     TestMeshCache();
+    TestMaterialTexturePath();
     TestCpuTextureDecode();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
