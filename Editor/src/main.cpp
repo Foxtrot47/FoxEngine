@@ -9,6 +9,7 @@
 #include <vector>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Core/ProjectRoot.h"
 #include "Engine/Assets/AssetManager.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scene/SceneRuntime.h"
@@ -790,24 +791,6 @@ private:
     char                     m_saveAsName[128]   = {};
 };
 
-// Set working directory to project root (walk up from exe location until we
-// find Engine/ and Assets/).
-static void SetProjectRootCwd()
-{
-    wchar_t exePath[MAX_PATH];
-    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-    std::filesystem::path dir = std::filesystem::path(exePath).parent_path();
-    for (int i = 0; i < 5; ++i)
-    {
-        if (std::filesystem::exists(dir / "Engine") && std::filesystem::exists(dir / "Assets"))
-        {
-            SetCurrentDirectoryW(dir.c_str());
-            return;
-        }
-        dir = dir.parent_path();
-    }
-}
-
 static std::string ParseSceneArg(LPSTR lpCmdLine)
 {
     if (!lpCmdLine || strlen(lpCmdLine) == 0)
@@ -827,7 +810,7 @@ static std::string ParseSceneArg(LPSTR lpCmdLine)
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR lpCmdLine, int)
 {
-    SetProjectRootCwd();
+    SE::SetProjectRootCwd();
 
     SE::WindowDesc desc;
     desc.title  = L"FoxEditor";

@@ -1,11 +1,16 @@
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Core/Logger.h"
 #include <assimp/Importer.hpp>
+#include <assimp/DefaultIOSystem.h>
+#include <assimp/IOSystem.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <assimp/material.h>
 #include <assimp/GltfMaterial.h>
 #include <assimp/ProgressHandler.hpp>
+#include <algorithm>
+#include <cstdint>
+#include <filesystem>
 #include <utility>
 #include <vector>
 
@@ -26,6 +31,35 @@ public:
 
 private:
     Mesh::ImportProgressCallback m_callback;
+};
+
+// Records every file the importer opens for reading (side files such as .bin
+// buffers and .mtl libraries) so cooked entries can be invalidated on change.
+// DefaultIOSystem is final, hence composition.
+class DependencyTrackingIOSystem final : public Assimp::IOSystem
+{
+public:
+    explicit DependencyTrackingIOSystem(std::vector<std::string>& files) : m_files(files) {}
+
+    bool Exists(const char* file) const override { return m_inner.Exists(file); }
+    char getOsSeparator() const override { return m_inner.getOsSeparator(); }
+    void Close(Assimp::IOStream* file) override { m_inner.Close(file); }
+    bool ComparePaths(const char* one, const char* second) const override
+    {
+        return m_inner.ComparePaths(one, second);
+    }
+
+    Assimp::IOStream* Open(const char* file, const char* mode) override
+    {
+        Assimp::IOStream* stream = m_inner.Open(file, mode);
+        if (stream && mode && mode[0] == 'r')
+            m_files.push_back(std::filesystem::path(file).lexically_normal().generic_string());
+        return stream;
+    }
+
+private:
+    Assimp::DefaultIOSystem m_inner;
+    std::vector<std::string>& m_files;
 };
 
 } // anonymous namespace
@@ -169,11 +203,12 @@ static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v,
     return vtx;
 }
 
-// Reads one Assimp mesh into a submesh source. The progress callback maps the
-// submesh range onto [0.8, 1.0] of the overall import; returning false cancels.
+// Appends one Assimp mesh instance to the contiguous source streams. The progress
+// callback maps the submesh range onto [0.8, 1.0] of the overall import; returning
+// false cancels.
 static bool ReadSubMesh(const aiScene* scene, uint32_t m, const aiMatrix4x4& world,
                         const Mesh::ImportProgressCallback& progress,
-                        MeshSubMeshSource& out, AABB& bounds)
+                        MeshSourceData& output)
 {
     const aiMesh* mesh = scene->mMeshes[m];
     const float meshCount = static_cast<float>(scene->mNumMeshes);
@@ -185,7 +220,9 @@ static bool ReadSubMesh(const aiScene* scene, uint32_t m, const aiMatrix4x4& wor
         normalMat.Inverse().Transpose();
     const bool flipWinding = det < 0.0f;
 
-    out.vertices.reserve(mesh->mNumVertices);
+    MeshSubMeshSource record;
+    record.firstVertex = static_cast<uint32_t>(output.vertices.size());
+    record.vertexCount = mesh->mNumVertices;
     for (uint32_t v = 0; v < mesh->mNumVertices; ++v)
     {
         if ((v & 0x3ffu) == 0 && progress &&
@@ -195,11 +232,11 @@ static bool ReadSubMesh(const aiScene* scene, uint32_t m, const aiMatrix4x4& wor
             return false;
 
         const MeshVertex vtx = ReadVertex(mesh, v, world, normalMat, applyTransform);
-        out.vertices.push_back(vtx);
-        bounds.Expand({ vtx.x, vtx.y, vtx.z });
+        output.vertices.push_back(vtx);
+        output.bounds.Expand({ vtx.x, vtx.y, vtx.z });
     }
 
-    out.indices.reserve(mesh->mNumFaces * 3);
+    record.firstIndex = static_cast<uint32_t>(output.indices.size());
     for (uint32_t f = 0; f < mesh->mNumFaces; ++f)
     {
         if ((f & 0x3ffu) == 0 && progress &&
@@ -211,20 +248,28 @@ static bool ReadSubMesh(const aiScene* scene, uint32_t m, const aiMatrix4x4& wor
         const aiFace& face = mesh->mFaces[f];
         if (flipWinding && face.mNumIndices == 3)
         {
-            out.indices.push_back(face.mIndices[2]);
-            out.indices.push_back(face.mIndices[1]);
-            out.indices.push_back(face.mIndices[0]);
+            output.indices.push_back(face.mIndices[2]);
+            output.indices.push_back(face.mIndices[1]);
+            output.indices.push_back(face.mIndices[0]);
         }
         else
         {
             for (uint32_t i = 0; i < face.mNumIndices; ++i)
-                out.indices.push_back(face.mIndices[i]);
+                output.indices.push_back(face.mIndices[i]);
         }
     }
+    record.indexCount = static_cast<uint32_t>(output.indices.size() - record.firstIndex);
 
     if (mesh->mMaterialIndex < scene->mNumMaterials)
-        ExtractSubMeshMaterial(scene->mMaterials[mesh->mMaterialIndex], out.material);
+        ExtractSubMeshMaterial(scene->mMaterials[mesh->mMaterialIndex], record.material);
+    output.subMeshes.push_back(std::move(record));
     return true;
+}
+
+std::string Mesh::SourceDirectory(const std::string& path)
+{
+    const size_t pos = path.find_last_of("/\\");
+    return pos != std::string::npos ? path.substr(0, pos + 1) : std::string();
 }
 
 bool Mesh::Import(const char* path, MeshSourceData& output,
@@ -235,6 +280,7 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
         return false;
 
     Assimp::Importer importer;
+    importer.SetIOHandler(new DependencyTrackingIOSystem(output.sourceFiles));
     if (progress)
         importer.SetProgressHandler(new ResponsiveProgressHandler(progress));
 
@@ -253,19 +299,39 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
         return false;
     }
 
-    // Extract directory so callers can resolve relative texture paths.
-    {
-        std::string p(path);
-        auto pos = p.find_last_of("/\\");
-        output.directory = (pos != std::string::npos) ? p.substr(0, pos + 1) : "";
-    }
+    output.sourceFiles.push_back(std::filesystem::path(path).lexically_normal().generic_string());
+    std::sort(output.sourceFiles.begin(), output.sourceFiles.end());
+    output.sourceFiles.erase(std::unique(output.sourceFiles.begin(), output.sourceFiles.end()),
+                             output.sourceFiles.end());
 
-    output.subMeshes.reserve(scene->mNumMeshes);
+    // Callers resolve relative texture paths against this directory.
+    output.directory = SourceDirectory(path);
     output.bounds = AABB{};
 
     // Bake node placement into vertices (glTF and FBX position meshes via nodes).
     std::vector<std::vector<aiMatrix4x4>> nodeTransforms(scene->mNumMeshes);
     CollectNodeTransforms(scene->mRootNode, aiMatrix4x4(), nodeTransforms);
+
+    uint64_t totalVertices = 0;
+    uint64_t totalIndices = 0;
+    size_t totalSubMeshes = 0;
+    for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
+    {
+        const size_t instances = (std::max)(size_t(1), nodeTransforms[m].size());
+        totalVertices += uint64_t(scene->mMeshes[m]->mNumVertices) * instances;
+        totalIndices += uint64_t(scene->mMeshes[m]->mNumFaces) * 3 * instances;
+        totalSubMeshes += instances;
+    }
+    if (totalVertices > UINT32_MAX || totalIndices > UINT32_MAX)
+    {
+        const char* message = "mesh exceeds 2^32 vertices or indices";
+        if (error) *error = message;
+        SE_LOG_ERROR("Mesh::Load '%s': %s", path, message);
+        return false;
+    }
+    output.vertices.reserve(static_cast<size_t>(totalVertices));
+    output.indices.reserve(static_cast<size_t>(totalIndices));
+    output.subMeshes.reserve(totalSubMeshes);
 
     for (uint32_t m = 0; m < scene->mNumMeshes; ++m)
     {
@@ -278,13 +344,8 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
             nodeTransforms[m].push_back(aiMatrix4x4());
 
         for (const aiMatrix4x4& world : nodeTransforms[m])
-        {
-            MeshSubMeshSource source;
-            if (!ReadSubMesh(scene, m, world, progress, source, output.bounds))
+            if (!ReadSubMesh(scene, m, world, progress, output))
                 return false;
-
-            output.subMeshes.push_back(std::move(source));
-        }
     }
 
     if (progress && !progress(1.0f))
@@ -300,11 +361,11 @@ bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)
     for (auto& input : source.subMeshes)
     {
         SubMesh sm;
-        if (input.vertices.empty() || input.indices.empty() ||
-            !sm.vb.Create(device, input.vertices.data(),
-                          static_cast<uint32_t>(input.vertices.size() * sizeof(MeshVertex)),
+        if (input.vertexCount == 0 || input.indexCount == 0 ||
+            !sm.vb.Create(device, source.vertices.data() + input.firstVertex,
+                          static_cast<uint32_t>(input.vertexCount * sizeof(MeshVertex)),
                           sizeof(MeshVertex)) ||
-            !sm.ib.Create(device, input.indices.data(), static_cast<uint32_t>(input.indices.size())))
+            !sm.ib.Create(device, source.indices.data() + input.firstIndex, input.indexCount))
             return false;
         sm.albedoPath = std::move(input.material.albedoPath);
         sm.normalPath = std::move(input.material.normalPath);

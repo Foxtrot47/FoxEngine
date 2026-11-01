@@ -1,3 +1,5 @@
+#include "Engine/Assets/AssetManager.h"
+#include "Engine/Assets/MeshCache.h"
 #include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scene/SceneSaver.h"
@@ -10,6 +12,9 @@
 #include "Engine/Renderer/Texture2D.h"
 
 #include <chrono>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -440,7 +445,7 @@ static void TestCpuMeshImport()
             return true;
         }), "tiny OBJ CPU import failed");
     Require(source.subMeshes.size() == 1, "tiny OBJ submesh count mismatch");
-    Require(source.subMeshes[0].vertices.size() == 3, "tiny OBJ vertex count mismatch");
+    Require(source.subMeshes[0].vertexCount == 3, "tiny OBJ vertex count mismatch");
     Require(source.subMeshes[0].material.albedoPath == "missing_albedo.png",
             "material texture dependency was not discovered");
 
@@ -501,10 +506,100 @@ static void TestGltfSpecGlossDetection()
     // Node transforms must be baked into vertices (glTF places meshes via nodes),
     // and a mesh referenced by two nodes must yield one submesh per instance.
     float minX = 1e9f, instanceMaxX = -1e9f;
-    for (const auto& vertex : source.subMeshes[1].vertices) minX = (std::min)(minX, vertex.x);
-    for (const auto& vertex : source.subMeshes[2].vertices) instanceMaxX = (std::max)(instanceMaxX, vertex.x);
+    const auto& placed = source.subMeshes[1];
+    for (uint32_t v = placed.firstVertex; v < placed.firstVertex + placed.vertexCount; ++v)
+        minX = (std::min)(minX, source.vertices[v].x);
+    const auto& instance = source.subMeshes[2];
+    for (uint32_t v = instance.firstVertex; v < instance.firstVertex + instance.vertexCount; ++v)
+        instanceMaxX = (std::max)(instanceMaxX, source.vertices[v].x);
     Require(minX > 4.0f, "glTF node translation was not baked into mesh vertices");
     Require(instanceMaxX < -3.5f, "instanced glTF mesh was not duplicated per node");
+}
+
+static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b)
+{
+    return a.albedoPath == b.albedoPath && a.normalPath == b.normalPath &&
+           a.roughnessPath == b.roughnessPath && a.emissivePath == b.emissivePath &&
+           a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
+           a.workflow == b.workflow && a.roughnessFactor == b.roughnessFactor &&
+           a.glossinessFactor == b.glossinessFactor;
+}
+
+static void TestMeshCache()
+{
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "FoxEngineMeshCacheTest";
+    fs::remove_all(root);
+    fs::create_directories(root / "src");
+    fs::copy_file("Assets/TestFixtures/tiny.obj", root / "src" / "tiny.obj");
+    fs::copy_file("Assets/TestFixtures/tiny.mtl", root / "src" / "tiny.mtl");
+    const fs::path mtl = root / "src" / "tiny.mtl";
+    const std::string source = (root / "src" / "tiny.obj").generic_string();
+    const SE::MeshCache cache((root / "cache").string());
+    const std::string entry = cache.EntryPath(source);
+
+    SE::MeshSourceData imported;
+    bool hit = true;
+    Require(cache.Load(source, imported, {}, nullptr, &hit) && !hit,
+            "first mesh cache load did not import");
+    Require(fs::exists(entry), "mesh cache entry was not written");
+    Require(imported.sourceFiles.size() == 2, "OBJ and MTL were not both recorded as dependencies");
+
+    SE::MeshSourceData cooked;
+    Require(cache.Load(source, cooked, {}, nullptr, &hit) && hit, "second mesh cache load missed");
+    Require(cooked.vertices.size() == imported.vertices.size() &&
+            std::memcmp(cooked.vertices.data(), imported.vertices.data(),
+                        imported.vertices.size() * sizeof(SE::MeshVertex)) == 0,
+            "cooked vertices differ from the import");
+    Require(cooked.indices == imported.indices, "cooked indices differ from the import");
+    Require(cooked.subMeshes.size() == imported.subMeshes.size(), "cooked submesh count differs");
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+    {
+        const auto& a = cooked.subMeshes[i];
+        const auto& b = imported.subMeshes[i];
+        Require(a.firstVertex == b.firstVertex && a.vertexCount == b.vertexCount &&
+                a.firstIndex == b.firstIndex && a.indexCount == b.indexCount,
+                "cooked submesh ranges differ from the import");
+        Require(SameMaterial(a.material, b.material), "cooked submesh material differs from the import");
+    }
+    Require(cooked.directory == imported.directory, "cooked texture directory differs from the import");
+    Require(cooked.sourceFiles == imported.sourceFiles, "cooked dependency list differs from the import");
+    Require(cooked.bounds.min.x == imported.bounds.min.x && cooked.bounds.min.y == imported.bounds.min.y &&
+            cooked.bounds.min.z == imported.bounds.min.z && cooked.bounds.max.x == imported.bounds.max.x &&
+            cooked.bounds.max.y == imported.bounds.max.y && cooked.bounds.max.z == imported.bounds.max.z,
+            "cooked bounds differ from the import");
+
+    Require(cache.Cook(source, false) == SE::MeshCookResult::UpToDate, "current entry was not up to date");
+    Require(cache.Cook(source, true) == SE::MeshCookResult::Cooked, "forced cook did not re-cook");
+
+    {
+        std::ofstream edit(mtl, std::ios::app);
+        edit << "\n# edited\n";
+    }
+    fs::last_write_time(mtl, fs::last_write_time(mtl) + std::chrono::seconds(2));
+    Require(cache.Load(source, cooked, {}, nullptr, &hit) && !hit,
+            "editing a side file did not invalidate the cooked entry");
+
+    fs::resize_file(entry, 100);
+    Require(cache.Load(source, cooked, {}, nullptr, &hit) && !hit, "truncated entry was not re-imported");
+    Require(cache.Load(source, cooked, {}, nullptr, &hit) && hit, "re-imported entry was not stored");
+
+    Require(!cache.Load(source, cooked, [](float) { return false; }),
+            "cancelled cached load unexpectedly succeeded");
+
+    fs::remove(root / "src" / "tiny.obj");
+    fs::remove(mtl);
+    Require(cache.Load(source, cooked, {}, nullptr, &hit) && hit,
+            "cooked entry was not used for a missing source");
+    Require(cooked.subMeshes.size() == 1 && cooked.subMeshes[0].material.albedoPath == "missing_albedo.png",
+            "cooked-only load lost material data");
+    Require(cache.Cook(source, false) == SE::MeshCookResult::Failed, "cooking a missing source succeeded");
+
+    SE::AssetManager assets;
+    assets.CacheMesh(source, std::make_shared<SE::Mesh>());
+    Require(assets.FindMesh(source) != nullptr, "mesh with a missing source was evicted from the asset cache");
+
+    fs::remove_all(root);
 }
 
 static void TestCpuTextureDecode()
@@ -624,6 +719,7 @@ static void RunTests()
     TestCpuMeshImport();
     TestGltfPackedMRDetection();
     TestGltfSpecGlossDetection();
+    TestMeshCache();
     TestCpuTextureDecode();
     std::cout << "LevelAssetTests: all tests passed\n";
 }

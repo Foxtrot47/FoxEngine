@@ -14,6 +14,7 @@ find_package(assimp CONFIG REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(zstd CONFIG REQUIRED)
 
 target_link_libraries(FoxEngine PUBLIC
     d3d11.lib
@@ -29,6 +30,8 @@ target_link_libraries(FoxEngine PUBLIC
     debug     ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/lib/ffx_backend_dx11_x64d.lib
     optimized ${CMAKE_SOURCE_DIR}/ThirdParty/fsr3/lib/ffx_backend_dx11_x64.lib
 )
+
+target_link_libraries(FoxEngine PRIVATE zstd::libzstd)
 
 target_compile_definitions(FoxEngine PUBLIC
     UNICODE

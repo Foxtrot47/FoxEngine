@@ -63,8 +63,8 @@ void MeshAddOperation::Prepare()
     bool ok = false;
     try
     {
-        ok = Mesh::Import(m_path.c_str(), m_meshSource,
-                          [this](float) { return !m_cancelled.load(); }, &error);
+        ok = m_meshCache.Load(m_path, m_meshSource,
+                              [this](float) { return !m_cancelled.load(); }, &error);
     }
     catch (const std::exception& exception) { error = exception.what(); }
     if (!ok || m_cancelled.load())

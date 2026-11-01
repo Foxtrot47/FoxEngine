@@ -46,14 +46,19 @@ struct SubMeshInfo
 
 struct MeshSubMeshSource
 {
-    std::vector<MeshVertex> vertices;
-    std::vector<uint32_t> indices;
+    uint32_t firstVertex = 0;   // into MeshSourceData::vertices
+    uint32_t vertexCount = 0;
+    uint32_t firstIndex  = 0;   // into MeshSourceData::indices; index values are submesh-local
+    uint32_t indexCount  = 0;
     SubMeshInfo material;
 };
 
 struct MeshSourceData
 {
+    std::vector<MeshVertex> vertices;
+    std::vector<uint32_t> indices;
     std::vector<MeshSubMeshSource> subMeshes;
+    std::vector<std::string> sourceFiles; // every file the importer read (normalized, sorted, unique); cache invalidation inputs
     std::string directory;
     AABB bounds;
 };
@@ -64,9 +69,13 @@ public:
     // Called periodically during import with normalized progress. Return false to cancel.
     using ImportProgressCallback = std::function<bool(float)>;
 
+    // Bump `k_meshCacheVersion` (`MeshCache.cpp`) whenever this code changes import
+    // output; Assimp upgrades are detected by the cache itself.
     static bool Import(const char* path, MeshSourceData& output,
                        const ImportProgressCallback& progress = {},
                        std::string* error = nullptr);
+    // Directory part of `path` including the trailing separator, or "" if none.
+    static std::string SourceDirectory(const std::string& path);
     bool Upload(ID3D11Device* device, MeshSourceData&& source);
     void Draw(ID3D11DeviceContext* ctx) const;
     void DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const;

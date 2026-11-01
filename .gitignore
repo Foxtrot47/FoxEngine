@@ -14,3 +14,4 @@ imgui.ini
 editor.ini
 FoxEngine.log
 ThirdParty/fsr3-dx11/
+Cache/

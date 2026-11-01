@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 #include "Engine/Assets/AssetManager.h"
+#include "Engine/Assets/MeshCache.h"
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Scene/LevelAsset.h"
 #include "Engine/Scene/LevelDependencyPlan.h"
@@ -93,6 +94,7 @@ private:
     std::vector<CpuMesh> m_cpuMeshes;
     std::vector<CpuTexture> m_cpuTextures;
     AssetCacheSnapshot m_cache;
+    MeshCache m_meshCache;
     std::unordered_map<std::string, AssetHandle<Mesh>> m_readyMeshes;
     std::unordered_map<std::wstring, AssetHandle<Texture2D>> m_readyTextures;
     size_t m_meshUploadIndex = 0;

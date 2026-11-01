@@ -139,9 +139,9 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 ### Development Asset Loading
 - Levels and source assets are loaded directly during the current runtime/rendering phase.
 - `LevelLoadOperation` prepares dependencies asynchronously, uploads GPU resources on the main thread, and reuses the in-memory `AssetManager` cache.
-- Assimp remains the development mesh importer for FBX, glTF, and OBJ assets.
-- Do not introduce native cooked asset formats, a disk-backed derived-data cache, incremental cooking/version invalidation, or publish-time asset packaging before the Editor/tooling phase.
-- A cooked pipeline is deferred because it requires editor-facing import workflows and format/version management that are premature for the current project stage.
+- Assimp is the source importer for FBX, glTF, and OBJ assets. `MeshCache` cooks imported meshes to `Cache/Meshes/*.fxmesh` (zstd, 256 KiB blocks) on first load or via `FoxCook` (`Tools/FoxCook`).
+- Cooked entries invalidate when the source or any side file the importer read (`.bin`, `.mtl`, ...) changes, when the Assimp version changes, or when `k_meshCacheVersion` is bumped; a missing source loads its cooked entry.
+- Textures still use offline BC DDS from `Tools/ConvertTextures.ps1`.
 
 ## Current Milestone Roadmap
 
@@ -170,4 +170,3 @@ M63: FSR 3.1 upscaling (vendored prebuilt DX11 SDK in `ThirdParty/fsr3/`; upscal
 - Phase 11: Engine tooling & profiling
 - Phase 12: Scripting (Lua)
 - Phase 13: Editor
-- Cooked asset pipeline and publishing: native runtime formats, disk-backed derived-data cache, incremental recooking/version invalidation, and final asset packaging (implement with the Editor/tooling phase)

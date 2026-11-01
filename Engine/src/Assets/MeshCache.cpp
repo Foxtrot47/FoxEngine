@@ -1,0 +1,676 @@
+#include "Engine/Assets/MeshCache.h"
+#include "Engine/Core/Logger.h"
+
+#include <windows.h>
+#include <zstd.h>
+#include <assimp/version.h>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <memory>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace SE {
+namespace {
+
+namespace fs = std::filesystem;
+using Clock = std::chrono::steady_clock;
+
+constexpr uint32_t k_meshCacheVersion = 2;
+constexpr uint32_t k_blockSize = 256 * 1024;
+constexpr int k_compressionLevel = 3;
+constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
+constexpr char k_magic[4] = { 'F', 'X', 'M', 'C' };
+
+static_assert(sizeof(MeshVertex) == 56, "MeshVertex layout is part of the .fxmesh format");
+
+// On-disk layout (little-endian): FileHeader, DependencyRecord[dependencyCount],
+// SubMeshRecord[subMeshCount], uint32_t storedSize[vertexBlockCount + indexBlockCount],
+// string blob, then vertex blocks followed by index blocks. A block whose stored
+// size equals its raw size is stored uncompressed; smaller means zstd.
+struct StringRef { uint32_t offset, length; };
+
+struct FileHeader
+{
+    char magic[4];
+    uint32_t version;
+    uint32_t blockSize;
+    uint32_t importerVersion[4]; // Assimp major, minor, patch, revision
+    uint32_t dependencyCount, subMeshCount;
+    uint32_t vertexCount, indexCount;
+    uint32_t vertexBlockCount, indexBlockCount;
+    uint32_t stringBytes;
+    StringRef sourceKey;
+    float boundsMin[3], boundsMax[3];
+    uint64_t payloadBytes;
+};
+
+struct DependencyRecord
+{
+    StringRef path;
+    uint64_t size;
+    int64_t writeTime; // file_time_type::time_since_epoch().count()
+};
+
+struct SubMeshRecord
+{
+    uint32_t firstVertex, vertexCount, firstIndex, indexCount;
+    StringRef albedo, normal, roughness, emissive;
+    float alphaCutoff, roughnessFactor, glossinessFactor;
+    uint8_t alphaMode, workflow, pad[2];
+};
+
+static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
+static_assert(sizeof(FileHeader) == 96, ".fxmesh FileHeader size");
+static_assert(sizeof(DependencyRecord) == 24, ".fxmesh DependencyRecord size");
+static_assert(sizeof(SubMeshRecord) == 64, ".fxmesh SubMeshRecord size");
+
+enum class ReadResult { Hit, Miss, Cancelled };
+
+struct FileHandle
+{
+    HANDLE handle;
+
+    explicit FileHandle(HANDLE h) : handle(h) {}
+    ~FileHandle() { Close(); }
+    FileHandle(const FileHandle&) = delete;
+    FileHandle& operator=(const FileHandle&) = delete;
+
+    bool Valid() const { return handle != INVALID_HANDLE_VALUE; }
+    void Close()
+    {
+        if (Valid()) CloseHandle(handle);
+        handle = INVALID_HANDLE_VALUE;
+    }
+};
+
+struct CCtxDeleter { void operator()(ZSTD_CCtx* context) const { ZSTD_freeCCtx(context); } };
+struct DCtxDeleter { void operator()(ZSTD_DCtx* context) const { ZSTD_freeDCtx(context); } };
+using CCtxPtr = std::unique_ptr<ZSTD_CCtx, CCtxDeleter>;
+using DCtxPtr = std::unique_ptr<ZSTD_DCtx, DCtxDeleter>;
+
+std::string Win32Error(const char* operation, const fs::path& path)
+{
+    const DWORD code = GetLastError();
+    return std::string(operation) + " '" + path.generic_string() + "' failed (Win32 error " +
+           std::to_string(code) + ")";
+}
+
+double MillisecondsSince(Clock::time_point start)
+{
+    return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
+
+double Megabytes(uint64_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
+
+uint64_t RawBytes(const MeshSourceData& data)
+{
+    return uint64_t(data.vertices.size()) * sizeof(MeshVertex) +
+           uint64_t(data.indices.size()) * sizeof(uint32_t);
+}
+
+// The Assimp runtime that produced an entry; an upgrade can change import output.
+void ImporterVersion(uint32_t (&out)[4])
+{
+    out[0] = aiGetVersionMajor();
+    out[1] = aiGetVersionMinor();
+    out[2] = aiGetVersionPatch();
+    out[3] = aiGetVersionRevision();
+}
+
+std::string CacheKey(const std::string& path)
+{
+    std::string key = fs::path(path).lexically_normal().generic_string();
+    for (char& c : key)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return key;
+}
+
+uint64_t Fnv1a64(const std::string& text)
+{
+    uint64_t hash = 14695981039346656037ull;
+    for (const unsigned char c : text)
+    {
+        hash ^= c;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+uint32_t BlockCount(uint64_t streamBytes)
+{
+    return static_cast<uint32_t>((streamBytes + k_blockSize - 1) / k_blockSize);
+}
+
+// Maps a global block index (vertex blocks first, then index blocks) to its
+// stream and raw byte range.
+struct BlockRange
+{
+    bool index;
+    uint64_t offset;
+    size_t raw;
+};
+
+BlockRange LocateBlock(size_t block, uint64_t vertexBytes, uint32_t vertexBlocks, uint64_t indexBytes)
+{
+    const bool index = block >= vertexBlocks;
+    const uint64_t offset = uint64_t(index ? block - vertexBlocks : block) * k_blockSize;
+    const uint64_t streamBytes = index ? indexBytes : vertexBytes;
+    return { index, offset, static_cast<size_t>((std::min)(uint64_t(k_blockSize), streamBytes - offset)) };
+}
+
+// Runs task(context, i) for every i in [0, count) on up to hardware_concurrency()
+// threads; each worker owns one context from makeContext(). Returns false as soon
+// as any task fails (remaining indices are skipped).
+template <typename MakeContext, typename Task>
+bool ParallelFor(size_t count, const MakeContext& makeContext, const Task& task)
+{
+    std::atomic<size_t> cursor { 0 };
+    std::atomic<bool> failed { false };
+    const auto work = [&] {
+        const auto context = makeContext();
+        for (;;)
+        {
+            const size_t index = cursor.fetch_add(1);
+            if (index >= count || failed.load()) return;
+            if (!task(context.get(), index)) failed.store(true);
+        }
+    };
+
+    const size_t hardware = (std::max)(1u, std::thread::hardware_concurrency());
+    const size_t workerCount = (std::min)(hardware, count);
+    if (workerCount <= 1)
+    {
+        if (count > 0) work();
+        return !failed.load();
+    }
+    std::vector<std::thread> workers;
+    workers.reserve(workerCount);
+    for (size_t w = 0; w < workerCount; ++w) workers.emplace_back(work);
+    for (auto& worker : workers) worker.join();
+    return !failed.load();
+}
+
+bool WriteAll(HANDLE file, const uint8_t* data, uint64_t bytes)
+{
+    while (bytes > 0)
+    {
+        const DWORD chunk = static_cast<DWORD>((std::min)(bytes, k_ioChunk));
+        DWORD written = 0;
+        if (!WriteFile(file, data, chunk, &written, nullptr) || written != chunk) return false;
+        data += chunk;
+        bytes -= chunk;
+    }
+    return true;
+}
+
+bool ReadAll(HANDLE file, uint8_t* data, uint64_t bytes)
+{
+    while (bytes > 0)
+    {
+        const DWORD chunk = static_cast<DWORD>((std::min)(bytes, k_ioChunk));
+        DWORD read = 0;
+        if (!ReadFile(file, data, chunk, &read, nullptr) || read != chunk) return false;
+        data += chunk;
+        bytes -= chunk;
+    }
+    return true;
+}
+
+template <typename T>
+void Append(std::vector<uint8_t>& out, const T* items, size_t count)
+{
+    const size_t bytes = sizeof(T) * count;
+    if (bytes == 0) return;
+    const size_t at = out.size();
+    out.resize(at + bytes);
+    std::memcpy(out.data() + at, items, bytes);
+}
+
+bool WriteEntry(const std::string& entry, const std::string& key, const MeshSourceData& data,
+                std::string& error, uint64_t& fileBytes)
+{
+    if (data.sourceFiles.empty())
+    {
+        error = "no source files recorded";
+        return false;
+    }
+
+    const fs::path entryPath(entry);
+    if (entryPath.has_parent_path())
+    {
+        std::error_code ec;
+        fs::create_directories(entryPath.parent_path(), ec);
+        if (ec)
+        {
+            error = "create directory '" + entryPath.parent_path().generic_string() + "': " + ec.message();
+            return false;
+        }
+    }
+
+    std::string strings;
+    const auto addString = [&strings](const std::string& text) {
+        const StringRef ref { static_cast<uint32_t>(strings.size()), static_cast<uint32_t>(text.size()) };
+        strings += text;
+        return ref;
+    };
+
+    FileHeader header {};
+    std::memcpy(header.magic, k_magic, sizeof(k_magic));
+    header.version = k_meshCacheVersion;
+    header.blockSize = k_blockSize;
+    ImporterVersion(header.importerVersion);
+    header.dependencyCount = static_cast<uint32_t>(data.sourceFiles.size());
+    header.subMeshCount = static_cast<uint32_t>(data.subMeshes.size());
+    header.vertexCount = static_cast<uint32_t>(data.vertices.size());
+    header.indexCount = static_cast<uint32_t>(data.indices.size());
+    const uint64_t vertexBytes = uint64_t(header.vertexCount) * sizeof(MeshVertex);
+    const uint64_t indexBytes = uint64_t(header.indexCount) * sizeof(uint32_t);
+    header.vertexBlockCount = BlockCount(vertexBytes);
+    header.indexBlockCount = BlockCount(indexBytes);
+    header.sourceKey = addString(key);
+    header.boundsMin[0] = data.bounds.min.x;
+    header.boundsMin[1] = data.bounds.min.y;
+    header.boundsMin[2] = data.bounds.min.z;
+    header.boundsMax[0] = data.bounds.max.x;
+    header.boundsMax[1] = data.bounds.max.y;
+    header.boundsMax[2] = data.bounds.max.z;
+
+    std::vector<DependencyRecord> dependencies;
+    dependencies.reserve(data.sourceFiles.size());
+    for (const std::string& file : data.sourceFiles)
+    {
+        std::error_code ec;
+        const fs::directory_entry source(file, ec);
+        DependencyRecord record {};
+        record.path = addString(file);
+        if (!ec) record.size = source.file_size(ec);
+        if (!ec) record.writeTime = source.last_write_time(ec).time_since_epoch().count();
+        if (ec)
+        {
+            error = "stat '" + file + "': " + ec.message();
+            return false;
+        }
+        dependencies.push_back(record);
+    }
+
+    std::vector<SubMeshRecord> subMeshes;
+    subMeshes.reserve(data.subMeshes.size());
+    for (const MeshSubMeshSource& sub : data.subMeshes)
+    {
+        SubMeshRecord record {};
+        record.firstVertex = sub.firstVertex;
+        record.vertexCount = sub.vertexCount;
+        record.firstIndex = sub.firstIndex;
+        record.indexCount = sub.indexCount;
+        record.albedo = addString(sub.material.albedoPath);
+        record.normal = addString(sub.material.normalPath);
+        record.roughness = addString(sub.material.roughnessPath);
+        record.emissive = addString(sub.material.emissivePath);
+        record.alphaCutoff = sub.material.alphaCutoff;
+        record.roughnessFactor = sub.material.roughnessFactor;
+        record.glossinessFactor = sub.material.glossinessFactor;
+        record.alphaMode = static_cast<uint8_t>(sub.material.alphaMode);
+        record.workflow = static_cast<uint8_t>(sub.material.workflow);
+        subMeshes.push_back(record);
+    }
+    header.stringBytes = static_cast<uint32_t>(strings.size());
+
+    // Compress each block into its own fixed-size slot, then compact.
+    const size_t blockCount = size_t(header.vertexBlockCount) + header.indexBlockCount;
+    const size_t slotBytes = ZSTD_compressBound(k_blockSize);
+    std::unique_ptr<uint8_t[]> payload(new uint8_t[blockCount * slotBytes]);
+    std::vector<uint32_t> storedSizes(blockCount);
+    const auto* vertexBase = reinterpret_cast<const uint8_t*>(data.vertices.data());
+    const auto* indexBase = reinterpret_cast<const uint8_t*>(data.indices.data());
+    const bool compressed = ParallelFor(blockCount,
+        [] { return CCtxPtr(ZSTD_createCCtx()); },
+        [&](ZSTD_CCtx* context, size_t block) {
+            if (!context) return false;
+            const BlockRange range = LocateBlock(block, vertexBytes, header.vertexBlockCount, indexBytes);
+            const uint8_t* src = (range.index ? indexBase : vertexBase) + range.offset;
+            uint8_t* dst = payload.get() + block * slotBytes;
+            const size_t result = ZSTD_compressCCtx(context, dst, slotBytes, src, range.raw, k_compressionLevel);
+            if (ZSTD_isError(result) || result >= range.raw)
+            {
+                std::memcpy(dst, src, range.raw);
+                storedSizes[block] = static_cast<uint32_t>(range.raw);
+            }
+            else
+                storedSizes[block] = static_cast<uint32_t>(result);
+            return true;
+        });
+    if (!compressed)
+    {
+        error = "zstd context allocation failed";
+        return false;
+    }
+
+    uint64_t payloadBytes = 0;
+    for (size_t block = 0; block < blockCount; ++block)
+    {
+        std::memmove(payload.get() + payloadBytes, payload.get() + block * slotBytes, storedSizes[block]);
+        payloadBytes += storedSizes[block];
+    }
+    header.payloadBytes = payloadBytes;
+
+    std::vector<uint8_t> meta;
+    meta.reserve(sizeof(FileHeader) + dependencies.size() * sizeof(DependencyRecord) +
+                 subMeshes.size() * sizeof(SubMeshRecord) + storedSizes.size() * sizeof(uint32_t) +
+                 strings.size());
+    Append(meta, &header, 1);
+    Append(meta, dependencies.data(), dependencies.size());
+    Append(meta, subMeshes.data(), subMeshes.size());
+    Append(meta, storedSizes.data(), storedSizes.size());
+    Append(meta, strings.data(), strings.size());
+
+    // Write a uniquely named temp file, then atomically replace the entry so
+    // concurrent readers never observe a partial file.
+    const fs::path tempPath(entryPath.native() + L"." + std::to_wstring(GetCurrentProcessId()) + L"_" +
+                            std::to_wstring(GetCurrentThreadId()) + L".tmp");
+    FileHandle file(CreateFileW(tempPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
+    if (!file.Valid())
+    {
+        error = Win32Error("create", tempPath);
+        return false;
+    }
+    if (!WriteAll(file.handle, meta.data(), meta.size()) ||
+        !WriteAll(file.handle, payload.get(), payloadBytes))
+    {
+        error = Win32Error("write", tempPath);
+        file.Close();
+        DeleteFileW(tempPath.c_str());
+        return false;
+    }
+    file.Close();
+    if (!MoveFileExW(tempPath.c_str(), entryPath.c_str(), MOVEFILE_REPLACE_EXISTING))
+    {
+        error = Win32Error("replace", entryPath);
+        DeleteFileW(tempPath.c_str());
+        return false;
+    }
+    fileBytes = meta.size() + payloadBytes;
+    return true;
+}
+
+// Validates the entry and, when `out` is non-null, decodes it. Miss reasons are
+// empty only when the entry does not exist.
+ReadResult ReadEntry(const std::string& entry, const std::string& key, bool verifySources,
+                     MeshSourceData* out, const Mesh::ImportProgressCallback& progress,
+                     std::string& missReason)
+{
+    missReason.clear();
+    const auto miss = [&missReason](std::string reason) {
+        missReason = std::move(reason);
+        return ReadResult::Miss;
+    };
+
+    FileHandle file(CreateFileW(fs::path(entry).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
+                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+                                nullptr));
+    if (!file.Valid())
+    {
+        const DWORD code = GetLastError();
+        if (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) return ReadResult::Miss;
+        return miss("open failed (Win32 error " + std::to_string(code) + ")");
+    }
+
+    LARGE_INTEGER size {};
+    if (!GetFileSizeEx(file.handle, &size)) return miss("size query failed");
+    const uint64_t fileBytes = static_cast<uint64_t>(size.QuadPart);
+    if (fileBytes < sizeof(FileHeader)) return miss("truncated header");
+
+    FileHeader header;
+    if (!ReadAll(file.handle, reinterpret_cast<uint8_t*>(&header), sizeof(header))) return miss("read failed");
+    if (std::memcmp(header.magic, k_magic, sizeof(k_magic)) != 0) return miss("bad magic");
+    if (header.version != k_meshCacheVersion || header.blockSize != k_blockSize) return miss("format version");
+    uint32_t importerVersion[4];
+    ImporterVersion(importerVersion);
+    if (std::memcmp(header.importerVersion, importerVersion, sizeof(importerVersion)) != 0)
+        return miss("importer version");
+
+    const uint64_t vertexBytes = uint64_t(header.vertexCount) * sizeof(MeshVertex);
+    const uint64_t indexBytes = uint64_t(header.indexCount) * sizeof(uint32_t);
+    if (header.vertexBlockCount != BlockCount(vertexBytes) || header.indexBlockCount != BlockCount(indexBytes))
+        return miss("block count mismatch");
+    const size_t blockCount = size_t(header.vertexBlockCount) + header.indexBlockCount;
+    const uint64_t metaBytes = uint64_t(header.dependencyCount) * sizeof(DependencyRecord) +
+                               uint64_t(header.subMeshCount) * sizeof(SubMeshRecord) +
+                               uint64_t(blockCount) * sizeof(uint32_t) + header.stringBytes;
+    if (header.payloadBytes > fileBytes || sizeof(FileHeader) + metaBytes != fileBytes - header.payloadBytes)
+        return miss("size mismatch");
+
+    std::vector<uint8_t> meta(static_cast<size_t>(metaBytes));
+    if (!ReadAll(file.handle, meta.data(), metaBytes)) return miss("read failed");
+    std::vector<DependencyRecord> dependencies(header.dependencyCount);
+    std::vector<SubMeshRecord> subMeshes(header.subMeshCount);
+    std::vector<uint32_t> storedSizes(blockCount);
+    const uint8_t* cursor = meta.data();
+    const auto take = [&cursor](auto& items) {
+        const size_t bytes = items.size() * sizeof(items[0]);
+        if (bytes > 0) std::memcpy(items.data(), cursor, bytes);
+        cursor += bytes;
+    };
+    take(dependencies);
+    take(subMeshes);
+    take(storedSizes);
+    const char* strings = reinterpret_cast<const char*>(cursor);
+    const auto validRef = [&header](const StringRef& ref) {
+        return ref.offset <= header.stringBytes && ref.length <= header.stringBytes - ref.offset;
+    };
+    const auto text = [strings](const StringRef& ref) { return std::string(strings + ref.offset, ref.length); };
+
+    uint64_t storedTotal = 0;
+    for (size_t block = 0; block < blockCount; ++block)
+    {
+        const size_t raw = LocateBlock(block, vertexBytes, header.vertexBlockCount, indexBytes).raw;
+        if (storedSizes[block] == 0 || storedSizes[block] > raw) return miss("corrupt block table");
+        storedTotal += storedSizes[block];
+    }
+    if (storedTotal != header.payloadBytes) return miss("corrupt block table");
+    if (!validRef(header.sourceKey)) return miss("corrupt string table");
+    for (const DependencyRecord& dependency : dependencies)
+        if (!validRef(dependency.path)) return miss("corrupt string table");
+    for (const SubMeshRecord& sub : subMeshes)
+    {
+        if (!validRef(sub.albedo) || !validRef(sub.normal) || !validRef(sub.roughness) || !validRef(sub.emissive))
+            return miss("corrupt string table");
+        if (uint64_t(sub.firstVertex) + sub.vertexCount > header.vertexCount ||
+            uint64_t(sub.firstIndex) + sub.indexCount > header.indexCount ||
+            sub.alphaMode > 2 || sub.workflow > 2)
+            return miss("corrupt submesh table");
+    }
+    if (text(header.sourceKey) != key) return miss("key collision");
+
+    if (verifySources)
+    {
+        for (const DependencyRecord& dependency : dependencies)
+        {
+            const std::string path = text(dependency.path);
+            std::error_code ec;
+            const fs::directory_entry source(path, ec);
+            bool fresh = !ec && source.is_regular_file(ec) && !ec;
+            if (fresh)
+            {
+                const auto bytes = source.file_size(ec);
+                fresh = !ec && bytes == dependency.size;
+            }
+            if (fresh)
+            {
+                const auto writeTime = source.last_write_time(ec);
+                fresh = !ec && writeTime.time_since_epoch().count() == dependency.writeTime;
+            }
+            if (!fresh) return miss("source changed: " + path);
+        }
+    }
+
+    if (!out) return ReadResult::Hit;
+
+    if (progress && !progress(0.0f)) return ReadResult::Cancelled;
+    std::unique_ptr<uint8_t[]> payload(new uint8_t[static_cast<size_t>(header.payloadBytes)]);
+    for (uint64_t done = 0; done < header.payloadBytes;)
+    {
+        const uint64_t chunk = (std::min)(k_ioChunk, header.payloadBytes - done);
+        if (!ReadAll(file.handle, payload.get() + done, chunk)) return miss("read failed");
+        done += chunk;
+        if (progress && !progress(0.5f * static_cast<float>(done) / static_cast<float>(header.payloadBytes)))
+            return ReadResult::Cancelled;
+    }
+    file.Close();
+
+    *out = {};
+    out->subMeshes.reserve(subMeshes.size());
+    for (const SubMeshRecord& record : subMeshes)
+    {
+        MeshSubMeshSource sub;
+        sub.firstVertex = record.firstVertex;
+        sub.vertexCount = record.vertexCount;
+        sub.firstIndex = record.firstIndex;
+        sub.indexCount = record.indexCount;
+        sub.material.albedoPath = text(record.albedo);
+        sub.material.normalPath = text(record.normal);
+        sub.material.roughnessPath = text(record.roughness);
+        sub.material.emissivePath = text(record.emissive);
+        sub.material.alphaMode = static_cast<AlphaMode>(record.alphaMode);
+        sub.material.alphaCutoff = record.alphaCutoff;
+        sub.material.workflow = static_cast<MaterialWorkflow>(record.workflow);
+        sub.material.roughnessFactor = record.roughnessFactor;
+        sub.material.glossinessFactor = record.glossinessFactor;
+        out->subMeshes.push_back(std::move(sub));
+    }
+    out->sourceFiles.reserve(dependencies.size());
+    for (const DependencyRecord& dependency : dependencies)
+        out->sourceFiles.push_back(text(dependency.path));
+    out->bounds.min = { header.boundsMin[0], header.boundsMin[1], header.boundsMin[2] };
+    out->bounds.max = { header.boundsMax[0], header.boundsMax[1], header.boundsMax[2] };
+    out->vertices.resize(header.vertexCount);
+    out->indices.resize(header.indexCount);
+
+    std::vector<uint64_t> storedOffsets(blockCount);
+    for (size_t block = 0, offset = 0; block < blockCount; offset += storedSizes[block], ++block)
+        storedOffsets[block] = offset;
+    auto* vertexBase = reinterpret_cast<uint8_t*>(out->vertices.data());
+    auto* indexBase = reinterpret_cast<uint8_t*>(out->indices.data());
+    const bool decoded = ParallelFor(blockCount,
+        [] { return DCtxPtr(ZSTD_createDCtx()); },
+        [&](ZSTD_DCtx* context, size_t block) {
+            const BlockRange range = LocateBlock(block, vertexBytes, header.vertexBlockCount, indexBytes);
+            uint8_t* dst = (range.index ? indexBase : vertexBase) + range.offset;
+            const uint8_t* src = payload.get() + storedOffsets[block];
+            if (storedSizes[block] == range.raw)
+            {
+                std::memcpy(dst, src, range.raw);
+                return true;
+            }
+            return context && ZSTD_decompressDCtx(context, dst, range.raw, src, storedSizes[block]) == range.raw;
+        });
+    if (!decoded)
+    {
+        *out = {};
+        return miss("corrupt block");
+    }
+
+    if (progress && !progress(1.0f)) return ReadResult::Cancelled;
+    return ReadResult::Hit;
+}
+
+} // namespace
+
+MeshCache::MeshCache(std::string directory) : m_directory(std::move(directory)) {}
+
+std::string MeshCache::EntryPath(const std::string& sourcePath) const
+{
+    char hash[17];
+    std::snprintf(hash, sizeof(hash), "%016llx", static_cast<unsigned long long>(Fnv1a64(CacheKey(sourcePath))));
+    const std::string name = fs::path(sourcePath).stem().string() + "-" + hash + ".fxmesh";
+    return (fs::path(m_directory) / name).generic_string();
+}
+
+bool MeshCache::Load(const std::string& sourcePath, MeshSourceData& output,
+                     const Mesh::ImportProgressCallback& progress,
+                     std::string* error, bool* cacheHit) const
+{
+    output = {};
+    if (cacheHit) *cacheHit = false;
+    std::error_code ec;
+    const bool sourceExists = fs::is_regular_file(sourcePath, ec);
+    const std::string entry = EntryPath(sourcePath);
+    const std::string key = CacheKey(sourcePath);
+
+    const auto readStart = Clock::now();
+    std::string reason;
+    const ReadResult read = ReadEntry(entry, key, sourceExists, &output, progress, reason);
+    if (read == ReadResult::Cancelled)
+        return false;
+    if (read == ReadResult::Hit)
+    {
+        output.directory = Mesh::SourceDirectory(sourcePath);
+        if (!sourceExists)
+            SE_LOG_INFO("MeshCache: source '%s' missing; using cooked entry", sourcePath.c_str());
+        SE_LOG_INFO("MeshCache: hit '%s' (%zu sub-meshes, %.1f MB, %.1f ms)", sourcePath.c_str(),
+                    output.subMeshes.size(), Megabytes(RawBytes(output)), MillisecondsSince(readStart));
+        if (cacheHit) *cacheHit = true;
+        return true;
+    }
+    if (reason.empty())
+        SE_LOG_INFO("MeshCache: miss '%s' (no entry); importing", sourcePath.c_str());
+    else if (reason == "format version" || reason == "importer version" ||
+             reason.rfind("source changed", 0) == 0)
+        SE_LOG_INFO("MeshCache: stale entry for '%s' (%s); importing", sourcePath.c_str(), reason.c_str());
+    else
+        SE_LOG_WARN("MeshCache: stale entry for '%s' (%s); importing", sourcePath.c_str(), reason.c_str());
+
+    output = {};
+    const auto importStart = Clock::now();
+    if (!Mesh::Import(sourcePath.c_str(), output, progress, error))
+        return false;
+    const double importMs = MillisecondsSince(importStart);
+
+    const auto storeStart = Clock::now();
+    std::string storeError;
+    uint64_t storedBytes = 0;
+    if (!WriteEntry(entry, key, output, storeError, storedBytes))
+        SE_LOG_WARN("MeshCache: could not store '%s': %s", sourcePath.c_str(), storeError.c_str());
+    else
+        SE_LOG_INFO("MeshCache: cooked '%s' -> '%s' (import %.1f ms, store %.1f ms, %.1f MB -> %.1f MB)",
+                    sourcePath.c_str(), entry.c_str(), importMs, MillisecondsSince(storeStart),
+                    Megabytes(RawBytes(output)), Megabytes(storedBytes));
+    return true;
+}
+
+MeshCookResult MeshCache::Cook(const std::string& sourcePath, bool force, std::string* error) const
+{
+    std::error_code ec;
+    if (!fs::is_regular_file(sourcePath, ec))
+    {
+        if (error) *error = "source file not found: " + sourcePath;
+        return MeshCookResult::Failed;
+    }
+
+    const std::string entry = EntryPath(sourcePath);
+    const std::string key = CacheKey(sourcePath);
+    std::string reason;
+    if (!force && ReadEntry(entry, key, true, nullptr, {}, reason) == ReadResult::Hit)
+        return MeshCookResult::UpToDate;
+
+    MeshSourceData data;
+    if (!Mesh::Import(sourcePath.c_str(), data, {}, error))
+        return MeshCookResult::Failed;
+    std::string storeError;
+    uint64_t storedBytes = 0;
+    if (!WriteEntry(entry, key, data, storeError, storedBytes))
+    {
+        if (error) *error = storeError;
+        return MeshCookResult::Failed;
+    }
+    return MeshCookResult::Cooked;
+}
+
+} // namespace SE
