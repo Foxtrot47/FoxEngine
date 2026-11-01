@@ -35,6 +35,10 @@ function Get-DdsFormat($filename) {
     $ext = [System.IO.Path]::GetExtension($filename).ToLower()
     if ($ext -eq ".exr" -or $ext -eq ".hdr") { return "BC6H_UF16" }
 
+    # Color maps stay RGBA even when the name contains a channel keyword
+    # (e.g. tex_Metal_galv_1_Alb, tex_Bld_Spectator_Alb).
+    if ($name -match "basecolor|albedo|diffuse|_alb[a-z]?$") { return "BC3_UNORM" }
+
     # Normal maps → BC3_UNORM (preserves XY quality better than BC5 for our pipeline)
     if ($name -match "normal|_nrm|_n$") { return "BC3_UNORM" }
 
@@ -70,7 +74,8 @@ $skipped = 0
 foreach ($tex in $textures) {
     # Compute relative path from source root
     $relativePath = $tex.FullName.Substring($sourceFullPath.Path.Length + 1)
-    $outDir = Join-Path $outputFullPath (Split-Path $relativePath -Parent)
+    # No trailing '\': it would escape the closing quote in the texconv command line.
+    $outDir = (Join-Path $outputFullPath (Split-Path $relativePath -Parent)).TrimEnd('\')
 
     $ddsName = [System.IO.Path]::GetFileNameWithoutExtension($tex.Name) + ".dds"
     $ddsPath = Join-Path $outDir $ddsName
