@@ -11,14 +11,28 @@ namespace {
 
 std::wstring Wide(const std::string& path) { return { path.begin(), path.end() }; }
 
-std::string StemDDS(const std::string& raw)
+std::string Slashed(const std::string& raw)
 {
     std::string p = raw;
     std::replace(p.begin(), p.end(), '\\', '/');
+    return p;
+}
+
+std::string StemDDS(const std::string& raw)
+{
+    const std::string p = Slashed(raw);
     const size_t slash = p.rfind('/');
     std::string name = slash == std::string::npos ? p : p.substr(slash + 1);
     const size_t dot = name.rfind('.');
     return (dot == std::string::npos ? name : name.substr(0, dot)) + ".dds";
+}
+
+// Keeps the authored folder (e.g. glTF "textures_png/a.png" -> "textures_png/a.dds").
+std::string RelativeDDS(const std::string& raw)
+{
+    const std::string p = Slashed(raw);
+    const size_t slash = p.rfind('/');
+    return (slash == std::string::npos ? std::string() : p.substr(0, slash + 1)) + StemDDS(p);
 }
 
 std::string BaseName(const std::string& raw)
@@ -39,15 +53,20 @@ AssetHandle<Texture2D> FindCachedTexture(AssetManager& assets, const std::string
 
 std::string MaterialTexturePath(const std::string& directory, const std::string& raw)
 {
+    // Authored relative paths come first after the Textures/ convention: glTF
+    // URIs are relative to the mesh file. The fallback names the expected DDS.
+    const std::string fallback = LevelDependencyPlan::NormalizePath(directory + StemDDS(raw));
     const std::string candidates[] = {
         LevelDependencyPlan::NormalizePath(directory + "Textures/" + StemDDS(raw)),
-        LevelDependencyPlan::NormalizePath(directory + StemDDS(raw)),
+        LevelDependencyPlan::NormalizePath(directory + RelativeDDS(raw)),
+        fallback,
+        LevelDependencyPlan::NormalizePath(directory + Slashed(raw)),
         LevelDependencyPlan::NormalizePath(directory + BaseName(raw)),
     };
     std::error_code error;
     for (const auto& candidate : candidates)
-        if (std::filesystem::exists(candidate, error)) return candidate;
-    return candidates[1];
+        if (!candidate.empty() && std::filesystem::exists(candidate, error)) return candidate;
+    return fallback;
 }
 
 std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
