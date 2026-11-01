@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include "Engine/Assets/AssetManager.h"
+#include "Engine/Assets/MeshCache.h"
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Renderer/Mesh.h"
 
@@ -57,6 +58,7 @@ private:
     std::string m_path;
     std::string m_error;
     AssetCacheSnapshot m_cache;
+    MeshCache m_meshCache;
     MeshSourceData m_meshSource;
     bool m_needsMeshUpload = false;
     bool m_meshUploaded = false;

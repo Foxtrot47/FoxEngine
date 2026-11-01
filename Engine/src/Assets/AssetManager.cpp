@@ -3,6 +3,19 @@
 
 namespace SE {
 
+namespace {
+
+// file_time_type::min() for a missing source, so a mesh loaded from its cooked
+// entry stays cached until the source appears.
+std::filesystem::file_time_type SourceWriteTime(const std::string& path)
+{
+    std::error_code ec;
+    const auto writeTime = std::filesystem::last_write_time(path, ec);
+    return ec ? (std::filesystem::file_time_type::min)() : writeTime;
+}
+
+} // namespace
+
 void AssetManager::Init(ID3D11Device* device, ID3D11DeviceContext* ctx)
 {
     m_device  = device;
@@ -18,10 +31,8 @@ AssetHandle<Mesh> AssetManager::FindMesh(const std::string& path)
 
     auto mesh = meshIt->second;
 
-    std::error_code ec;
-    const auto currentWriteTime = std::filesystem::last_write_time(path, ec);
     auto timeIt = m_meshWriteTimes.find(path);
-    if (ec || timeIt == m_meshWriteTimes.end() || timeIt->second != currentWriteTime)
+    if (timeIt == m_meshWriteTimes.end() || timeIt->second != SourceWriteTime(path))
     {
         SE_LOG_INFO("AssetManager: source mesh changed; invalidating '%s'", path.c_str());
         m_meshes.erase(meshIt);
@@ -38,12 +49,7 @@ void AssetManager::CacheMesh(const std::string& path, const AssetHandle<Mesh>& m
         return;
 
     m_meshes[path] = mesh;
-    std::error_code ec;
-    const auto writeTime = std::filesystem::last_write_time(path, ec);
-    if (!ec)
-        m_meshWriteTimes[path] = writeTime;
-    else
-        m_meshWriteTimes.erase(path);
+    m_meshWriteTimes[path] = SourceWriteTime(path);
 }
 
 AssetHandle<Texture2D> AssetManager::FindTexture(const std::wstring& path)

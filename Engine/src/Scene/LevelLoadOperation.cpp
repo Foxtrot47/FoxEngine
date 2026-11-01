@@ -174,7 +174,7 @@ void LevelLoadOperation::Prepare(std::string path)
                 bool ok = false;
                 try
                 {
-                    ok = Mesh::Import(item.path.c_str(), item.source,
+                    ok = m_meshCache.Load(item.path, item.source,
                         [this](float) { return !m_cancelled.load(); }, &error);
                 }
                 catch (const std::exception& exception) { error = exception.what(); }
