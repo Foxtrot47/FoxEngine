@@ -46,8 +46,6 @@ ojson WriteSettings(const SceneDescriptor& desc)
             { "friction", desc.physics.floor.friction },
             { "restitution", desc.physics.floor.restitution }
         } },
-        { "ballSpawn", desc.physics.ballSpawn },
-        { "ballRadius", desc.physics.ballRadius },
         { "characterSpawn", desc.physics.characterSpawn },
         { "gravity", desc.physics.gravity }
     };
@@ -102,7 +100,8 @@ ojson WriteMeshComponents(const SceneDescriptor::MeshEntry& mesh)
         { "mesh", mesh.path },
         { "alphaCutoff", mesh.alphaCutoff },
         { "castShadows", mesh.castShadows },
-        { "receiveShadows", mesh.receiveShadows }
+        { "receiveShadows", mesh.receiveShadows },
+        { "collision", mesh.collision }
     };
     return components;
 }

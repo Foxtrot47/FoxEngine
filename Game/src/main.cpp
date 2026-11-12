@@ -82,7 +82,8 @@ protected:
             return;
         }
 
-        if (GetInput().IsKeyPressed(VK_ESCAPE))
+        const bool startPressed = GetInput().GetGamepad(0).IsButtonPressed(SE::GamepadButton::Start);
+        if (GetInput().IsKeyPressed(VK_ESCAPE) || startPressed)
             m_paused = !m_paused;
 
         float dt     = GetClock().GetDeltaTime();

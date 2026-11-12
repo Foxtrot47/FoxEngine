@@ -37,6 +37,7 @@ AssetHandle<Mesh> AssetManager::FindMesh(const std::string& path)
         SE_LOG_INFO("AssetManager: source mesh changed; invalidating '%s'", path.c_str());
         m_meshes.erase(meshIt);
         m_meshWriteTimes.erase(path);
+        m_colliders.erase(path);
         return {};
     }
 
@@ -63,6 +64,20 @@ void AssetManager::CacheTexture(const std::wstring& path, const AssetHandle<Text
     if (texture) m_textures[path] = texture;
 }
 
+std::shared_ptr<const StaticMeshCollider> AssetManager::FindCollider(const std::string& path)
+{
+    if (!FindMesh(path)) // shares the mesh's staleness check
+        return {};
+    const auto it = m_colliders.find(path);
+    return it != m_colliders.end() ? it->second : nullptr;
+}
+
+void AssetManager::CacheCollider(const std::string& path,
+                                 std::shared_ptr<const StaticMeshCollider> collider)
+{
+    if (collider) m_colliders[path] = std::move(collider);
+}
+
 AssetCacheSnapshot AssetManager::CaptureSnapshot()
 {
     AssetCacheSnapshot snapshot;
@@ -70,7 +85,12 @@ AssetCacheSnapshot AssetManager::CaptureSnapshot()
     meshPaths.reserve(m_meshes.size());
     for (const auto& entry : m_meshes) meshPaths.push_back(entry.first);
     for (const auto& path : meshPaths)
-        if (auto mesh = FindMesh(path)) snapshot.meshes.emplace(path, std::move(mesh));
+        if (auto mesh = FindMesh(path))
+        {
+            snapshot.meshes.emplace(path, std::move(mesh));
+            if (auto collider = m_colliders.find(path); collider != m_colliders.end())
+                snapshot.colliders.emplace(path, collider->second);
+        }
 
     snapshot.textures = m_textures;
     return snapshot;

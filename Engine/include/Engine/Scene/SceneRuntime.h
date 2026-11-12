@@ -30,6 +30,7 @@
 #include "Engine/Renderer/VolumetricFog.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
 #include "Engine/Scene/Camera/CameraController.h"
+#include "Engine/Scene/Entity.h"
 #include "Engine/Scene/LevelLoadOperation.h"
 #include "Engine/Scene/LevelWorld.h"
 #include "Engine/Scene/SceneDescriptor.h"
@@ -62,6 +63,7 @@ public:
         std::vector<ShadowSubMesh>           shadowSubMeshes;
         DirectX::XMFLOAT4X4                  prevWorld = {};
         bool                                 prevWorldValid = false;
+        std::shared_ptr<const StaticMeshCollider> collider; // set when def.collision
     };
 
     struct LoadedObject
@@ -106,7 +108,6 @@ public:
     DirectX::XMMATRIX GetView() const { return m_cachedView; }
     DirectX::XMMATRIX GetProj() const { return m_cachedProj; }
 
-    void ResetBall();
     void ResetTemporalHistory();
     void RefreshParticlePresets();
     static void ApplyParticleDescToSystem(const SceneDescriptor::ParticleEmitterDesc& d,
@@ -163,6 +164,24 @@ public:
                       std::vector<ForwardPipeline::SubMat> materials,
                       const DirectX::XMFLOAT3& position);
 
+    // --- Physics balls (spawned on demand, e.g. by scripts; not saved) ---
+    struct PhysicsBall
+    {
+        EntityID            entity    = 0;
+        TransformComponent* transform = nullptr;
+        RigidBodyComponent* body      = nullptr; // mass/friction/velocity edits reach the simulation
+        BodyHandle          handle    = k_invalidBody;
+        float               radius    = 0.5f;
+        // Previous model matrix for per-object motion vectors (TAA).
+        DirectX::XMFLOAT4X4 prevWorld = {};
+        bool                prevWorldValid = false;
+    };
+    // Adds a dynamic sphere; it lives until RemoveBalls() or the next scene
+    // load. Returns the ball's body, or k_invalidBody on failure.
+    BodyHandle SpawnBall(const DirectX::XMFLOAT3& position, float radius,
+                         const DirectX::XMFLOAT3& velocity = {});
+    void RemoveBalls();
+
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
     AssetHandle<Texture2D> environmentTexture;
@@ -213,17 +232,15 @@ public:
 
     // --- Physics ---
     PhysicsWorld            physicsWorld;
-    TransformComponent*     ballTransform = nullptr;
-    RigidBodyComponent*     ballRigidBody = nullptr;
-    DirectX::XMFLOAT3       ballSpawn     = { 0.0f, 30.0f, 0.0f };
-    float                   ballRadius    = 1.0f;
-    bool                    ballVisible   = true;
+    BodyHandle              floorBody     = k_invalidBody;
     float                   floorY        = 0.0f;
     OBB                     obbFloor;
     CharacterController     cc;
     bool                    gravityEnabled = true;
     PhysicsWorld::RaycastHit rayHit      = {};
     bool                    rayHitValid  = false;
+    // Declared after physicsWorld and world: balls are destroyed first.
+    std::vector<PhysicsBall> balls;
 
     // --- Debug toggles ---
     bool showColliders = false;
@@ -249,6 +266,26 @@ private:
 
     void UpdatePointLightFlicker(float totalTime);
 
+    // One visible level mesh with the data every render phase needs, so the
+    // shadow, reflection and lit passes stay in step instead of duplicating
+    // the iteration.
+    struct MeshInstance
+    {
+        const Mesh*        mesh              = nullptr;
+        DirectX::XMMATRIX  model             = {};
+        DirectX::XMMATRIX  prevModel         = {};
+        const std::vector<ForwardPipeline::SubMat>* materials = nullptr;
+        // Shadow inputs from BuildShadowSubMeshes.
+        const std::vector<ShadowSubMesh>*   shadowSubMeshes  = nullptr;
+        bool               castsShadows      = true;
+    };
+    template <typename Fn> void ForEachMeshInstance(Fn&& fn) const;
+
+    // Per-submesh shadow inputs: skips transparent materials and supplies
+    // alpha-test maps for cutouts.
+    static std::vector<ShadowSubMesh> BuildShadowSubMeshes(
+        const std::vector<ForwardPipeline::SubMat>& materials);
+
     // Render phases
     int  CountPointShadowCasters() const;
     void RenderShadowMaps(ID3D11DeviceContext* ctx);
@@ -260,6 +297,9 @@ private:
                            ID3D11ShaderResourceView* irradianceSRV,
                            ID3D11ShaderResourceView* specularSRV,
                            ID3D11ShaderResourceView* brdfLutSRV);
+    void SubmitMeshInstances(ID3D11DeviceContext* ctx);
+    void DrawBalls(ID3D11DeviceContext* ctx);
+    void RecordPrevTransforms();
     void RenderDebugShapes(ID3D11DeviceContext* ctx);
     void RenderParticles(ID3D11DeviceContext* ctx);
 
@@ -299,8 +339,6 @@ private:
     DirectX::XMMATRIX m_cachedView           = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX m_cachedProj           = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX m_cachedProjNoJitter   = DirectX::XMMatrixIdentity();
-    DirectX::XMFLOAT4X4 m_prevBallWorld      = {};
-    bool              m_havePrevBallWorld    = false;
 
     LevelLoadOperation m_levelLoad;
     std::string        m_pendingSceneLoad;

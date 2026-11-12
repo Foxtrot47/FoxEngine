@@ -147,9 +147,10 @@ void DrawRaycastReadout(SE::SceneRuntime& scene)
     if (scene.rayHitValid)
     {
         const auto& hit = scene.rayHit;
-        const char* what =
-            hit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere ? "Sphere" :
-            hit.kind == SE::PhysicsWorld::RaycastHit::Kind::OBB    ? "OBB"    : "Floor";
+        using Kind = SE::PhysicsWorld::RaycastHit::Kind;
+        const char* what = hit.kind == Kind::Sphere ? "Sphere"
+                         : hit.kind == Kind::Box    ? "Box"
+                         : hit.kind == Kind::Convex ? "Convex" : "Mesh";
         ImGui::Text("Hit: %s  t=%.2f", what, hit.t);
         ImGui::Text("pos  (%.1f, %.1f, %.1f)",
             hit.point.x,  hit.point.y,  hit.point.z);
@@ -166,17 +167,18 @@ void DrawWorldPhysicsSection(SE::SceneRuntime& scene)
 {
     if (ImGui::Checkbox("Gravity", &scene.gravityEnabled))
     {
-        scene.ballRigidBody->useGravity = scene.gravityEnabled;
-        scene.cc.gravityEnabled         = scene.gravityEnabled;
+        scene.cc.gravityEnabled = scene.gravityEnabled;
+        for (auto& ball : scene.balls)
+            ball.body->useGravity = scene.gravityEnabled;
     }
     if (ImGui::SliderFloat("Floor Y", &scene.floorY, -50.0f, 50.0f))
     {
-        scene.physicsWorld.Clear();
-        scene.physicsWorld.AddSphere(scene.ballTransform, scene.ballRigidBody,
-                                     scene.ballRadius);
         scene.obbFloor = SE::OBB::FromAABB({ -30.0f, scene.floorY - 0.5f, -30.0f },
                                            {  30.0f, scene.floorY,        30.0f });
-        scene.physicsWorld.AddStaticOBB(scene.obbFloor, 0.6f, 0.4f);
+        const auto& floor = scene.currentDesc.physics.floor;
+        scene.physicsWorld.RemoveBody(scene.floorBody);
+        scene.floorBody = scene.physicsWorld.AddStaticBox(scene.obbFloor, floor.friction,
+                                                          floor.restitution);
     }
     ImGui::Checkbox("Show Colliders", &scene.showColliders);
     ImGui::SameLine();

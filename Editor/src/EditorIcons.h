@@ -13,7 +13,6 @@
 #define ICON_MD_PANORAMA_FISH_EYE "\xEE\x90\x8C" // U+E40C sphere
 #define ICON_MD_CROP_LANDSCAPE    "\xEE\x8F\x85" // U+E3C5 plane
 #define ICON_MD_GRAIN             "\xEE\x8F\xAA" // U+E3EA particle emitter
-#define ICON_MD_LENS              "\xEE\x8F\xBA" // U+E3FA ball
 #define ICON_MD_ADD               "\xEE\x85\x85" // U+E145 plus (add entity)
 #define ICON_MD_VISIBILITY        "\xEE\xA3\xB4" // U+E8F4 eye open
 #define ICON_MD_FOLDER            "\xEE\x8B\x87" // U+E2C7 folder

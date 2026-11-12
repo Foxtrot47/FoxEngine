@@ -15,8 +15,6 @@
         "friction": 0.6,
         "restitution": 0.4
       },
-      "ballSpawn": [0, 30, 0],
-      "ballRadius": 1.0,
       "characterSpawn": [-479, 5, 78],
       "gravity": true
     },

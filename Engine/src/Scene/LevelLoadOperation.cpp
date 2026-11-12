@@ -2,6 +2,7 @@
 #include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/MeshMaterialUtil.h"
 #include "Engine/Scene/SceneLoader.h"
+#include "Engine/Physics/PhysicsWorld.h"
 #include <algorithm>
 #include <filesystem>
 #include <unordered_set>
@@ -46,6 +47,29 @@ ForwardPipeline::SubMat ResolveObjectMaterial(AssetManager& assets,
     if (!mat.metallic) mat.metallic = assets.GetDefaultBlack();
     if (!mat.emissive) mat.emissive = assets.GetDefaultBlack();
     return mat;
+}
+
+// Static collision from the opaque submeshes (cut-out foliage, glass and
+// decals stay non-solid), in the mesh's own space like its render geometry.
+std::shared_ptr<const StaticMeshCollider> BuildCollider(const MeshSourceData& source,
+                                                        std::string* error)
+{
+    std::vector<DirectX::XMFLOAT3> vertices;
+    std::vector<uint32_t> indices;
+    for (const auto& subMesh : source.subMeshes)
+    {
+        if (subMesh.material.alphaMode != AlphaMode::Opaque)
+            continue;
+        const uint32_t base = static_cast<uint32_t>(vertices.size());
+        for (uint32_t i = 0; i < subMesh.vertexCount; ++i)
+        {
+            const MeshVertex& v = source.vertices[subMesh.firstVertex + i];
+            vertices.push_back({ v.x, v.y, v.z });
+        }
+        for (uint32_t i = 0; i < subMesh.indexCount; ++i)
+            indices.push_back(base + source.indices[subMesh.firstIndex + i]);
+    }
+    return PhysicsWorld::BuildStaticMeshCollider(vertices, indices, error);
 }
 
 } // namespace
@@ -136,13 +160,22 @@ void LevelLoadOperation::Prepare(std::string path)
     }
     PublishProgress(0.05f, path);
 
+    // Meshes flagged for collision also need their geometry on the CPU: an
+    // already-cached mesh is re-imported when its collider isn't cached yet.
+    std::unordered_set<std::string> collisionPaths;
+    for (const auto& entry : prepared->descriptor.meshes)
+        if (entry.collision)
+            collisionPaths.insert(LevelDependencyPlan::NormalizePath(entry.path));
     std::vector<LevelDependency> meshDependencies;
     for (const auto& dependency : prepared->plan.dependencies)
         if (dependency.kind == LevelDependencyKind::Mesh) meshDependencies.push_back(dependency);
     std::vector<LevelDependency> meshes;
     for (const auto& dependency : meshDependencies)
     {
-        if (m_cache.meshes.find(dependency.path) == m_cache.meshes.end())
+        const bool meshCached = m_cache.meshes.find(dependency.path) != m_cache.meshes.end();
+        const bool needsCollider = collisionPaths.count(dependency.path) != 0 &&
+                                   m_cache.colliders.find(dependency.path) == m_cache.colliders.end();
+        if (!meshCached || needsCollider)
             meshes.push_back(dependency);
         else
         {
@@ -184,6 +217,20 @@ void LevelLoadOperation::Prepare(std::string path)
                     std::lock_guard failureLock(failureMutex);
                     if (meshFailure.empty()) meshFailure = "Required mesh failed: " + item.path + " (" + error + ")";
                 }
+                if (ok && collisionPaths.count(item.path) != 0)
+                {
+                    std::string colliderError;
+                    item.collider = BuildCollider(item.source, &colliderError);
+                    if (!item.collider)
+                    {
+                        std::lock_guard lock(m_mutex);
+                        m_status.warnings.push_back({ LevelDiagnosticSeverity::Warning, item.path,
+                            "Collision not built: " + colliderError });
+                    }
+                }
+                // A cached mesh was only re-imported for its collider.
+                if (m_cache.meshes.find(item.path) != m_cache.meshes.end())
+                    item.source = {};
                 cpuMeshes[index] = std::move(item);
             }
         });
@@ -328,6 +375,8 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
                 }
                 assets.CacheMesh(cpu.path, mesh);
             }
+            if (cpu.collider)
+                assets.CacheCollider(cpu.path, cpu.collider);
             m_readyMeshes[cpu.path] = std::move(mesh);
         }
         else if (m_textureUploadIndex < m_cpuTextures.size())
@@ -361,6 +410,7 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
 
     m_prepared->meshes.clear();
     m_prepared->materials.clear();
+    m_prepared->colliders.clear();
     for (const auto& descriptorMesh : m_prepared->descriptor.meshes)
     {
         const std::string path = LevelDependencyPlan::NormalizePath(descriptorMesh.path);
@@ -375,6 +425,7 @@ void LevelLoadOperation::PumpUploads(ID3D11Device* device, ID3D11DeviceContext* 
         const auto& mesh = ready->second;
         m_prepared->meshes.push_back(mesh);
         m_prepared->materials.push_back(BuildSubMeshMaterials(assets, *mesh));
+        m_prepared->colliders.push_back(descriptorMesh.collision ? assets.FindCollider(path) : nullptr);
     }
     for (const auto& object : m_prepared->descriptor.objects)
         m_prepared->objectMaterials.push_back(ResolveObjectMaterial(assets, object));

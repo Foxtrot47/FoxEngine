@@ -19,6 +19,7 @@ struct LevelMeshRendererDefinition
     float alphaCutoff = 0.0f;
     bool castShadows = true;
     bool receiveShadows = true;
+    bool collision = false; // static triangle-mesh collider for physics
 };
 
 struct LevelCameraDefinition

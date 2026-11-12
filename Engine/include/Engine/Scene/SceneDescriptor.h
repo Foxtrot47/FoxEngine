@@ -22,6 +22,7 @@ struct SceneDescriptor
         float alphaCutoff = 0.0f; // if > 0, force alpha-test on submeshes with alpha textures
         bool castShadows = true;
         bool receiveShadows = true;
+        bool collision = false; // static triangle collision, built at level load
     };
     std::vector<MeshEntry> meshes;
 
@@ -55,8 +56,6 @@ struct SceneDescriptor
             float restitution = 0.4f;
         };
         FloorDesc floor;
-        std::array<float, 3> ballSpawn      = { 0.0f, 30.0f, 0.0f };
-        float                ballRadius     = 1.0f;
         std::array<float, 3> characterSpawn = { 0.0f, 5.0f, 0.0f };
         bool                 gravity        = true;
     };
