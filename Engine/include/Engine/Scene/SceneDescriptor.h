@@ -66,7 +66,6 @@ struct SceneDescriptor
     struct ToneMappingDesc {
         int   op           = 1; // 0=Reinhard, 1=ACES
         float exposure     = 1.0f;
-        bool  gammaCorrect = false;
     };
     ToneMappingDesc toneMapping;
 

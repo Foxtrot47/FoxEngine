@@ -371,7 +371,7 @@ void ParticleSystem::Render(ID3D11DeviceContext* ctx,
 
     // Texture
     if (m_texture && m_texture->IsValid())
-        m_texture->BindPS(ctx, 0);
+        m_texture->BindPSSrgb(ctx, 0);
     else
         ctx->PSSetShaderResources(0, 1, m_defaultSRV.GetAddressOf());
     ctx->PSSetSamplers(0, 1, m_sampler.GetAddressOf());

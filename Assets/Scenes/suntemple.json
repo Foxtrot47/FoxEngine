@@ -38,8 +38,7 @@
     },
     "toneMapping": {
       "operator": "ACES",
-      "exposure": 1.0499999523162842,
-      "gammaCorrect": false
+      "exposure": 1.0499999523162842
     },
     "colorGrading": {
       "temperature": 0.30000001192092896,

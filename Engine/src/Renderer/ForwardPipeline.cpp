@@ -246,7 +246,7 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     // Bind default black to t7 (metallic = 0 → dielectric). Draw calls with a metallic map override it.
     m_defaultBlack->BindPS(ctx, 7);
     // Bind default black to t9 (emissive = 0). Draw calls with an emissive map override it.
-    m_defaultBlack->BindPS(ctx, 9);
+    m_defaultBlack->BindPSSrgb(ctx, 9);
 
     // Default: no point shadow casters; caller overrides with BindPointShadows().
     ForwardShadowCBData defaultShadow = { 0, 0.0f, { 0.0f, 0.0f } };
@@ -439,11 +439,11 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
-    mat.albedo->BindPS(ctx, 0);
+    mat.albedo->BindPSSrgb(ctx, 0);
     mat.roughness->BindPS(ctx, 1);
     mat.normal->BindPS(ctx, 2);
     (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
-    (mat.emissive ? mat.emissive : m_defaultBlack)->BindPS(ctx, 9);
+    (mat.emissive ? mat.emissive : m_defaultBlack)->BindPSSrgb(ctx, 9);
 }
 
 void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
@@ -511,13 +511,15 @@ void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
 
     SetMaterialParams(ctx, tint, 0.7f, 0.0f);
 
-    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
     UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
 
     m_sphereVB.Bind(ctx);
+    m_defaultBlack->BindPS(ctx, 7);
+    m_defaultBlack->BindPSSrgb(ctx, 9);
     m_sphereIB.Bind(ctx);
     ctx->DrawIndexed(m_sphereIB.GetCount(), 0, 0);
 }
@@ -533,7 +535,7 @@ void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
-    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
@@ -542,6 +544,8 @@ void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireSphereVB.Bind(ctx);
     m_wireSphereIB.Bind(ctx);
+    m_defaultBlack->BindPS(ctx, 7);
+    m_defaultBlack->BindPSSrgb(ctx, 9);
     ctx->DrawIndexed(m_wireSphereIB.GetCount(), 0, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
@@ -557,7 +561,7 @@ void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
-    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
@@ -585,7 +589,7 @@ void ForwardPipeline::DrawWireBox(ID3D11DeviceContext* ctx,
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
-    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
@@ -609,7 +613,7 @@ void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
-    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
@@ -643,7 +647,7 @@ void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
-    m_defaultWhite->BindPS(ctx, 0);
+    m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
 
@@ -668,11 +672,11 @@ void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
 
     SetMaterialParams(ctx, tint, roughnessScale, metallic, 0.0f, emissiveIntensity, emissiveColor);
 
-    mat.albedo    ? mat.albedo->BindPS(ctx, 0)    : m_defaultWhite->BindPS(ctx, 0);
+    mat.albedo    ? mat.albedo->BindPSSrgb(ctx, 0) : m_defaultWhite->BindPSSrgb(ctx, 0);
     mat.roughness ? mat.roughness->BindPS(ctx, 1) : m_defaultWhite->BindPS(ctx, 1);
     mat.normal    ? mat.normal->BindPS(ctx, 2)    : m_defaultNormal->BindPS(ctx, 2);
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
-    mat.emissive  ? mat.emissive->BindPS(ctx, 9)  : m_defaultBlack->BindPS(ctx, 9);
+    mat.emissive  ? mat.emissive->BindPSSrgb(ctx, 9)  : m_defaultBlack->BindPSSrgb(ctx, 9);
 
     UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
 
@@ -691,11 +695,11 @@ void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
 
     SetMaterialParams(ctx, tint, roughnessScale, metallic, 0.0f, emissiveIntensity, emissiveColor);
 
-    mat.albedo    ? mat.albedo->BindPS(ctx, 0)    : m_defaultWhite->BindPS(ctx, 0);
+    mat.albedo    ? mat.albedo->BindPSSrgb(ctx, 0) : m_defaultWhite->BindPSSrgb(ctx, 0);
     mat.roughness ? mat.roughness->BindPS(ctx, 1) : m_defaultWhite->BindPS(ctx, 1);
     mat.normal    ? mat.normal->BindPS(ctx, 2)    : m_defaultNormal->BindPS(ctx, 2);
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
-    mat.emissive  ? mat.emissive->BindPS(ctx, 9)  : m_defaultBlack->BindPS(ctx, 9);
+    mat.emissive  ? mat.emissive->BindPSSrgb(ctx, 9)  : m_defaultBlack->BindPSSrgb(ctx, 9);
 
     UploadTransformCB(ctx, XMMatrixScaling(halfSizeX, 1.0f, halfSizeZ) * XMMatrixTranslation(center.x, center.y, center.z));
 

@@ -39,7 +39,11 @@ public:
     bool Upload(ID3D11Device* device, const TextureSourceData& source);
     bool CreateFromMemory(ID3D11Device* device, ID3D11DeviceContext* ctx,
                           const uint8_t* rgba, uint32_t width, uint32_t height);
+
+    // Bind the linear interpretation (normal/roughness/metallic/data maps).
     void BindPS(ID3D11DeviceContext* ctx, uint32_t slot) const;
+    // Bind the sRGB interpretation so hardware converts authored colour to linear.
+    void BindPSSrgb(ID3D11DeviceContext* ctx, uint32_t slot) const;
 
     uint32_t GetWidth() const { return m_width; }
     uint32_t GetHeight() const { return m_height; }
@@ -53,6 +57,7 @@ private:
 
     ComPtr<ID3D11Texture2D> m_texture;
     ComPtr<ID3D11ShaderResourceView> m_srv;
+    ComPtr<ID3D11ShaderResourceView> m_srvSrgb;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_hasAlpha = false;

@@ -53,8 +53,7 @@ ojson WriteSettings(const SceneDescriptor& desc)
     };
     settings["toneMapping"] = {
         { "operator", desc.toneMapping.op == 0 ? "Reinhard" : "ACES" },
-        { "exposure", desc.toneMapping.exposure },
-        { "gammaCorrect", desc.toneMapping.gammaCorrect }
+        { "exposure", desc.toneMapping.exposure }
     };
     settings["colorGrading"] = {
         { "temperature", desc.colorGrading.temperature },

@@ -39,8 +39,7 @@
   },
   "toneMapping": {
     "operator": "ACES",
-    "exposure": 1.0,
-    "gammaCorrect": false
+    "exposure": 1.0
   },
   "bloom": {
     "enabled": true,

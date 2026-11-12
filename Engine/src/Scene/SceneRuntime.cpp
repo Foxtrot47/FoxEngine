@@ -357,7 +357,6 @@ void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
     }
     toneMap.op = static_cast<ToneMap::Operator>(desc.toneMapping.op);
     toneMap.exposure = desc.toneMapping.exposure;
-    toneMap.gammaCorrect = desc.toneMapping.gammaCorrect;
     toneMap.temperature = desc.colorGrading.temperature;
     toneMap.tint = desc.colorGrading.tint;
     toneMap.saturation = desc.colorGrading.saturation;
@@ -647,7 +646,6 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     // Post-process
     desc.toneMapping.op = static_cast<int>(toneMap.op);
     desc.toneMapping.exposure = toneMap.exposure;
-    desc.toneMapping.gammaCorrect = toneMap.gammaCorrect;
     desc.colorGrading.temperature = toneMap.temperature;
     desc.colorGrading.tint = toneMap.tint;
     desc.colorGrading.saturation = toneMap.saturation;

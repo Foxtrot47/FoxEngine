@@ -21,7 +21,6 @@ void ToneMap::Apply(ID3D11DeviceContext* ctx,
     CBData cb = {};
     cb.exposure     = exposure;
     cb.op           = static_cast<int>(op);
-    cb.gammaCorrect = gammaCorrect ? 1 : 0;
     cb.saturation   = saturation;
 
     // Temperature/tint to luminance-preserving RGB gains.

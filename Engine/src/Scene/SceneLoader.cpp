@@ -205,7 +205,6 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             out.toneMapping.op = (op == "Reinhard") ? 0 : 1;
         }
         if (tm.contains("exposure"))     out.toneMapping.exposure     = tm["exposure"].get<float>();
-        if (tm.contains("gammaCorrect")) out.toneMapping.gammaCorrect = tm["gammaCorrect"].get<bool>();
     }
 
     // Color grading

@@ -14,7 +14,6 @@ void DrawToneMapSection(SE::SceneRuntime& scene)
     ImGui::RadioButton("Reinhard", &op, 0); ImGui::SameLine();
     ImGui::RadioButton("ACES",     &op, 1);
     scene.toneMap.op = static_cast<SE::ToneMap::Operator>(op);
-    ImGui::Checkbox("Gamma Correct", &scene.toneMap.gammaCorrect);
 }
 
 void DrawColorGradingSection(SE::SceneRuntime& scene)
@@ -199,7 +198,7 @@ void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeig
         { "Materials", "Materials Tint Roughness Metallic", DrawWorldMaterialSection },
         { "Lighting", "Lighting Sun IBL Shadow Debug", DrawWorldLightingSection },
         { "Physics", "Physics Gravity Floor Colliders Raycast", DrawWorldPhysicsSection },
-        { "Tone Mapping", "Tone Mapping Exposure Gamma", DrawToneMapSection },
+        { "Tone Mapping", "Tone Mapping Exposure", DrawToneMapSection },
         { "Color Grading", "Color Grading Temperature Tint Saturation Contrast Vignette", DrawColorGradingSection },
         { "Bloom", "Bloom Intensity Threshold", DrawBloomSection },
         { "SSAO", "SSAO Ambient Occlusion Radius Bias Power", DrawSsaoSection },
