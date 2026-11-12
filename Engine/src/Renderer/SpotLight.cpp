@@ -66,8 +66,18 @@ bool SpotLight::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t reso
         m_inputLayout.GetAddressOf());
     if (FAILED(hr)) { SE_LOG_ERROR("SpotLight: input layout failed"); return false; }
 
+    D3D11_SAMPLER_DESC alphaSamplerDesc = {};
+    alphaSamplerDesc.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    alphaSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.MaxLOD   = D3D11_FLOAT32_MAX;
+    hr = device->CreateSamplerState(&alphaSamplerDesc, m_alphaSampler.GetAddressOf());
+    if (FAILED(hr)) { SE_LOG_ERROR("SpotLight: alpha sampler failed"); return false; }
+
     if (!m_shadowCB.Create(device)) return false;
     if (!m_lightCB.Create(device)) return false;
+    if (!m_materialCB.Create(device)) return false;
 
     SE_LOG_INFO("SpotLight: initialised %ux%u shadow map", resolution, resolution);
     return true;
@@ -117,12 +127,14 @@ void SpotLight::BeginShadowPass(ID3D11DeviceContext* ctx)
     ctx->RSSetState(m_shadowRS.Get());
 
     ctx->VSSetShader(m_shadowPerm->vs.Get(), nullptr, 0);
-    ctx->PSSetShader(nullptr, nullptr, 0);
+    ctx->PSSetShader(m_shadowPerm->ps.Get(), nullptr, 0);
     ctx->IASetInputLayout(m_inputLayout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->PSSetSamplers(0, 1, m_alphaSampler.GetAddressOf());
 }
 
-void SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX model)
+void SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX model,
+                          const std::vector<ShadowSubMesh>& subMeshes)
 {
     ShadowCBData cb;
     XMStoreFloat4x4(&cb.model, model);
@@ -130,7 +142,22 @@ void SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX mo
     m_shadowCB.Update(ctx, cb);
     m_shadowCB.BindVS(ctx, 0);
 
-    mesh.Draw(ctx);
+    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    {
+        if (i < subMeshes.size() && !subMeshes[i].cast)
+            continue;
+
+        ShadowMaterialCBData material = {};
+        if (i < subMeshes.size())
+        {
+            material.alphaCutoff = subMeshes[i].alphaCutoff;
+            ID3D11ShaderResourceView* albedo = subMeshes[i].albedo;
+            ctx->PSSetShaderResources(0, 1, &albedo);
+        }
+        m_materialCB.Update(ctx, material);
+        m_materialCB.BindPS(ctx, 1);
+        mesh.DrawSubMesh(ctx, i);
+    }
 }
 
 void SpotLight::EndShadowPass(ID3D11DeviceContext* ctx)

@@ -9,6 +9,15 @@ cbuffer PointShadowCB : register(b0)
     float  LightFar;
 };
 
+cbuffer ShadowMaterialCB : register(b1)
+{
+    float AlphaCutoff;
+    float3 _pad;
+};
+
+Texture2D    g_albedo      : register(t0);
+SamplerState g_alphaSampler: register(s0);
+
 struct VSIn
 {
     float3 Position  : POSITION;
@@ -22,6 +31,7 @@ struct VSOut
 {
     float4 pos      : SV_POSITION;
     float3 worldPos : TEXCOORD0;
+    float2 uv       : TEXCOORD1;
 };
 
 VSOut VS_Main(VSIn input)
@@ -30,10 +40,13 @@ VSOut VS_Main(VSIn input)
     float4 world = mul(float4(input.Position, 1.0f), World);
     o.worldPos   = world.xyz;
     o.pos        = mul(float4(input.Position, 1.0f), WorldViewProj);
+    o.uv         = input.TexCoord;
     return o;
 }
 
 float PS_Main(VSOut input) : SV_Target0
 {
+    if (AlphaCutoff > 0.0f)
+        clip(g_albedo.SampleLevel(g_alphaSampler, input.uv, 0).a - AlphaCutoff);
     return length(input.worldPos - LightPos) / LightFar;
 }

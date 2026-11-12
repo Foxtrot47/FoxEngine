@@ -104,7 +104,16 @@ bool PointShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t
     rsDesc.DepthClipEnable = TRUE;
     SE_HR(device->CreateRasterizerState(&rsDesc, m_shadowRS.GetAddressOf()));
 
+    D3D11_SAMPLER_DESC alphaSamplerDesc = {};
+    alphaSamplerDesc.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    alphaSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.MaxLOD   = D3D11_FLOAT32_MAX;
+    SE_HR(device->CreateSamplerState(&alphaSamplerDesc, &m_alphaSampler));
+
     if (!m_cb.Create(device)) return false;
+    if (!m_materialCB.Create(device)) return false;
 
     SE_LOG_INFO("PointShadowMap initialised — %ux%u per face", resolution, resolution);
     return true;
@@ -157,6 +166,7 @@ void PointShadowMap::BeginFace(ID3D11DeviceContext* ctx, int face,
     ctx->PSSetShader(m_perm->ps.Get(), nullptr, 0);
     ctx->IASetInputLayout(m_layout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->PSSetSamplers(0, 1, m_alphaSampler.GetAddressOf());
 
     // Cache per-face data used by DrawMesh
     m_lightPos     = lightPos;
@@ -166,7 +176,9 @@ void PointShadowMap::BeginFace(ID3D11DeviceContext* ctx, int face,
     m_faceViewProj = view * proj;
 }
 
-void PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX model)
+void PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
+                              XMMATRIX model,
+                              const std::vector<ShadowSubMesh>& subMeshes)
 {
     CBData cb;
     XMStoreFloat4x4(&cb.worldViewProj, model * m_faceViewProj);
@@ -178,7 +190,21 @@ void PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATR
     m_cb.BindPS(ctx, 0);
 
     for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    {
+        if (i < subMeshes.size() && !subMeshes[i].cast)
+            continue;
+
+        ShadowMaterialCBData material = {};
+        if (i < subMeshes.size())
+        {
+            material.alphaCutoff = subMeshes[i].alphaCutoff;
+            ID3D11ShaderResourceView* albedo = subMeshes[i].albedo;
+            ctx->PSSetShaderResources(0, 1, &albedo);
+        }
+        m_materialCB.Update(ctx, material);
+        m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
+    }
 }
 
 void PointShadowMap::EndFace(ID3D11DeviceContext* ctx)

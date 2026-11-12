@@ -6,6 +6,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/ShadowMaterial.h"
 
 namespace SE {
 
@@ -20,7 +21,8 @@ public:
 
     // Shadow pass: render scene depth from spot light's perspective.
     void BeginShadowPass(ID3D11DeviceContext* ctx);
-    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model);
+    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
+                  const std::vector<ShadowSubMesh>& subMeshes);
     void EndShadowPass(ID3D11DeviceContext* ctx);
 
     // Bind spot light cbuffer (b5) and shadow map SRV (t8) for lit pass.
@@ -65,11 +67,13 @@ private:
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView>   m_dsv;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_srv;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState>    m_shadowRS;
+    Microsoft::WRL::ComPtr<ID3D11SamplerState>       m_alphaSampler;
     Microsoft::WRL::ComPtr<ID3D11InputLayout>       m_inputLayout;
 
     const ShaderPermutation* m_shadowPerm = nullptr;
     ConstantBuffer<ShadowCBData>     m_shadowCB;
     ConstantBuffer<SpotLightCBData>  m_lightCB;
+    ConstantBuffer<ShadowMaterialCBData> m_materialCB;
 
     D3D11_VIEWPORT          m_savedVP  = {};
     ID3D11RenderTargetView* m_savedRTV = nullptr;
