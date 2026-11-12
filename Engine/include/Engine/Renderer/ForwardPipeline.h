@@ -85,9 +85,7 @@ public:
                     const DirectX::XMMATRIX* prevModel = nullptr);
     void Flush(ID3D11DeviceContext* ctx);
 
-    // --- Immediate rendering (legacy) ---
-    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
-                  DirectX::XMMATRIX model, const std::vector<SubMat>& mats);
+    // --- Immediate rendering ---
     void DrawSphere(ID3D11DeviceContext* ctx,
                     DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint);
 

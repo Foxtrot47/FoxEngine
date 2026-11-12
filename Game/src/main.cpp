@@ -106,9 +106,8 @@ protected:
     {
         if (m_initialSceneLoad || m_scene.IsLoading())
         {
-            // BeginFrame clears the MSAA surface, not the swap chain. Resolve it so
-            // the loading UI is drawn over a known background before Present.
-            GetRenderer().ResolveToBackBuffer();
+            // The loading UI draws directly over the cleared back buffer.
+            GetRenderer().BindBackBuffer(GetRenderer().GetContext());
             return;
         }
 

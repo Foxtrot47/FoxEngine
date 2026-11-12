@@ -36,10 +36,9 @@ public:
 protected:
     virtual void OnUpdate() {}
 
-    // Called after scene rendering, before ImGui. Default resolves MSAA → back buffer.
-    // Override to insert post-process passes (resolve MSAA to RT, fullscreen quad, etc.).
-    // Must leave the back buffer bound as the current RTV when done.
-    virtual void OnPostProcess() { m_renderer.ResolveToBackBuffer(); }
+    // Called after scene rendering, before ImGui. Default binds the swap-chain back buffer.
+    // Override to insert post-process passes; must leave the back buffer bound when done.
+    virtual void OnPostProcess() { m_renderer.BindBackBuffer(m_renderer.GetContext()); }
 
 private:
     std::wstring  m_titleBase = L"FoxEngine";
