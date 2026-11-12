@@ -235,6 +235,9 @@ bool SceneRuntime::ImportSceneMeshes(const SceneDescriptor& desc, PreparedLevel&
         if (!pumpMessages())
             return false;
 
+        for (auto& sm : loaded.materials)
+            sm.receiveShadows = meshDesc.receiveShadows;
+
         if (meshDesc.alphaCutoff > 0.0f)
         {
             for (auto& sm : loaded.materials)
@@ -940,6 +943,8 @@ int SceneRuntime::AddLoadedMesh(const std::string& path, AssetHandle<Mesh> mesh,
     entry.materials = std::move(materials);
 
     Entity* entity = world.GetScene().CreateEntity(entry.def.name);
+    for (auto& sm : entry.materials)
+        sm.receiveShadows = entry.def.receiveShadows;
     auto* transform = entity->AddComponent<TransformComponent>();
     transform->position = position;
     entry.transform = transform;
