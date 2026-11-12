@@ -507,7 +507,9 @@ void ForwardPipeline::SetGlobalMaterialParams(DirectX::XMFLOAT3 tint, float roug
 }
 
 void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
-                                  DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint)
+                                  DirectX::XMFLOAT3 position, float radius,
+                                  DirectX::XMFLOAT3 tint,
+                                  const DirectX::XMMATRIX* prevModel)
 {
     using namespace DirectX;
 
@@ -516,12 +518,14 @@ void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
-
-    UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
-
-    m_sphereVB.Bind(ctx);
     m_defaultBlack->BindPS(ctx, 7);
     m_defaultBlack->BindPSSrgb(ctx, 9);
+
+    const XMMATRIX model =
+        XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z);
+    UploadTransformCB(ctx, model, prevModel ? *prevModel : model);
+
+    m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
     ctx->DrawIndexed(m_sphereIB.GetCount(), 0, 0);
 }
@@ -540,14 +544,14 @@ void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
     m_defaultNormal->BindPS(ctx, 2);
+    m_defaultBlack->BindPS(ctx, 7);
+    m_defaultBlack->BindPSSrgb(ctx, 9);
 
     UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
 
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
     m_wireSphereVB.Bind(ctx);
     m_wireSphereIB.Bind(ctx);
-    m_defaultBlack->BindPS(ctx, 7);
-    m_defaultBlack->BindPSSrgb(ctx, 9);
     ctx->DrawIndexed(m_wireSphereIB.GetCount(), 0, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
@@ -668,7 +672,8 @@ void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
                                      DirectX::XMFLOAT3 position, float radius,
                                      const SubMat& mat, float metallic, float roughnessScale,
                                      DirectX::XMFLOAT3 tint, float emissiveIntensity,
-                                     DirectX::XMFLOAT3 emissiveColor)
+                                     DirectX::XMFLOAT3 emissiveColor,
+                                     const DirectX::XMMATRIX* prevModel)
 {
     using namespace DirectX;
 
@@ -680,7 +685,9 @@ void ForwardPipeline::DrawPBRSphere(ID3D11DeviceContext* ctx,
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
     mat.emissive  ? mat.emissive->BindPSSrgb(ctx, 9)  : m_defaultBlack->BindPSSrgb(ctx, 9);
 
-    UploadTransformCB(ctx, XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z));
+    const XMMATRIX model =
+        XMMatrixScaling(radius, radius, radius) * XMMatrixTranslation(position.x, position.y, position.z);
+    UploadTransformCB(ctx, model, prevModel ? *prevModel : model);
 
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);
@@ -691,7 +698,8 @@ void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
                                     DirectX::XMFLOAT3 center, float halfSizeX, float halfSizeZ,
                                     const SubMat& mat, float metallic, float roughnessScale,
                                     DirectX::XMFLOAT3 tint, float emissiveIntensity,
-                                    DirectX::XMFLOAT3 emissiveColor)
+                                    DirectX::XMFLOAT3 emissiveColor,
+                                    const DirectX::XMMATRIX* prevModel)
 {
     using namespace DirectX;
 
@@ -703,7 +711,9 @@ void ForwardPipeline::DrawPBRPlane(ID3D11DeviceContext* ctx,
     mat.metallic  ? mat.metallic->BindPS(ctx, 7)  : m_defaultBlack->BindPS(ctx, 7);
     mat.emissive  ? mat.emissive->BindPSSrgb(ctx, 9)  : m_defaultBlack->BindPSSrgb(ctx, 9);
 
-    UploadTransformCB(ctx, XMMatrixScaling(halfSizeX, 1.0f, halfSizeZ) * XMMatrixTranslation(center.x, center.y, center.z));
+    const XMMATRIX model =
+        XMMatrixScaling(halfSizeX, 1.0f, halfSizeZ) * XMMatrixTranslation(center.x, center.y, center.z);
+    UploadTransformCB(ctx, model, prevModel ? *prevModel : model);
 
     m_planeVB.Bind(ctx);
     m_planeIB.Bind(ctx);
