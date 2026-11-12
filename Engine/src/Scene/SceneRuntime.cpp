@@ -88,6 +88,16 @@ std::vector<ShadowSubMesh> BuildShadowSubMeshes(
     return shadowSubMeshes;
 }
 
+DirectX::XMMATRIX SceneObjectModel(const SceneDescriptor::SceneObject& object)
+{
+    using namespace DirectX;
+    const XMMATRIX translate = XMMatrixTranslation(
+        object.position[0], object.position[1], object.position[2]);
+    if (object.type == SceneDescriptor::SceneObject::Type::Plane)
+        return XMMatrixScaling(object.halfSizeX, 1.0f, object.halfSizeZ) * translate;
+    return XMMatrixScaling(object.radius, object.radius, object.radius) * translate;
+}
+
 } // namespace
 
 SceneRuntime::~SceneRuntime()
@@ -518,6 +528,7 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
     floorY           = newFloorY;
     obbFloor         = newFloor;
     cc               = std::move(newCharacterController);
+    m_havePrevBallWorld = false;
     gravityEnabled   = desc.physics.gravity;
     sceneObjects     = std::move(newSceneObjects);
     particleSystems  = std::move(newParticleSystems);
@@ -929,8 +940,8 @@ int SceneRuntime::DuplicateMesh(int index)
     copy.def.sourceEntityID = 0; // a fresh id is assigned on save
     copy.mesh = source.mesh;
     copy.materials = source.materials;
-
     copy.shadowSubMeshes = source.shadowSubMeshes;
+
     Entity* entity = world.GetScene().CreateEntity(copy.def.name);
     auto* transform = entity->AddComponent<TransformComponent>();
     if (source.transform)
@@ -981,6 +992,7 @@ void SceneRuntime::ResetBall()
 {
     ballTransform->position = ballSpawn;
     ballRigidBody->velocity = { 0.0f, 0.0f, 0.0f };
+    m_havePrevBallWorld = false;
 }
 
 // --- Per-frame update --------------------------------------------------------
@@ -1182,27 +1194,46 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
 
     for (const auto& loaded : loadedMeshes)
         if (loaded.visible && loaded.mesh && loaded.transform)
-            pipeline.SubmitMesh(*loaded.mesh, loaded.transform->GetWorldMatrix(), loaded.materials);
+        {
+            const XMMATRIX worldMatrix = loaded.transform->GetWorldMatrix();
+            const XMMATRIX prev = loaded.prevWorldValid
+                ? XMLoadFloat4x4(&loaded.prevWorld) : worldMatrix;
+            pipeline.SubmitMesh(*loaded.mesh, worldMatrix, loaded.materials, false, &prev);
+        }
     if (!loadedMeshes.empty()) pipeline.Flush(ctx);
     if (ballVisible)
-        pipeline.DrawSphere(ctx, ballTransform->position, ballRadius, { 1.0f, 0.45f, 0.05f });
+    {
+        const XMMATRIX ballModel =
+            XMMatrixScaling(ballRadius, ballRadius, ballRadius) *
+            XMMatrixTranslation(ballTransform->position.x, ballTransform->position.y,
+                                ballTransform->position.z);
+        const XMMATRIX ballPrev = m_havePrevBallWorld
+            ? XMLoadFloat4x4(&m_prevBallWorld) : ballModel;
+        pipeline.DrawSphere(ctx, ballTransform->position, ballRadius,
+                            { 1.0f, 0.45f, 0.05f }, &ballPrev);
+    }
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
     {
         if (static_cast<int>(objectIndex) == m_planarObjectIndex) continue;
-        auto& object = sceneObjects[objectIndex];
+        const auto& object = sceneObjects[objectIndex];
         if (!object.visible) continue;
         XMFLOAT3 pos = { object.def.position[0], object.def.position[1], object.def.position[2] };
         XMFLOAT3 tint = { object.def.tint[0], object.def.tint[1], object.def.tint[2] };
         XMFLOAT3 emissive = { object.def.emissiveColor[0], object.def.emissiveColor[1], object.def.emissiveColor[2] };
+        const XMMATRIX objectModel = SceneObjectModel(object.def);
+        const XMMATRIX objectPrev = object.prevWorldValid
+            ? XMLoadFloat4x4(&object.prevWorld) : objectModel;
         if (object.def.type == SceneDescriptor::SceneObject::Type::Sphere)
             pipeline.DrawPBRSphere(ctx, pos, object.def.radius, object.mat,
                                    object.def.metallicScale, object.def.roughnessScale,
-                                   tint, object.def.emissiveIntensity, emissive);
+                                   tint, object.def.emissiveIntensity, emissive,
+                                   &objectPrev);
         else
             pipeline.DrawPBRPlane(ctx, pos, object.def.halfSizeX, object.def.halfSizeZ,
                                   object.mat, object.def.metallicScale,
                                   object.def.roughnessScale, tint,
-                                  object.def.emissiveIntensity, emissive);
+                                  object.def.emissiveIntensity, emissive,
+                                  &objectPrev);
     }
     pipeline.SetReflectionPass(ctx, false);
     shadowMap.Unbind(ctx);
@@ -1256,41 +1287,68 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
     pipeline.SetGlobalMaterialParams(
         { matTint[0], matTint[1], matTint[2] }, roughnessScale, metallic,
         debugShadow ? 1.0f : 0.0f);
-    for (const auto& loaded : loadedMeshes)
-        if (loaded.visible && loaded.mesh && loaded.transform)
-            pipeline.SubmitMesh(
-                *loaded.mesh, loaded.transform->GetWorldMatrix(), loaded.materials);
+    for (auto& loaded : loadedMeshes)
+    {
+        if (!loaded.mesh || !loaded.transform) continue;
+        const XMMATRIX worldMatrix = loaded.transform->GetWorldMatrix();
+        const XMMATRIX prev = loaded.prevWorldValid
+            ? XMLoadFloat4x4(&loaded.prevWorld) : worldMatrix;
+        if (loaded.visible)
+            pipeline.SubmitMesh(*loaded.mesh, worldMatrix, loaded.materials, false, &prev);
+        XMStoreFloat4x4(&loaded.prevWorld, worldMatrix);
+        loaded.prevWorldValid = true;
+    }
     if (!loadedMeshes.empty())
         pipeline.Flush(ctx);
-    if (ballVisible)
-        pipeline.DrawSphere(ctx, ballTransform->position, ballRadius, { 1.0f, 0.45f, 0.05f });
+    {
+        const XMMATRIX ballModel =
+            XMMatrixScaling(ballRadius, ballRadius, ballRadius) *
+            XMMatrixTranslation(ballTransform->position.x, ballTransform->position.y,
+                                ballTransform->position.z);
+        const XMMATRIX ballPrev = m_havePrevBallWorld
+            ? XMLoadFloat4x4(&m_prevBallWorld) : ballModel;
+        if (ballVisible)
+            pipeline.DrawSphere(ctx, ballTransform->position, ballRadius,
+                                { 1.0f, 0.45f, 0.05f }, &ballPrev);
+        XMStoreFloat4x4(&m_prevBallWorld, ballModel);
+        m_havePrevBallWorld = true;
+    }
 
     // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
     {
         auto& lo = sceneObjects[objectIndex];
-        if (!lo.visible) continue;
         using Type = SceneDescriptor::SceneObject::Type;
         XMFLOAT3 pos  = { lo.def.position[0], lo.def.position[1], lo.def.position[2] };
         XMFLOAT3 tint = { lo.def.tint[0],     lo.def.tint[1],     lo.def.tint[2] };
         XMFLOAT3 eCol = { lo.def.emissiveColor[0], lo.def.emissiveColor[1], lo.def.emissiveColor[2] };
-        if (lo.def.type == Type::Sphere)
-            pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat,
-                                   lo.def.metallicScale, lo.def.roughnessScale,
-                                   tint, lo.def.emissiveIntensity, eCol);
-        else
+        const XMMATRIX objectModel = SceneObjectModel(lo.def);
+        const XMMATRIX objectPrev = lo.prevWorldValid
+            ? XMLoadFloat4x4(&lo.prevWorld) : objectModel;
+        if (lo.visible)
         {
-            if (static_cast<int>(objectIndex) == m_planarObjectIndex)
-                pipeline.BindPlanarReflection(ctx, m_planarReflectionRT.GetSRV(),
-                                              m_planarReflectionViewProj,
-                                              m_planarReflectionY,
-                                              m_planarReflectionStrength);
-            pipeline.DrawPBRPlane(ctx, pos, lo.def.halfSizeX, lo.def.halfSizeZ,
-                                  lo.mat, lo.def.metallicScale, lo.def.roughnessScale,
-                                  tint, lo.def.emissiveIntensity, eCol);
-            if (static_cast<int>(objectIndex) == m_planarObjectIndex)
-                pipeline.ClearPlanarReflection(ctx);
+            if (lo.def.type == Type::Sphere)
+                pipeline.DrawPBRSphere(ctx, pos, lo.def.radius, lo.mat,
+                                       lo.def.metallicScale, lo.def.roughnessScale,
+                                       tint, lo.def.emissiveIntensity, eCol,
+                                       &objectPrev);
+            else
+            {
+                if (static_cast<int>(objectIndex) == m_planarObjectIndex)
+                    pipeline.BindPlanarReflection(ctx, m_planarReflectionRT.GetSRV(),
+                                                  m_planarReflectionViewProj,
+                                                  m_planarReflectionY,
+                                                  m_planarReflectionStrength);
+                pipeline.DrawPBRPlane(ctx, pos, lo.def.halfSizeX, lo.def.halfSizeZ,
+                                      lo.mat, lo.def.metallicScale, lo.def.roughnessScale,
+                                      tint, lo.def.emissiveIntensity, eCol,
+                                      &objectPrev);
+                if (static_cast<int>(objectIndex) == m_planarObjectIndex)
+                    pipeline.ClearPlanarReflection(ctx);
+            }
         }
+        XMStoreFloat4x4(&lo.prevWorld, objectModel);
+        lo.prevWorldValid = true;
     }
 
     shadowMap.Unbind(ctx);

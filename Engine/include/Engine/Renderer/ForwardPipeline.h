@@ -88,7 +88,8 @@ public:
 
     // --- Immediate rendering ---
     void DrawSphere(ID3D11DeviceContext* ctx,
-                    DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint);
+                    DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint,
+                    const DirectX::XMMATRIX* prevModel = nullptr);
 
     // Debug wire draws — unlit flat color, LINELIST topology.
     void DrawWireSphere(ID3D11DeviceContext* ctx,
@@ -109,7 +110,8 @@ public:
                        const SubMat& mat, float metallic, float roughnessScale = 1.0f,
                        DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f },
                        float emissiveIntensity = 1.0f,
-                       DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f });
+                       DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f },
+                       const DirectX::XMMATRIX* prevModel = nullptr);
 
     // Draw a horizontal unit plane scaled to the given half-extents, with PBR textures.
     void DrawPBRPlane(ID3D11DeviceContext* ctx,
@@ -117,7 +119,8 @@ public:
                       const SubMat& mat, float metallic, float roughnessScale = 1.0f,
                       DirectX::XMFLOAT3 tint = { 1.f, 1.f, 1.f },
                       float emissiveIntensity = 1.0f,
-                      DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f });
+                      DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f },
+                      const DirectX::XMMATRIX* prevModel = nullptr);
 
     uint32_t GetLastDrawCalls() const { return m_lastDrawCalls; }
     uint32_t GetLastCulledCount() const { return m_lastCulled; }
