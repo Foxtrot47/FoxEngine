@@ -504,24 +504,6 @@ void ForwardPipeline::SetGlobalMaterialParams(DirectX::XMFLOAT3 tint, float roug
     m_globalDebugShadow = debugShadow;
 }
 
-void ForwardPipeline::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
-                                DirectX::XMMATRIX model, const std::vector<SubMat>& mats)
-{
-    using namespace DirectX;
-
-    UploadTransformCB(ctx, model);
-
-    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
-    {
-        mats[i].albedo->BindPS(ctx, 0);
-        mats[i].roughness->BindPS(ctx, 1);
-        mats[i].normal->BindPS(ctx, 2);
-        (mats[i].metallic ? mats[i].metallic : m_defaultBlack)->BindPS(ctx, 7);
-        (mats[i].emissive ? mats[i].emissive : m_defaultBlack)->BindPS(ctx, 9);
-        mesh.DrawSubMesh(ctx, i);
-    }
-}
-
 void ForwardPipeline::DrawSphere(ID3D11DeviceContext* ctx,
                                   DirectX::XMFLOAT3 position, float radius, DirectX::XMFLOAT3 tint)
 {

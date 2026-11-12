@@ -105,8 +105,8 @@ protected:
                                 m_viewOptions.realtime ? GetClock().GetDeltaTime() : 0.0f,
                                 [this]() { BindViewportRT(); });
         }
-        // Bind + resolve the swap chain so ImGui draws over a known background.
-        GetRenderer().ResolveToBackBuffer();
+        // Bind the swap chain so ImGui draws over a known background.
+        GetRenderer().BindBackBuffer(GetRenderer().GetContext());
     }
 
 private:
