@@ -1,6 +1,5 @@
 #pragma once
 #include <DirectXMath.h>
-#include <cmath>
 
 namespace SE {
 
@@ -28,20 +27,6 @@ struct OBB
         OBB o;
         o.center      = { (mn.x+mx.x)*0.5f, (mn.y+mx.y)*0.5f, (mn.z+mx.z)*0.5f };
         o.halfExtents = { (mx.x-mn.x)*0.5f, (mx.y-mn.y)*0.5f, (mx.z-mn.z)*0.5f };
-        return o;
-    }
-
-    // OBB rotated around the world Y axis by angleDeg degrees.
-    static OBB MakeRotatedY(DirectX::XMFLOAT3 center, DirectX::XMFLOAT3 halfExtents, float angleDeg)
-    {
-        OBB o;
-        o.center      = center;
-        o.halfExtents = halfExtents;
-        float a = DirectX::XMConvertToRadians(angleDeg);
-        float c = cosf(a), s = sinf(a);
-        o.axes[0] = {  c, 0.0f, s };   // local X in world (LH: positive yaw rotates X toward +Z)
-        o.axes[1] = { 0.0f, 1.0f, 0.0f };
-        o.axes[2] = { -s, 0.0f, c };
         return o;
     }
 };

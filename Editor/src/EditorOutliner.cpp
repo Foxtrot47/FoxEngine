@@ -380,9 +380,6 @@ void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
     DrawRow(sel, Kind::SpotLight, 0, "Spot Light", "Spot Light",
             { ICON_MD_HIGHLIGHT, IM_COL32(255, 190, 110, 255) },
             &scene.spotLight.enabled, true);
-    DrawRow(sel, Kind::Ball, 0, "Ball", "Rigid Body",
-            { ICON_MD_LENS, IM_COL32(255, 140, 60, 255) },
-            &scene.ballVisible, true);
 
     const RowAction action = DrawEntityRows(scene, sel);
     ImGui::EndTable();

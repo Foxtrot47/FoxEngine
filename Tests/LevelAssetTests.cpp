@@ -368,8 +368,7 @@ static void TestSaveRoundTrip()
         Require(loaded.sun.elevation == original.sun.elevation &&
                 loaded.sun.intensity == original.sun.intensity,
                 "round trip: sun changed");
-        Require(loaded.physics.ballRadius == original.physics.ballRadius &&
-                loaded.physics.gravity == original.physics.gravity &&
+        Require(loaded.physics.gravity == original.physics.gravity &&
                 loaded.physics.floor.min == original.physics.floor.min &&
                 loaded.physics.floor.max == original.physics.floor.max,
                 "round trip: physics changed");

@@ -46,6 +46,8 @@ struct PreparedLevel
     LevelDependencyPlan plan;
     std::vector<AssetHandle<Mesh>> meshes;
     std::vector<std::vector<ForwardPipeline::SubMat>> materials;
+    // Parallel to meshes; null unless the mesh entry requests collision.
+    std::vector<std::shared_ptr<const StaticMeshCollider>> colliders;
     std::vector<ForwardPipeline::SubMat> objectMaterials;
     std::vector<AssetHandle<Texture2D>> particleTextures;
     AssetHandle<Texture2D> environment;
@@ -71,7 +73,12 @@ public:
     std::unique_ptr<PreparedLevel> TakePreparedLevel();
 
 private:
-    struct CpuMesh { std::string path; MeshSourceData source; };
+    struct CpuMesh
+    {
+        std::string path;
+        MeshSourceData source;          // empty when only the collider was needed
+        std::shared_ptr<const StaticMeshCollider> collider;
+    };
     struct CpuTexture
     {
         LevelDependency dependency;

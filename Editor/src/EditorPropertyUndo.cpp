@@ -46,10 +46,6 @@ struct EntityState
     SE::SceneDescriptor::ParticleEmitterDesc emitterDesc;
     SE::AssetHandle<SE::Texture2D>       emitterTexture;
     int                                  emitterPreset = -1;
-
-    // Ball
-    DirectX::XMFLOAT3 ballSpawn = {};
-    float ballRadius = 0.0f, ballMass = 0.0f, ballRestitution = 0.0f, ballFriction = 0.0f;
 };
 
 namespace {
@@ -65,7 +61,6 @@ const char* EditLabel(Kind kind)
     case Kind::Mesh:       return "Edit Mesh";
     case Kind::Object:     return "Edit Object";
     case Kind::Emitter:    return "Edit Emitter";
-    case Kind::Ball:       return "Edit Ball";
     default:               return "Edit";
     }
 }
@@ -147,14 +142,6 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
             s->emitterPreset = scene.selectedParticlePreset[i];
         return s;
     }
-    case Kind::Ball:
-        if (!scene.ballRigidBody) return nullptr;
-        s->ballSpawn       = scene.ballSpawn;
-        s->ballRadius      = scene.ballRadius;
-        s->ballMass        = scene.ballRigidBody->mass;
-        s->ballRestitution = scene.ballRigidBody->restitution;
-        s->ballFriction    = scene.ballRigidBody->friction;
-        return s;
     default:
         return nullptr;
     }
@@ -238,14 +225,6 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
             scene.selectedParticlePreset[i] = s.emitterPreset;
         return;
     }
-    case Kind::Ball:
-        if (!scene.ballRigidBody) return;
-        scene.ballSpawn                = s.ballSpawn;
-        scene.ballRadius               = s.ballRadius;
-        scene.ballRigidBody->mass        = s.ballMass;
-        scene.ballRigidBody->restitution = s.ballRestitution;
-        scene.ballRigidBody->friction    = s.ballFriction;
-        return;
     default:
         return;
     }

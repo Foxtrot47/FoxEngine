@@ -57,10 +57,6 @@ bool CaptureSnapshot(SE::SceneRuntime& scene, const Selection& sel, Snapshot& ou
         out.position = { p[0], p[1], p[2] };
         return true;
     }
-    case Selection::Kind::Ball:
-        if (!scene.ballTransform) return false;
-        out.position = scene.ballTransform->position;
-        return true;
     default:
         return false;
     }
@@ -98,10 +94,6 @@ void ApplySnapshot(SE::SceneRuntime& scene, const Selection& sel, const Snapshot
         if (sel.index >= (int)scene.sceneObjects.size()) return;
         scene.sceneObjects[sel.index].def.position =
             { s.position.x, s.position.y, s.position.z };
-        return;
-    case Selection::Kind::Ball:
-        if (!scene.ballTransform) return;
-        scene.ballTransform->position = s.position;
         return;
     default:
         return;
@@ -430,9 +422,6 @@ bool GetSelectionBounds(SE::SceneRuntime& scene, const Selection& sel,
                                            : (std::max)(d.halfSizeX, d.halfSizeZ);
         break;
     }
-    case Selection::Kind::Ball:
-        outRadius = scene.ballRadius;
-        break;
     default:
         break;
     }
@@ -466,18 +455,6 @@ Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
         {
             best = d;
             result.Set(Selection::Kind::Object, i);
-        }
-    }
-    if (scene.ballTransform)
-    {
-        const auto& p = scene.ballTransform->position;
-        SE::AABB box = SE::AABB::FromCenterExtents(
-            p, { scene.ballRadius, scene.ballRadius, scene.ballRadius });
-        float t;
-        if (RayAABB(ray.origin, ray.dir, box, t) && t < best)
-        {
-            best = t;
-            result.Set(Selection::Kind::Ball);
         }
     }
     // Invisible helpers last: small proxy boxes for point lights and emitters.

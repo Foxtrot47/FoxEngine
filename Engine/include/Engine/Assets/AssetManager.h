@@ -10,6 +10,8 @@
 
 namespace SE {
 
+struct StaticMeshCollider; // Engine/Physics/PhysicsWorld.h
+
 template<typename T>
 using AssetHandle = std::shared_ptr<T>;
 
@@ -17,6 +19,7 @@ struct AssetCacheSnapshot
 {
     std::unordered_map<std::string, AssetHandle<Mesh>> meshes;
     std::unordered_map<std::wstring, AssetHandle<Texture2D>> textures;
+    std::unordered_map<std::string, std::shared_ptr<const StaticMeshCollider>> colliders;
 };
 
 class AssetManager
@@ -28,6 +31,9 @@ public:
     AssetHandle<Texture2D> FindTexture(const std::wstring& path);
     void CacheMesh(const std::string& path, const AssetHandle<Mesh>& mesh);
     void CacheTexture(const std::wstring& path, const AssetHandle<Texture2D>& texture);
+    // Level collision built from a cached mesh; invalidated with that mesh.
+    std::shared_ptr<const StaticMeshCollider> FindCollider(const std::string& path);
+    void CacheCollider(const std::string& path, std::shared_ptr<const StaticMeshCollider> collider);
     AssetCacheSnapshot CaptureSnapshot();
 
     // Fallback 1×1 textures for submeshes missing a particular map.
@@ -44,6 +50,7 @@ private:
     std::unordered_map<std::string, AssetHandle<Mesh>> m_meshes;
     std::unordered_map<std::string, std::filesystem::file_time_type> m_meshWriteTimes;
     std::unordered_map<std::wstring, AssetHandle<Texture2D>> m_textures;
+    std::unordered_map<std::string, std::shared_ptr<const StaticMeshCollider>> m_colliders;
     std::weak_ptr<Texture2D> m_defaultWhite;
     std::weak_ptr<Texture2D> m_defaultBlack;
     std::weak_ptr<Texture2D> m_defaultNormal;

@@ -27,7 +27,6 @@ bool DetailsMatch(Selection::Kind kind)
     case Kind::Mesh: return s_detailsFilter.PassFilter("Mesh Transform Position Rotation Scale Rendering Shadows");
     case Kind::Object: return s_detailsFilter.PassFilter("Object Transform Position Size Radius Material Tint Metallic Roughness Emissive");
     case Kind::Emitter: return s_detailsFilter.PassFilter("Emitter Particles Preset Emission Transform Lifetime Size Color Velocity Physics Texture");
-    case Kind::Ball: return s_detailsFilter.PassFilter("Ball Physics Position Radius Mass Restitution Friction");
     default: return true;
     }
 }
@@ -97,26 +96,6 @@ void DrawObjectDetails(SE::SceneRuntime& scene, int index)
     ImGui::SliderFloat("Emissive Intensity", &def.emissiveIntensity, 0.0f, 20.0f);
 }
 
-void DrawBallDetails(SE::SceneRuntime& scene)
-{
-    ImGui::Text("Ball (physics body)");
-    ImGui::Separator();
-    ImGui::DragFloat3("Spawn Pos",    &scene.ballSpawn.x,                1.0f);
-    ImGui::SliderFloat("Radius",      &scene.ballRadius,                 0.1f, 10.0f);
-    ImGui::SliderFloat("Mass",        &scene.ballRigidBody->mass,        0.1f, 10.0f);
-    ImGui::SliderFloat("Restitution", &scene.ballRigidBody->restitution, 0.0f, 1.0f);
-    ImGui::SliderFloat("Friction",    &scene.ballRigidBody->friction,    0.0f, 1.0f);
-    ImGui::Text("pos (%.1f, %.1f, %.1f)",
-        scene.ballTransform->position.x, scene.ballTransform->position.y,
-        scene.ballTransform->position.z);
-    ImGui::Text("vel (%.2f, %.2f, %.2f)",
-        scene.ballRigidBody->velocity.x, scene.ballRigidBody->velocity.y,
-        scene.ballRigidBody->velocity.z);
-    if (ImGui::Button("Reset"))     scene.ResetBall();
-    ImGui::SameLine();
-    if (ImGui::Button("Launch up")) scene.ballRigidBody->AddImpulse({ 0.0f, 20.0f, 0.0f });
-}
-
 void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel,
                           SE::AssetManager& assets, ID3D11Device* device,
                           SE::ShaderLibrary& shaders, uint32_t outWidth, uint32_t outHeight)
@@ -132,9 +111,6 @@ void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel,
     case Selection::Kind::Object: DrawObjectDetails(scene, sel.index); break;
     case Selection::Kind::Emitter:
         DrawEmitterProps(scene, sel.index, assets, device, shaders);
-        break;
-    case Selection::Kind::Ball:
-        DrawBallDetails(scene);
         break;
     default:
         ImGui::TextDisabled("Nothing selected");

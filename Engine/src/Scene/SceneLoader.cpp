@@ -115,6 +115,7 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             mesh.alphaCutoff = entity.meshRenderer->alphaCutoff;
             mesh.castShadows = entity.meshRenderer->castShadows;
             mesh.receiveShadows = entity.meshRenderer->receiveShadows;
+            mesh.collision = entity.meshRenderer->collision;
             if (entity.transform)
             {
                 mesh.position = entity.transform->position;
@@ -189,9 +190,7 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             if (f.contains("friction"))    out.physics.floor.friction    = f["friction"].get<float>();
             if (f.contains("restitution")) out.physics.floor.restitution = f["restitution"].get<float>();
         }
-        out.physics.ballSpawn      = ReadFloat3(p, "ballSpawn",      out.physics.ballSpawn);
         out.physics.characterSpawn = ReadFloat3(p, "characterSpawn", out.physics.characterSpawn);
-        if (p.contains("ballRadius")) out.physics.ballRadius = p["ballRadius"].get<float>();
         if (p.contains("gravity"))    out.physics.gravity    = p["gravity"].get<bool>();
     }
 

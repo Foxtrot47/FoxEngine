@@ -8,13 +8,6 @@ struct Ray
     DirectX::XMFLOAT3 origin    = { 0.0f, 0.0f,  0.0f };
     DirectX::XMFLOAT3 direction = { 0.0f, 0.0f,  1.0f }; // must be normalised
 
-    DirectX::XMFLOAT3 PointAt(float t) const
-    {
-        return { origin.x + direction.x * t,
-                 origin.y + direction.y * t,
-                 origin.z + direction.z * t };
-    }
-
     // Build a world-space ray from a normalised device coordinate [-1,1].
     // Pass XMMatrixInverse(nullptr, viewProj) as invVP.
     static Ray FromNDC(float ndcX, float ndcY, DirectX::FXMMATRIX invVP)

@@ -68,7 +68,20 @@ bool IsSameParticlePreset(const SceneDescriptor::ParticleEmitterDesc& a,
            NearlyEqual(a.lightingInfluence, b.lightingInfluence);
 }
 
-std::vector<ShadowSubMesh> BuildShadowSubMeshes(
+
+DirectX::XMMATRIX SceneObjectModel(const SceneDescriptor::SceneObject& object)
+{
+    using namespace DirectX;
+    const XMMATRIX translate = XMMatrixTranslation(
+        object.position[0], object.position[1], object.position[2]);
+    if (object.type == SceneDescriptor::SceneObject::Type::Plane)
+        return XMMatrixScaling(object.halfSizeX, 1.0f, object.halfSizeZ) * translate;
+    return XMMatrixScaling(object.radius, object.radius, object.radius) * translate;
+}
+
+} // namespace
+
+std::vector<ShadowSubMesh> SceneRuntime::BuildShadowSubMeshes(
     const std::vector<ForwardPipeline::SubMat>& materials)
 {
     std::vector<ShadowSubMesh> shadowSubMeshes;
@@ -87,18 +100,6 @@ std::vector<ShadowSubMesh> BuildShadowSubMeshes(
     }
     return shadowSubMeshes;
 }
-
-DirectX::XMMATRIX SceneObjectModel(const SceneDescriptor::SceneObject& object)
-{
-    using namespace DirectX;
-    const XMMATRIX translate = XMMatrixTranslation(
-        object.position[0], object.position[1], object.position[2]);
-    if (object.type == SceneDescriptor::SceneObject::Type::Plane)
-        return XMMatrixScaling(object.halfSizeX, 1.0f, object.halfSizeZ) * translate;
-    return XMMatrixScaling(object.radius, object.radius, object.radius) * translate;
-}
-
-} // namespace
 
 SceneRuntime::~SceneRuntime()
 {
@@ -262,6 +263,8 @@ bool SceneRuntime::ImportSceneMeshes(const SceneDescriptor& desc, PreparedLevel&
         loaded.materials = meshIndex < prepared.materials.size()
             ? std::move(prepared.materials[meshIndex])
             : std::vector<ForwardPipeline::SubMat>{};
+        if (meshIndex < prepared.colliders.size())
+            loaded.collider = std::move(prepared.colliders[meshIndex]);
         if (!pumpMessages())
             return false;
 
@@ -365,7 +368,6 @@ void SceneRuntime::SetupPlanarReflection(ID3D11Device* device)
 void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
 {
     lights.sunEnabled = true;
-    ballVisible = true;
     lights.elevDeg = desc.sun.elevation;
     lights.azimDeg = desc.sun.azimuth;
     lights.lightIntensity = desc.sun.intensity;
@@ -462,27 +464,20 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
         }
     }
 
-    // Physics ball entity
-    Entity* ballEnt = newWorld.GetScene().CreateEntity("PhysBall");
-    auto* newBallTransform = ballEnt->AddComponent<TransformComponent>();
-    auto* newBallRigidBody = ballEnt->AddComponent<RigidBodyComponent>();
-    const float newBallRadius = desc.physics.ballRadius;
-    const XMFLOAT3 newBallSpawn = {
-        desc.physics.ballSpawn[0], desc.physics.ballSpawn[1], desc.physics.ballSpawn[2]
-    };
-    newBallTransform->scale = { newBallRadius, newBallRadius, newBallRadius };
-    newBallTransform->position = newBallSpawn;
-    newBallRigidBody->velocity = { 0.0f, 0.0f, 0.0f };
-
     // --- Physics world (rebuild) ---
     PhysicsWorld newPhysicsWorld;
-    newPhysicsWorld.AddSphere(newBallTransform, newBallRigidBody, newBallRadius);
     const float newFloorY = desc.physics.floor.max[1];
     const OBB newFloor = OBB::FromAABB(
         { desc.physics.floor.min[0], desc.physics.floor.min[1], desc.physics.floor.min[2] },
         { desc.physics.floor.max[0], desc.physics.floor.max[1], desc.physics.floor.max[2] });
-    newPhysicsWorld.AddStaticOBB(
+    const BodyHandle newFloorBody = newPhysicsWorld.AddStaticBox(
         newFloor, desc.physics.floor.friction, desc.physics.floor.restitution);
+    // Level geometry collision (meshes flagged "collision"); placed once at
+    // load, so editor moves of these meshes do not move their colliders.
+    for (const auto& loaded : newLoadedMeshes)
+        if (loaded.collider)
+            newPhysicsWorld.AddStaticMesh(loaded.collider, loaded.transform->position,
+                                          loaded.transform->eulerDeg, loaded.transform->scale);
 
     // Character controller
     CharacterController newCharacterController;
@@ -491,7 +486,6 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
         desc.physics.characterSpawn[2]
     };
     newCharacterController.gravityEnabled = desc.physics.gravity;
-    newBallRigidBody->useGravity = desc.physics.gravity;
 
     // --- JSON scene objects (spheres / planes with explicit PBR textures) ---
     std::vector<LoadedObject> newSceneObjects;
@@ -517,18 +511,16 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
     std::vector<int> newSelectedParticlePreset = MatchParticlePresets(newParticleEmitterDescs);
 
     // Commit only after every replacement mesh has completed its import.
+    // Balls reference the outgoing world/physics, so they go first.
+    balls.clear(); // their entities and bodies die with the outgoing world
     world            = std::move(newWorld);
     camera           = newCamera;
     camCtrl          = std::move(newCameraController);
-    ballTransform    = newBallTransform;
-    ballRigidBody    = newBallRigidBody;
-    ballRadius       = newBallRadius;
-    ballSpawn        = newBallSpawn;
     physicsWorld     = std::move(newPhysicsWorld);
+    floorBody        = newFloorBody;
     floorY           = newFloorY;
     obbFloor         = newFloor;
     cc               = std::move(newCharacterController);
-    m_havePrevBallWorld = false;
     gravityEnabled   = desc.physics.gravity;
     sceneObjects     = std::move(newSceneObjects);
     particleSystems  = std::move(newParticleSystems);
@@ -669,8 +661,6 @@ void SceneRuntime::SyncDescriptorFromRuntime()
 
     // Physics: the Floor Y slider moves the slab, thickness is preserved.
     desc.physics.gravity = gravityEnabled;
-    desc.physics.ballRadius = ballRadius;
-    desc.physics.ballSpawn = { ballSpawn.x, ballSpawn.y, ballSpawn.z };
     const float floorThickness = desc.physics.floor.max[1] - desc.physics.floor.min[1];
     desc.physics.floor.max[1] = floorY;
     desc.physics.floor.min[1] = floorY - floorThickness;
@@ -988,13 +978,6 @@ void SceneRuntime::RefreshParticlePresets()
     particlePresetFiles = SceneLoader::ScanParticlePresetDirectory("Assets/Particles/Presets");
 }
 
-void SceneRuntime::ResetBall()
-{
-    ballTransform->position = ballSpawn;
-    ballRigidBody->velocity = { 0.0f, 0.0f, 0.0f };
-    m_havePrevBallWorld = false;
-}
-
 // --- Per-frame update --------------------------------------------------------
 
 void SceneRuntime::Update(float dt, float totalTime)
@@ -1098,6 +1081,26 @@ int SceneRuntime::CountPointShadowCasters() const
     return count;
 }
 
+template <typename Fn>
+void SceneRuntime::ForEachMeshInstance(Fn&& fn) const
+{
+    for (const auto& loaded : loadedMeshes)
+    {
+        if (!loaded.visible || !loaded.mesh || !loaded.transform)
+            continue;
+        const XMMATRIX model = loaded.transform->GetWorldMatrix();
+        MeshInstance instance;
+        instance.mesh             = loaded.mesh.get();
+        instance.model            = model;
+        instance.prevModel        = loaded.prevWorldValid
+            ? XMLoadFloat4x4(&loaded.prevWorld) : model;
+        instance.materials        = &loaded.materials;
+        instance.shadowSubMeshes  = &loaded.shadowSubMeshes;
+        instance.castsShadows     = loaded.def.castShadows;
+        fn(instance);
+    }
+}
+
 void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
 {
     // Cascaded shadow pass
@@ -1110,12 +1113,14 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
         for (int c = 0; c < CSM_NUM_CASCADES; ++c)
         {
             shadowMap.BeginCascade(ctx, c);
-            for (const auto& loaded : loadedMeshes)
-                if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
-                    shadowMap.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix(),
-                                      loaded.shadowSubMeshes);
-            if (ballVisible)
-                shadowMap.DrawSphere(ctx, ballTransform->position, ballRadius);
+            ForEachMeshInstance([&](const MeshInstance& instance) {
+                if (!instance.castsShadows || !instance.shadowSubMeshes)
+                    return;
+                shadowMap.DrawMesh(ctx, *instance.mesh, instance.model,
+                                   *instance.shadowSubMeshes);
+            });
+            for (const PhysicsBall& ball : balls)
+                shadowMap.DrawSphere(ctx, ball.transform->position, ball.radius);
             // Analytic spheres cast too; planes are horizontal receivers and skipped.
             for (const auto& object : sceneObjects)
                 if (object.visible &&
@@ -1136,11 +1141,12 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
             for (int face = 0; face < 6; ++face)
             {
                 pointShadowMaps[li].BeginFace(ctx, face, light.position, light.radius);
-                for (const auto& loaded : loadedMeshes)
-                    if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
-                        pointShadowMaps[li].DrawMesh(
-                            ctx, *loaded.mesh, loaded.transform->GetWorldMatrix(),
-                            loaded.shadowSubMeshes);
+                ForEachMeshInstance([&](const MeshInstance& instance) {
+                    if (!instance.castsShadows || !instance.shadowSubMeshes)
+                        return;
+                    pointShadowMaps[li].DrawMesh(ctx, *instance.mesh, instance.model,
+                                                 *instance.shadowSubMeshes);
+                });
                 pointShadowMaps[li].EndFace(ctx);
             }
         }
@@ -1150,10 +1156,12 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
     if (spotLight.enabled)
     {
         spotLight.BeginShadowPass(ctx);
-        for (const auto& loaded : loadedMeshes)
-            if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
-                spotLight.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix(),
-                               loaded.shadowSubMeshes);
+        ForEachMeshInstance([&](const MeshInstance& instance) {
+            if (!instance.castsShadows || !instance.shadowSubMeshes)
+                return;
+            spotLight.DrawMesh(ctx, *instance.mesh, instance.model,
+                               *instance.shadowSubMeshes);
+        });
         spotLight.EndShadowPass(ctx);
     }
 }
@@ -1194,26 +1202,8 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
     spotLight.BindForLitPass(ctx);
     pipeline.SetReflectionPass(ctx, true, m_planarReflectionY);
 
-    for (const auto& loaded : loadedMeshes)
-        if (loaded.visible && loaded.mesh && loaded.transform)
-        {
-            const XMMATRIX worldMatrix = loaded.transform->GetWorldMatrix();
-            const XMMATRIX prev = loaded.prevWorldValid
-                ? XMLoadFloat4x4(&loaded.prevWorld) : worldMatrix;
-            pipeline.SubmitMesh(*loaded.mesh, worldMatrix, loaded.materials, false, &prev);
-        }
-    if (!loadedMeshes.empty()) pipeline.Flush(ctx);
-    if (ballVisible)
-    {
-        const XMMATRIX ballModel =
-            XMMatrixScaling(ballRadius, ballRadius, ballRadius) *
-            XMMatrixTranslation(ballTransform->position.x, ballTransform->position.y,
-                                ballTransform->position.z);
-        const XMMATRIX ballPrev = m_havePrevBallWorld
-            ? XMLoadFloat4x4(&m_prevBallWorld) : ballModel;
-        pipeline.DrawSphere(ctx, ballTransform->position, ballRadius,
-                            { 1.0f, 0.45f, 0.05f }, &ballPrev);
-    }
+    SubmitMeshInstances(ctx);
+    DrawBalls(ctx);
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
     {
         if (static_cast<int>(objectIndex) == m_planarObjectIndex) continue;
@@ -1246,6 +1236,92 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
 }
 
 // Forward path (HDR + PBR + IBL). Leaves the MRT bound for debug draws.
+// Submits every visible level mesh to the forward queue and flushes it. Used
+// by both the lit and the planar-reflection pass so the two cannot drift apart.
+void SceneRuntime::SubmitMeshInstances(ID3D11DeviceContext* ctx)
+{
+    bool submitted = false;
+    ForEachMeshInstance([&](const MeshInstance& instance) {
+        pipeline.SubmitMesh(*instance.mesh, instance.model, *instance.materials,
+                            false, &instance.prevModel);
+        submitted = true;
+    });
+    if (submitted)
+        pipeline.Flush(ctx);
+}
+
+namespace {
+
+constexpr XMFLOAT3 k_ballColor = { 1.0f, 0.45f, 0.05f };
+
+// Same model ForwardPipeline::DrawSphere builds, so motion vectors match.
+XMMATRIX BallModel(const SceneRuntime::PhysicsBall& ball)
+{
+    const XMFLOAT3& p = ball.transform->position;
+    return XMMatrixScaling(ball.radius, ball.radius, ball.radius) * XMMatrixTranslation(p.x, p.y, p.z);
+}
+
+} // namespace
+
+// Stores this frame's transforms for next frame's motion vectors. Called once
+// per frame by the lit pass, after the forward queue has been submitted.
+void SceneRuntime::RecordPrevTransforms()
+{
+    for (auto& loaded : loadedMeshes)
+    {
+        if (!loaded.mesh || !loaded.transform)
+            continue;
+        XMStoreFloat4x4(&loaded.prevWorld, loaded.transform->GetWorldMatrix());
+        loaded.prevWorldValid = true;
+    }
+    for (auto& ball : balls)
+    {
+        XMStoreFloat4x4(&ball.prevWorld, BallModel(ball));
+        ball.prevWorldValid = true;
+    }
+}
+
+BodyHandle SceneRuntime::SpawnBall(const XMFLOAT3& position, float radius, const XMFLOAT3& velocity)
+{
+    Entity* entity = world.GetScene().CreateEntity("Ball");
+    PhysicsBall ball;
+    ball.entity    = entity->GetID();
+    ball.transform = entity->AddComponent<TransformComponent>();
+    ball.body      = entity->AddComponent<RigidBodyComponent>();
+    ball.radius    = radius;
+    ball.transform->position = position;
+    ball.transform->scale    = { radius, radius, radius };
+    ball.body->velocity      = velocity;
+    ball.body->useGravity    = gravityEnabled;
+    ball.handle = physicsWorld.AddSphere(ball.transform, ball.body, radius);
+    if (ball.handle == k_invalidBody)
+    {
+        world.GetScene().DestroyEntity(ball.entity);
+        return k_invalidBody;
+    }
+    balls.push_back(ball);
+    return ball.handle;
+}
+
+void SceneRuntime::RemoveBalls()
+{
+    for (const PhysicsBall& ball : balls)
+    {
+        physicsWorld.RemoveBody(ball.handle);
+        world.GetScene().DestroyEntity(ball.entity);
+    }
+    balls.clear();
+}
+
+void SceneRuntime::DrawBalls(ID3D11DeviceContext* ctx)
+{
+    for (const PhysicsBall& ball : balls)
+    {
+        const XMMATRIX prev = ball.prevWorldValid ? XMLoadFloat4x4(&ball.prevWorld) : BallModel(ball);
+        pipeline.DrawSphere(ctx, ball.transform->position, ball.radius, k_ballColor, &prev);
+    }
+}
+
 void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
                                      ID3D11ShaderResourceView* irradianceSRV,
                                      ID3D11ShaderResourceView* specularSRV,
@@ -1289,32 +1365,9 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
     pipeline.SetGlobalMaterialParams(
         { matTint[0], matTint[1], matTint[2] }, roughnessScale, metallic,
         debugShadow ? 1.0f : 0.0f);
-    for (auto& loaded : loadedMeshes)
-    {
-        if (!loaded.mesh || !loaded.transform) continue;
-        const XMMATRIX worldMatrix = loaded.transform->GetWorldMatrix();
-        const XMMATRIX prev = loaded.prevWorldValid
-            ? XMLoadFloat4x4(&loaded.prevWorld) : worldMatrix;
-        if (loaded.visible)
-            pipeline.SubmitMesh(*loaded.mesh, worldMatrix, loaded.materials, false, &prev);
-        XMStoreFloat4x4(&loaded.prevWorld, worldMatrix);
-        loaded.prevWorldValid = true;
-    }
-    if (!loadedMeshes.empty())
-        pipeline.Flush(ctx);
-    {
-        const XMMATRIX ballModel =
-            XMMatrixScaling(ballRadius, ballRadius, ballRadius) *
-            XMMatrixTranslation(ballTransform->position.x, ballTransform->position.y,
-                                ballTransform->position.z);
-        const XMMATRIX ballPrev = m_havePrevBallWorld
-            ? XMLoadFloat4x4(&m_prevBallWorld) : ballModel;
-        if (ballVisible)
-            pipeline.DrawSphere(ctx, ballTransform->position, ballRadius,
-                                { 1.0f, 0.45f, 0.05f }, &ballPrev);
-        XMStoreFloat4x4(&m_prevBallWorld, ballModel);
-        m_havePrevBallWorld = true;
-    }
+    SubmitMeshInstances(ctx);
+    DrawBalls(ctx);
+    RecordPrevTransforms();
 
     // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
@@ -1365,9 +1418,10 @@ void SceneRuntime::RenderDebugShapes(ID3D11DeviceContext* ctx)
 {
     if (showColliders)
     {
-        pipeline.DrawWireSphere(ctx, ballTransform->position, ballRadius,
-                                { 0.0f, 1.0f, 0.2f });
         pipeline.DrawWireBox(ctx, obbFloor.GetWorldMatrix(), { 1.0f, 0.85f, 0.1f });
+        for (const PhysicsBall& ball : balls)
+            pipeline.DrawWireSphere(ctx, ball.transform->position, ball.radius,
+                                    { 0.0f, 1.0f, 0.2f });
 
         XMFLOAT3 bottom = { cc.position.x, cc.position.y + cc.radius, cc.position.z };
         pipeline.DrawWireSphere(ctx, bottom, cc.radius, { 1.0f, 0.4f, 0.8f });

@@ -53,6 +53,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `ShaderLibrary` | Compile + cache shader permutations |
 | `RenderStateCache` | Deduplicate blend/raster/depth-stencil states |
 | `AssetManager` | Path-keyed cache, ref-counted handles |
+| `PhysicsWorld` | Jolt rigid bodies, fixed-step simulation, character controller, raycasts |
 
 ### Constant Buffer Layout (Basic.hlsl)
 
@@ -130,6 +131,14 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 - **Preset defaults**: load emitter presets from JSON (`Assets/Particles/Presets/`)
 - **Soft particles**: depth-fade near geometry intersections
 - **HDR colors**: values > 1.0 trigger bloom glow
+
+### Physics (Jolt)
+- **Jolt Physics** via vcpkg (`joltphysics`), linked PRIVATE to the engine. Only `Engine/src/Physics/` includes Jolt headers (compiled with `/arch:AVX2` to match the library); `PhysicsWorld` hides Jolt behind a pimpl.
+- **Fixed timestep** (`PhysicsWorld::Settings::fixedTimeStep`, 120 Hz) with an accumulator; dynamic bodies are interpolated between steps when written back to `TransformComponent`.
+- **Component mirroring**: `RigidBodyComponent` / `TransformComponent` fields are plain data. Edits between steps (teleport, velocity, mass, friction, restitution, gravity) are detected and pushed into Jolt.
+- **Character**: `StepCharacter` drives a Jolt `CharacterVirtual` capsule (feet at `CharacterController::position`) with stair stepping and floor sticking.
+- **Level collision**: `meshRenderer.collision: true` builds a static Jolt mesh collider from the mesh's opaque submeshes on the level-load workers (cached with the mesh in `AssetManager`); it is placed once at load with the entity transform. Without it, only the physics floor box is solid.
+- **Physics balls**: `SceneRuntime::SpawnBall` / `RemoveBalls`, on demand for scripts; not saved, dropped on scene load. Scenes have no default ball.
 
 ## Current Milestone Roadmap
 
