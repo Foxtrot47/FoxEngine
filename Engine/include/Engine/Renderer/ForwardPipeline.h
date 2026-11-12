@@ -33,6 +33,7 @@ public:
         MaterialWorkflow workflow = MaterialWorkflow::SeparateMR; // t1 interpretation
         float     roughnessScale = 1.0f;   // material roughness factor (scalar workflows)
         float     glossinessFactor = 1.0f; // spec/gloss: multiplier on t1.a
+        bool      receiveShadows = true;
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -143,7 +144,7 @@ private:
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
         float metallic; float unlit; float debugShadow; float alphaCutoff;
         float emissiveIntensity; DirectX::XMFLOAT3 emissiveColor;
-        float workflow; float glossinessFactor; DirectX::XMFLOAT2 _pad;
+        float workflow; float glossinessFactor; float receiveShadows; float _pad;
     };
     struct PlanarReflectionCBData
     {

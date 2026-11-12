@@ -60,7 +60,9 @@ void DrawMeshDetails(SE::SceneRuntime& scene, int index)
 
     ImGui::Separator();
     ImGui::Checkbox("Cast Shadows", &loaded.def.castShadows);
-    ImGui::Checkbox("Receive Shadows", &loaded.def.receiveShadows);
+    if (ImGui::Checkbox("Receive Shadows", &loaded.def.receiveShadows))
+        for (auto& material : loaded.materials)
+            material.receiveShadows = loaded.def.receiveShadows;
 }
 
 void DrawCameraDetails(SE::SceneRuntime& scene)

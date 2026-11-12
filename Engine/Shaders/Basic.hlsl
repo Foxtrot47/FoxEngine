@@ -37,7 +37,7 @@ cbuffer MaterialCB : register(b3)
     // Workflow: 0 = separate maps (t1.r rough, t7.r metal),
     //            1 = packed MR (t1 = x, roughness, metallic),
     //            2 = spec/gloss (t1.rgb specular color, t1.a glossiness)
-    float  Workflow;    float  GlossinessFactor;  float2 _mcbPad;
+    float  Workflow;    float  GlossinessFactor;  float ReceiveShadows; float _mcbPad;
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -321,6 +321,7 @@ PSOut PS_Main(PSIn input)
 
     // Cascaded directional shadow (PCF 3×3)
     float shadow = 1.0f;
+    if (ReceiveShadows > 0.5f)
     {
         // Select cascade based on view-space depth
         int cascade = 2;
@@ -372,7 +373,7 @@ PSOut PS_Main(PSIn input)
         atten        = atten * atten;
 
         float ptShadow = 1.0f;
-        if (i < NumPointShadowCasters)
+        if (ReceiveShadows > 0.5f && i < NumPointShadowCasters)
         {
             float3 L2F   = input.WorldPos - PointLights[i].Position;
             float  sd    = length(L2F) / PointLights[i].Radius;
@@ -405,6 +406,7 @@ PSOut PS_Main(PSIn input)
 
                 // Shadow (PCF 3×3)
                 float spotShadow = 1.0f;
+                if (ReceiveShadows > 0.5f)
                 {
                     float4 sc  = mul(float4(input.WorldPos, 1.0f), SpotViewProj);
                     float3 ndc = sc.xyz / sc.w;
