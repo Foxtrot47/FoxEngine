@@ -120,8 +120,17 @@ bool CascadedShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint3
         m_sphereIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
     }
 
-    if (!m_cb.Create(device))    return false;
-    if (!m_csmCB.Create(device)) return false;
+    D3D11_SAMPLER_DESC alphaSamplerDesc = {};
+    alphaSamplerDesc.Filter   = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    alphaSamplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    alphaSamplerDesc.MaxLOD   = D3D11_FLOAT32_MAX;
+    SE_HR(device->CreateSamplerState(&alphaSamplerDesc, &m_alphaSampler));
+
+    if (!m_cb.Create(device))         return false;
+    if (!m_csmCB.Create(device))      return false;
+    if (!m_materialCB.Create(device)) return false;
 
     SE_LOG_INFO("CSM: initialised %d cascades @ %ux%u", CSM_NUM_CASCADES, resolution, resolution);
     return true;
@@ -261,9 +270,12 @@ void CascadedShadowMap::BeginCascade(ID3D11DeviceContext* ctx, int cascade)
     ctx->PSSetShader(m_perm->ps.Get(), nullptr, 0);
     ctx->IASetInputLayout(m_layout.Get());
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ctx->PSSetSamplers(0, 1, m_alphaSampler.GetAddressOf());
 }
 
-void CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX model)
+void CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
+                                  XMMATRIX model,
+                                  const std::vector<ShadowSubMesh>& subMeshes)
 {
     ShadowCBData cb;
     XMStoreFloat4x4(&cb.model, model);
@@ -272,7 +284,21 @@ void CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMM
     m_cb.BindVS(ctx, 0);
 
     for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    {
+        if (i < subMeshes.size() && !subMeshes[i].cast)
+            continue;
+
+        ShadowMaterialCBData material = {};
+        if (i < subMeshes.size())
+        {
+            material.alphaCutoff = subMeshes[i].alphaCutoff;
+            ID3D11ShaderResourceView* albedo = subMeshes[i].albedo;
+            ctx->PSSetShaderResources(0, 1, &albedo);
+        }
+        m_materialCB.Update(ctx, material);
+        m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
+    }
 }
 
 void CascadedShadowMap::DrawSphere(ID3D11DeviceContext* ctx, XMFLOAT3 position, float radius)

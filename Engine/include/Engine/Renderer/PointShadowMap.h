@@ -5,6 +5,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/ShadowMaterial.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -25,7 +26,8 @@ public:
     // Call DrawMesh() between Begin/EndFace for every face before binding the SRV.
     void BeginFace(ID3D11DeviceContext* ctx, int face,
                    DirectX::XMFLOAT3 lightPos, float lightFar);
-    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model);
+    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
+                  const std::vector<ShadowSubMesh>& subMeshes);
     void EndFace(ID3D11DeviceContext* ctx);
 
     ID3D11ShaderResourceView* GetSRV() const { return m_srv.Get(); }
@@ -48,8 +50,10 @@ private:
     ComPtr<ID3D11DepthStencilView>   m_dsv;
     ComPtr<ID3D11InputLayout>        m_layout;
     ComPtr<ID3D11RasterizerState>    m_shadowRS;
+    ComPtr<ID3D11SamplerState>       m_alphaSampler;
 
     ConstantBuffer<CBData>   m_cb;
+    ConstantBuffer<ShadowMaterialCBData> m_materialCB;
     const ShaderPermutation* m_perm = nullptr;
 
     // State cached from BeginFace, used by DrawMesh

@@ -68,6 +68,26 @@ bool IsSameParticlePreset(const SceneDescriptor::ParticleEmitterDesc& a,
            NearlyEqual(a.lightingInfluence, b.lightingInfluence);
 }
 
+std::vector<ShadowSubMesh> BuildShadowSubMeshes(
+    const std::vector<ForwardPipeline::SubMat>& materials)
+{
+    std::vector<ShadowSubMesh> shadowSubMeshes;
+    shadowSubMeshes.reserve(materials.size());
+    for (const auto& material : materials)
+    {
+        ShadowSubMesh subMesh;
+        subMesh.cast = material.alphaMode != AlphaMode::Transparent;
+        if (material.alphaMode == AlphaMode::Cutout &&
+            material.albedo && material.albedo->HasAlpha())
+        {
+            subMesh.albedo = material.albedo->GetSRV();
+            subMesh.alphaCutoff = material.alphaCutoff;
+        }
+        shadowSubMeshes.push_back(subMesh);
+    }
+    return shadowSubMeshes;
+}
+
 } // namespace
 
 SceneRuntime::~SceneRuntime()
@@ -236,19 +256,17 @@ bool SceneRuntime::ImportSceneMeshes(const SceneDescriptor& desc, PreparedLevel&
             return false;
 
         for (auto& sm : loaded.materials)
-            sm.receiveShadows = meshDesc.receiveShadows;
-
-        if (meshDesc.alphaCutoff > 0.0f)
         {
-            for (auto& sm : loaded.materials)
+            sm.receiveShadows = meshDesc.receiveShadows;
+            if (meshDesc.alphaCutoff > 0.0f &&
+                sm.alphaMode == AlphaMode::Opaque &&
+                sm.albedo && sm.albedo->HasAlpha())
             {
-                if (sm.alphaMode == AlphaMode::Opaque && sm.albedo && sm.albedo->HasAlpha())
-                {
-                    sm.alphaMode   = AlphaMode::Cutout;
-                    sm.alphaCutoff = meshDesc.alphaCutoff;
-                }
+                sm.alphaMode   = AlphaMode::Cutout;
+                sm.alphaCutoff = meshDesc.alphaCutoff;
             }
         }
+        loaded.shadowSubMeshes = BuildShadowSubMeshes(loaded.materials);
         outMeshes.push_back(std::move(loaded));
     }
     return true;
@@ -912,6 +930,7 @@ int SceneRuntime::DuplicateMesh(int index)
     copy.mesh = source.mesh;
     copy.materials = source.materials;
 
+    copy.shadowSubMeshes = source.shadowSubMeshes;
     Entity* entity = world.GetScene().CreateEntity(copy.def.name);
     auto* transform = entity->AddComponent<TransformComponent>();
     if (source.transform)
@@ -941,10 +960,11 @@ int SceneRuntime::AddLoadedMesh(const std::string& path, AssetHandle<Mesh> mesh,
     entry.def.position = { position.x, position.y, position.z };
     entry.mesh = std::move(mesh);
     entry.materials = std::move(materials);
-
-    Entity* entity = world.GetScene().CreateEntity(entry.def.name);
     for (auto& sm : entry.materials)
         sm.receiveShadows = entry.def.receiveShadows;
+    entry.shadowSubMeshes = BuildShadowSubMeshes(entry.materials);
+
+    Entity* entity = world.GetScene().CreateEntity(entry.def.name);
     auto* transform = entity->AddComponent<TransformComponent>();
     transform->position = position;
     entry.transform = transform;
@@ -1078,7 +1098,8 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
             shadowMap.BeginCascade(ctx, c);
             for (const auto& loaded : loadedMeshes)
                 if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
-                    shadowMap.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
+                    shadowMap.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix(),
+                                      loaded.shadowSubMeshes);
             if (ballVisible)
                 shadowMap.DrawSphere(ctx, ballTransform->position, ballRadius);
             // Analytic spheres cast too; planes are horizontal receivers and skipped.
@@ -1104,7 +1125,8 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
                 for (const auto& loaded : loadedMeshes)
                     if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
                         pointShadowMaps[li].DrawMesh(
-                            ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
+                            ctx, *loaded.mesh, loaded.transform->GetWorldMatrix(),
+                            loaded.shadowSubMeshes);
                 pointShadowMaps[li].EndFace(ctx);
             }
         }
@@ -1116,7 +1138,8 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
         spotLight.BeginShadowPass(ctx);
         for (const auto& loaded : loadedMeshes)
             if (loaded.visible && loaded.def.castShadows && loaded.mesh && loaded.transform)
-                spotLight.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix());
+                spotLight.DrawMesh(ctx, *loaded.mesh, loaded.transform->GetWorldMatrix(),
+                               loaded.shadowSubMeshes);
         spotLight.EndShadowPass(ctx);
     }
 }

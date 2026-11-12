@@ -20,6 +20,7 @@
 #include "Engine/Renderer/LightEnvironment.h"
 #include "Engine/Renderer/ParticleSystem.h"
 #include "Engine/Renderer/PointShadowMap.h"
+#include "Engine/Renderer/ShadowMaterial.h"
 #include "Engine/Renderer/RenderTarget.h"
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/SkyboxRenderer.h"
@@ -58,6 +59,9 @@ public:
         std::vector<ForwardPipeline::SubMat> materials;
         TransformComponent*                  transform = nullptr;
         bool                                 visible   = true;
+        std::vector<ShadowSubMesh>           shadowSubMeshes;
+        DirectX::XMFLOAT4X4                  prevWorld = {};
+        bool                                 prevWorldValid = false;
     };
 
     struct LoadedObject
@@ -65,6 +69,8 @@ public:
         SceneDescriptor::SceneObject def;
         ForwardPipeline::SubMat      mat;
         bool                         visible = true;
+        DirectX::XMFLOAT4X4          prevWorld = {};
+        bool                         prevWorldValid = false;
     };
 
     ~SceneRuntime();
@@ -292,6 +298,9 @@ private:
     bool              m_havePrevViewProj     = false;
     DirectX::XMMATRIX m_cachedView           = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX m_cachedProj           = DirectX::XMMatrixIdentity();
+    DirectX::XMMATRIX m_cachedProjNoJitter   = DirectX::XMMatrixIdentity();
+    DirectX::XMFLOAT4X4 m_prevBallWorld      = {};
+    bool              m_havePrevBallWorld    = false;
 
     LevelLoadOperation m_levelLoad;
     std::string        m_pendingSceneLoad;
