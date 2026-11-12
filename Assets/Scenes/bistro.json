@@ -5,7 +5,7 @@
   "settings": {
     "environment": {
       "skybox": "Assets/Textures/citrus_orchard_road_puresky_2k.dds",
-      "iblIntensity": 1.0,
+      "iblIntensity": 0.36000001430511475,
       "diffuseIBLSaturation": 1.0
     },
     "physics": {
