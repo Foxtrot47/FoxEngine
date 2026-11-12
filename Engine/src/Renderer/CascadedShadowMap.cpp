@@ -217,17 +217,46 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
         XMVECTOR eye = XMVectorAdd(center, XMVectorScale(dir, radius * 2.0f));
         XMMATRIX lightView = XMMatrixLookAtLH(eye, center, up);
 
-        // Find tight ortho bounds in light space
-        float minX = FLT_MAX, maxX = -FLT_MAX;
-        float minY = FLT_MAX, maxY = -FLT_MAX;
-        float minZ = FLT_MAX, maxZ = -FLT_MAX;
-        for (int i = 0; i < 8; ++i)
+        // Find tight ortho bounds in light space.
+        auto computeBounds = [&](float& minX, float& maxX, float& minY, float& maxY,
+                                 float& minZ, float& maxZ) {
+            minX = minY = minZ = FLT_MAX;
+            maxX = maxY = maxZ = -FLT_MAX;
+            for (int i = 0; i < 8; ++i)
+            {
+                XMVECTOR lv = XMVector3TransformCoord(XMLoadFloat3(&worldCorners[i]), lightView);
+                float x = XMVectorGetX(lv), y = XMVectorGetY(lv), z = XMVectorGetZ(lv);
+                minX = (std::min)(minX, x); maxX = (std::max)(maxX, x);
+                minY = (std::min)(minY, y); maxY = (std::max)(maxY, y);
+                minZ = (std::min)(minZ, z); maxZ = (std::max)(maxZ, z);
+            }
+        };
+
+        float minX, maxX, minY, maxY, minZ, maxZ;
+        computeBounds(minX, maxX, minY, maxY, minZ, maxZ);
+
+        const float fitWidth = maxX - minX;
+        const float fitHeight = maxY - minY;
+        if (fitWidth > 1e-6f && fitHeight > 1e-6f)
         {
-            XMVECTOR lv = XMVector3TransformCoord(XMLoadFloat3(&worldCorners[i]), lightView);
-            float x = XMVectorGetX(lv), y = XMVectorGetY(lv), z = XMVectorGetZ(lv);
-            minX = (std::min)(minX, x); maxX = (std::max)(maxX, x);
-            minY = (std::min)(minY, y); maxY = (std::max)(maxY, y);
-            minZ = (std::min)(minZ, z); maxZ = (std::max)(maxZ, z);
+            // Snap the cascade centre to the light-space texel grid. Without
+            // this the map slides by sub-texel offsets as the camera moves,
+            // which reads as shadow shimmer under TAA/FSR.
+            const float texelX = fitWidth / static_cast<float>(m_resolution);
+            const float texelY = fitHeight / static_cast<float>(m_resolution);
+            const XMVECTOR axisRight = lightView.r[0];
+            const XMVECTOR axisUp    = lightView.r[1];
+            const float centreRight = XMVectorGetX(XMVector3Dot(center, axisRight));
+            const float centreUp    = XMVectorGetX(XMVector3Dot(center, axisUp));
+            const float snappedRight = roundf(centreRight / texelX) * texelX;
+            const float snappedUp    = roundf(centreUp / texelY) * texelY;
+            const XMVECTOR snappedCenter = XMVectorAdd(center,
+                XMVectorAdd(XMVectorScale(axisRight, snappedRight - centreRight),
+                            XMVectorScale(axisUp, snappedUp - centreUp)));
+            const XMVECTOR snappedEye =
+                XMVectorAdd(snappedCenter, XMVectorScale(dir, radius * 2.0f));
+            lightView = XMMatrixLookAtLH(snappedEye, snappedCenter, up);
+            computeBounds(minX, maxX, minY, maxY, minZ, maxZ);
         }
 
         // Extend toward the sun to catch casters before the camera frustum slice.
