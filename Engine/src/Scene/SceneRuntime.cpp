@@ -1061,6 +1061,7 @@ void SceneRuntime::Render(float aspect)
 
     XMMATRIX view = camera->GetViewMatrix();
     XMMATRIX proj = camera->GetProjectionMatrix(aspect);
+    m_cachedProjNoJitter = proj;
     // Sub-pixel jitter for temporal AA: offset clip-space XY after projection.
     m_viewProjNoJitter = view * proj;
     if (!m_havePrevViewProj)
@@ -1104,7 +1105,8 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
         float er = XMConvertToRadians(lights.elevDeg);
         float ar = XMConvertToRadians(lights.azimDeg);
         XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
-        shadowMap.Update(lightDir, m_cachedView, m_cachedProj, camera->nearZ, camera->farZ);
+        shadowMap.Update(lightDir, m_cachedView, m_cachedProjNoJitter,
+                         camera->nearZ, camera->farZ);
         for (int c = 0; c < CSM_NUM_CASCADES; ++c)
         {
             shadowMap.BeginCascade(ctx, c);
