@@ -43,8 +43,7 @@
   },
   "toneMapping": {
     "op": 1,
-    "exposure": 0.92,
-    "gammaCorrect": false
+    "exposure": 0.92
   },
   "bloom": {
     "enabled": true,

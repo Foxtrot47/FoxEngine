@@ -24,9 +24,8 @@ public:
                ID3D11ShaderResourceView* hdrSRV,
                uint32_t width, uint32_t height);
 
-    float    exposure     = 1.0f;
-    Operator op           = Operator::ACES;
-    bool     gammaCorrect = false; // keep off until textures are sRGB-linearised (M52)
+    float    exposure = 1.0f;
+    Operator op       = Operator::ACES;
 
     // Color grading
     float temperature     = 0.0f; // -1 cool .. +1 warm
@@ -41,7 +40,7 @@ private:
     {
         float exposure;
         int   op;
-        int   gammaCorrect;
+        int   _pad0;
         float saturation;
         float whiteBalance[3]; // luminance-preserving RGB gains
         float contrast;

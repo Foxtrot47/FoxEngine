@@ -1,7 +1,6 @@
 // Tone mapping pass — reads HDR linear scene, outputs LDR to back buffer.
 // Operator 0 = Reinhard, 1 = ACES (Narkowicz 2015 approximation).
-// GammaCorrect = 1: applies sRGB encode (pow 1/2.2 approx); keep off until
-// albedo textures are properly linearised at load time (M52).
+// The LDR result is always sRGB-encoded for the UNORM swap chain.
 
 Texture2D    g_scene   : register(t0);
 SamplerState g_sampler : register(s0);
@@ -10,7 +9,7 @@ cbuffer ToneMapCB : register(b0)
 {
     float  Exposure;
     int    Operator;   // 0 = Reinhard, 1 = ACES
-    int    GammaCorrect;
+    int    _pad0;
     float  Saturation;
     float3 WhiteBalance; // luminance-preserving RGB gains
     float  Contrast;
@@ -75,8 +74,7 @@ float4 PS_Main(VSOutput input) : SV_TARGET
     ldr *= 1.0f - VignetteIntensity *
            smoothstep(1.0f - max(VignetteFeather, 0.001f), 1.0f, dist);
 
-    if (GammaCorrect)
-        ldr = LinearToSRGB(ldr);
+    ldr = LinearToSRGB(ldr);
 
     return float4(ldr, 1.0f);
 }
