@@ -1,5 +1,7 @@
--- A free-standing target plate. It glows red until something knocks it out
--- of place, then turns green and stays down. Rest it on a Block pedestal.
+-- A free-standing target plate. It glows red until a projectile strikes it,
+-- then turns green and stays green. Rest it on a Block pedestal.
+
+local Projectile = require("Actors.Projectile")
 
 local Target = fox.actor {
     components = {
@@ -8,36 +10,26 @@ local Target = fox.actor {
           emissive = vec3(2.4, 0.15, 0.08) },
     },
     properties = {
-        { name = "knock_distance", type = "number", default = 0.25, min = 0.01, max = 5,
-          tooltip = "How far (m) the plate must move from where it settled to count as hit." },
+        { name = "min_speed", type = "number", default = 2, min = 0, max = 100,
+          tooltip = "Slowest projectile impact (m/s) that counts as a hit; rolling shots below it do not." },
     },
 }
 
 local LIVE = vec3(2.4, 0.15, 0.08)
 local DOWN = vec3(0.15, 2.2, 0.35)
 
--- True once the plate has moved knock_distance from its rest position.
-function Target.is_knocked(rest, position, knock_distance)
-    return rest:distance(position) >= knock_distance
+-- True when an on_hit contact is a projectile striking at min_speed or faster.
+function Target.is_strike(hit, min_speed)
+    return hit.actor ~= nil and hit.actor:is_a(Projectile) and hit.speed >= min_speed
 end
 
 function Target:on_start()
     self.hit = false
-    self.rest = nil
-    self:start_coroutine(function()
-        -- Placements can start a little above their pedestal; take the rest
-        -- position once the plate has settled.
-        fox.wait(0.5)
-        self.rest = self.transform.world_position
-    end)
     self.plate.emissive = LIVE
 end
 
-function Target:on_update(dt)
-    if self.hit or self.rest == nil then
-        return
-    end
-    if Target.is_knocked(self.rest, self.transform.world_position, self.knock_distance) then
+function Target:on_hit(hit)
+    if not self.hit and Target.is_strike(hit, self.min_speed) then
         self.hit = true
         self.plate.emissive = DOWN
     end

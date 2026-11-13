@@ -107,8 +107,13 @@ test.case("launch_direction gives up beyond the projectile's range", function()
     test.expect(Player.launch_direction(vec3(0, 0, 0), vec3(0, 5, 0), 10, 9.81) == nil, "straight up")
 end)
 
-test.case("targets count as hit once moved far enough", function()
-    local rest = vec3(1, 1.5, 20)
-    test.expect(not Target.is_knocked(rest, vec3(1.1, 1.5, 20), 0.25), "a nudge is not a hit")
-    test.expect(Target.is_knocked(rest, vec3(1, 1.5, 20.3), 0.25), "a shove is a hit")
+test.case("only fast enough projectile impacts strike a target", function()
+    local function actor_of(class)
+        return { is_a = function(_, other) return other == class end }
+    end
+    local shot, crate = actor_of(Projectile), actor_of({})
+    test.expect(Target.is_strike({ actor = shot, speed = 30 }, 2), "a fresh shot is a hit")
+    test.expect(not Target.is_strike({ actor = shot, speed = 0.5 }, 2), "a rolling shot is not a hit")
+    test.expect(not Target.is_strike({ actor = crate, speed = 30 }, 2), "a flying crate is not a hit")
+    test.expect(not Target.is_strike({ speed = 30 }, 2), "level geometry is not a hit")
 end)
