@@ -485,7 +485,9 @@ std::vector<SE::ScriptPropertyInfo> ComponentFields(SE::ActorComponentType type,
     };
     auto shape = [&fields] {
         fields.push_back(Field("visible", "boolean", "Render the shape; off = collider only."));
+        fields.push_back(Field("collision", "boolean", "Collide; off = rendered only."));
         fields.push_back(Field("color", "color", "Albedo.", 0.0, 1.0));
+        fields.push_back(Field("emissive", "vec3", "Linear HDR glow; above 1 blooms.", 0.0, {}));
         fields.push_back(Field("cast_shadows", "boolean", ""));
     };
     auto body = [&fields] {
@@ -549,6 +551,7 @@ nlohmann::json ComponentValue(const SE::ActorComponentDefinition& d, const std::
     if (key == "alpha_cutoff") return d.alphaCutoff;
     if (key == "collision") return d.collision;
     if (key == "color") return vec(d.color);
+    if (key == "emissive") return vec(d.emissive);
     if (key == "intensity") return d.intensity;
     if (key == "radius") return d.radius;
     if (key == "visible") return d.visible;

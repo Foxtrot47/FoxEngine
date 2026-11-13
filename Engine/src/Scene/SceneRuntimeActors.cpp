@@ -169,7 +169,11 @@ void SceneRuntime::LoadActorPrimitive(ActorPart& part)
     part.mesh = mesh;
     part.materials = BuildSubMeshMaterials(*m_assets, *part.mesh);
     for (auto& material : part.materials)
+    {
         material.tint = { def.color[0], def.color[1], def.color[2] };
+        material.emissive = m_assets->GetDefaultWhite();
+        material.emissiveColor = { def.emissive[0], def.emissive[1], def.emissive[2] };
+    }
     part.shadowSubMeshes = BuildShadowSubMeshes(part.materials);
 }
 
@@ -258,8 +262,7 @@ void SceneRuntime::BuildActorParts(LoadedActor& actor, Scene& scene, PhysicsWorl
         for (size_t i = 0; i < actor.parts.size(); ++i)
         {
             const ActorPart& part = actor.parts[i];
-            if (static_cast<int>(i) != actor.dynamicPart &&
-                (part.def.IsCollider() || part.def.collision))
+            if (static_cast<int>(i) != actor.dynamicPart && part.def.collision)
                 SE_LOG_WARN("Actor '%s': collider '%s' is ignored: the dynamic body '%s' is the actor's "
                             "only collision", name, part.def.name.c_str(), body.def.name.c_str());
         }
@@ -362,12 +365,14 @@ void SceneRuntime::CreatePartBody(LoadedActor& actor, ActorPart& part, PhysicsWo
         return;
     }
 
+    if (!def.collision)
+        return;
     PhysicsWorld::KinematicShape shape;
     if (def.type == ActorComponentType::Box)
         shape.type = PhysicsWorld::KinematicShape::Type::Box;
     else if (def.type == ActorComponentType::Sphere)
         shape.type = PhysicsWorld::KinematicShape::Type::Sphere;
-    else if (def.type == ActorComponentType::Mesh && def.collision && part.collider)
+    else if (def.type == ActorComponentType::Mesh && part.collider)
         shape.type = PhysicsWorld::KinematicShape::Type::Mesh;
     else
         return;

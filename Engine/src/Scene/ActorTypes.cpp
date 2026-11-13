@@ -26,9 +26,11 @@ const TypeInfo k_types[] = {
     { ActorComponentType::PointLight, "point_light", { "color", "intensity", "radius" } },
     { ActorComponentType::ParticleEmitter, "particle_emitter", { "preset" } },
     { ActorComponentType::Box, "box",
-      { "size", "visible", "color", "cast_shadows", "body", "mass", "friction", "restitution" } },
+      { "size", "visible", "collision", "color", "emissive", "cast_shadows", "body", "mass", "friction",
+        "restitution" } },
     { ActorComponentType::Sphere, "sphere",
-      { "radius", "visible", "color", "cast_shadows", "body", "mass", "friction", "restitution" } },
+      { "radius", "visible", "collision", "color", "emissive", "cast_shadows", "body", "mass", "friction",
+        "restitution" } },
 };
 
 const TypeInfo* FindType(const std::string& name)
@@ -237,13 +239,21 @@ bool ParseActorComponent(const json& source, ActorComponentDefinition& out, std:
             return fail();
         }
         out.color = { 0.8f, 0.8f, 0.8f };
+        out.collision = true;
         if (!ReadBool(source, "visible", out.visible, fieldError) ||
+            !ReadBool(source, "collision", out.collision, fieldError) ||
             !ReadVec3(source, "color", out.color, fieldError) ||
+            !ReadVec3(source, "emissive", out.emissive, fieldError) ||
             !ReadBool(source, "cast_shadows", out.castShadows, fieldError))
             return fail();
         if (std::any_of(out.color.begin(), out.color.end(), [](float c) { return c < 0.0f || c > 1.0f; }))
         {
             fieldError = "'color' components must be in 0..1 (albedo)";
+            return fail();
+        }
+        if (std::any_of(out.emissive.begin(), out.emissive.end(), [](float c) { return c < 0.0f; }))
+        {
+            fieldError = "'emissive' components must not be negative";
             return fail();
         }
         if (source.contains("body"))
@@ -263,6 +273,11 @@ bool ParseActorComponent(const json& source, ActorComponentDefinition& out, std:
             !ReadNumber(source, "friction", out.friction, fieldError, 0.0f) ||
             !ReadNumber(source, "restitution", out.restitution, fieldError, 0.0f, 1.0f))
             return fail();
+        if (out.body == ActorBodyType::Dynamic && !out.collision)
+        {
+            fieldError = "a dynamic body needs 'collision' (it is simulated through its collider)";
+            return fail();
+        }
         break;
     }
     }

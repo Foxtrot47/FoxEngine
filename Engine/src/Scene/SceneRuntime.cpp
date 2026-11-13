@@ -1394,7 +1394,7 @@ void SceneRuntime::ForEachMeshInstance(Fn&& fn) const
             continue;
         for (const auto& part : actor.parts)
         {
-            if (!part.mesh || !part.transform->GetOwner()->active || (part.def.IsCollider() && !part.def.visible))
+            if (!part.mesh || !part.transform->GetOwner()->active || (part.def.IsShape() && !part.def.visible))
                 continue;
             const XMMATRIX model = part.transform->GetWorldMatrix();
             MeshInstance instance;

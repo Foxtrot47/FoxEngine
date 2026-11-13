@@ -1136,6 +1136,28 @@ static void TestActorShapeComponents()
                                            { "visible", true } }, def, error),
             "visible is not a mesh key");
 
+    Require(SE::ParseActorComponent(json{ { "name", "body" }, { "type", "box" } }, def, error) &&
+                def.collision && def.emissive[0] == 0.0f,
+            "a box should collide and not glow by default");
+    Require(SE::ParseActorComponent(json{ { "name", "barrel" }, { "type", "box" }, { "collision", false },
+                                          { "emissive", { 0.5, 4, 8 } } },
+                                    def, error) &&
+                !def.collision && def.emissive[2] == 8.0f,
+            "a render-only box with HDR emissive should parse");
+    Require(SE::ParseActorComponent(json{ { "name", "ember" }, { "type", "mesh" }, { "mesh", "a.obj" } }, def, error) &&
+                !def.collision,
+            "a mesh should not collide by default");
+    Require(!SE::ParseActorComponent(json{ { "name", "body" }, { "type", "sphere" }, { "emissive", { -1, 0, 0 } } },
+                                     def, error) && error.find("'emissive'") != std::string::npos,
+            "negative emissive should be rejected");
+    Require(!SE::ParseActorComponent(json{ { "name", "body" }, { "type", "sphere" }, { "body", "dynamic" },
+                                           { "collision", false } },
+                                     def, error) && error.find("collision") != std::string::npos,
+            "a dynamic body without collision should be rejected");
+    Require(!SE::ParseActorComponent(json{ { "name", "glow" }, { "type", "point_light" }, { "emissive", { 1, 1, 1 } } },
+                                     def, error),
+            "emissive is not a point_light key");
+
     // Back-face culling hides the box from outside if any face winds the wrong way.
     std::vector<SE::MeshVertex> vertices;
     std::vector<uint32_t> indices;

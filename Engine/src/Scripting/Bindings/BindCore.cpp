@@ -226,8 +226,11 @@ void BindCore(ScriptApi& api, ScriptContext& ctx)
         { "cast_shadows", "boolean?", "mesh, box, sphere (default true)." },
         { "receive_shadows", "boolean?", "mesh (default true)." },
         { "alpha_cutoff", "number?", "mesh: alpha-test threshold for textures with alpha (0 = off)." },
-        { "collision", "boolean?", "mesh: kinematic triangle collider that follows the component." },
+        { "collision", "boolean?",
+          "mesh: kinematic triangle collider that follows the component (default false);\n"
+          "box/sphere: the shape's collider (default true; false = rendered only, e.g. view models)." },
         { "color", "fox.Vec3?", "point_light: linear RGB (default white); box/sphere: albedo 0..1 (default 0.8 grey)." },
+        { "emissive", "fox.Vec3?", "box/sphere: linear HDR glow (default 0, 0, 0); above 1 blooms." },
         { "intensity", "number?", "point_light (default 1)." },
         { "radius", "number?", "point_light range (default 10); sphere radius (default 0.5)." },
         { "preset", "string?", "particle_emitter: Assets/Particles/Presets/*.json." },
