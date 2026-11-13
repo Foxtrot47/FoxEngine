@@ -30,8 +30,10 @@ public:
     AssetManager&        GetAssets()         { return m_assets; }
     ShaderLibrary&       GetShaders()        { return m_shaders; }
 
-    // Leading part of the window title; the run loop appends frame timings.
-    void SetTitleBase(const std::wstring& base) { m_titleBase = base; }
+    // Leading part of the window title. The run loop appends frame timings
+    // unless SetTitleStats(false) (published games keep a clean title).
+    void SetTitleBase(const std::wstring& base);
+    void SetTitleStats(bool enabled);
 
 protected:
     virtual void OnUpdate() {}
@@ -41,7 +43,8 @@ protected:
     virtual void OnPostProcess() { m_renderer.BindBackBuffer(m_renderer.GetContext()); }
 
 private:
-    std::wstring  m_titleBase = L"FoxEngine";
+    std::wstring m_titleBase = L"FoxEngine";
+    bool m_titleStats = true;
     Window        m_window;
     Clock         m_clock;
     Renderer      m_renderer;
