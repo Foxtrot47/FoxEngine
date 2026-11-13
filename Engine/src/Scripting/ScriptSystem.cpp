@@ -705,6 +705,10 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
     void ReloadModule(Module& module, fs::file_time_type writeTime)
     {
         module.writeTime = writeTime;
+        // Component lists are data: compare them across the reload to know
+        // whether placed actors need new parts.
+        const json previousComponents = module.ok && IsActorClass(module.value)
+            ? ClassComponents(module.value) : json();
         sol::object value;
         std::string error;
         if (!RunModule(module, value, error))
@@ -752,6 +756,47 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
                 Callback(instance, "on_reload");
         }
         RetryPending(module.path);
+        if (IsActorClass(module.value) && ClassComponents(module.value) != previousComponents)
+            ReloadActorParts(module.path);
+    }
+
+    json ClassComponents(const sol::object& actorClass)
+    {
+        json components = LuaToJson(State(), actorClass.as<sol::table>().raw_get<sol::object>("__components"));
+        if (!components.is_array()) // an empty Lua table converts to an object
+            components = json::array();
+        return components;
+    }
+
+    // Gives every actor of the class parts from its new component list and
+    // points the instance's self.<component> fields at them.
+    void ReloadActorParts(const std::string& path)
+    {
+        SceneRuntime* scene = m_ctx.host.scene;
+        if (!scene || !scene->HasScene())
+            return;
+        for (SceneRuntime::LoadedActor& actor : scene->actors)
+        {
+            if (!actor.entity || NormalizeScriptPath(actor.def.actorClass) != path)
+                continue;
+            std::vector<std::string> previousNames;
+            for (const SceneRuntime::ActorPart& part : actor.parts)
+                previousNames.push_back(part.def.name);
+            if (!scene->ReloadActorParts(actor))
+                continue;
+            const uint32_t root = actor.entity->GetID();
+            for (const auto& instance : m_instances)
+            {
+                if (instance->destroyed || !instance->actor || instance->owner != root ||
+                    instance->generation != m_ctx.sceneGeneration)
+                    continue;
+                for (const std::string& name : previousNames)
+                    instance->self.raw_set(name, sol::lua_nil);
+                for (const SceneRuntime::ActorPart& part : actor.parts)
+                    instance->self.raw_set(part.def.name,
+                        ScriptActorPart{ MakeEntityHandle(m_ctx, part.transform->GetOwner()->GetID()) });
+            }
+        }
     }
 
     void ReloadChangedScripts()
@@ -1722,9 +1767,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
             result.error = path + " is not an actor class: declare it with fox.actor { components = { ... } }";
             return result;
         }
-        result.components = LuaToJson(State(), module->value.as<sol::table>().raw_get<sol::object>("__components"));
-        if (!result.components.is_array()) // an empty Lua table converts to an object
-            result.components = json::array();
+        result.components = ClassComponents(module->value);
         return result;
     }
 

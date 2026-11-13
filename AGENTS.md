@@ -120,7 +120,7 @@ Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, 
 - `fox.*` module tables are strict: unknown fields raise errors, so typos fail loudly.
 - Sandbox: no `io`, `load`/`loadfile`/`dofile` or `string.dump`; `os` keeps only `clock`/`time`/`date`/`difftime`, `debug` only `traceback`.
 - Script errors are logged as `file(line)` with a traceback and never reach C++; the failing instance stops until its file is saved again. A single callback running longer than 5 s is aborted.
-- Hot reload (development builds): loaded files are polled twice a second; changed classes are patched in place, instances keep `self`, new properties get their defaults and `on_reload` runs.
+- Hot reload (development builds): loaded files are polled twice a second; changed classes are patched in place, instances keep `self`, new properties get their defaults and `on_reload` runs. When an actor class's component list changes, its live actors rebuild their parts in place (root, transform and `self` kept; `self.<name>` points at the new parts).
 
 ### API Reference and New Bindings
 - `Engine/Scripts/types/fox.lua` (LuaLS `---@meta`) documents every binding and is **generated** from `Engine/src/Scripting/Bindings/Bind*.cpp`: never edit it. Opening the repo root with the Lua language server gives completion and type checks.
