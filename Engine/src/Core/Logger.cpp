@@ -2,6 +2,7 @@
 #include <cstdarg>
 #include <cstring>
 #include <ctime>
+#include <string>
 #include <share.h>
 
 namespace SE {
@@ -67,27 +68,49 @@ void Logger::Shutdown()
 
 void Logger::Log(LogLevel level, const char* file, int line, const char* fmt, ...)
 {
-    // Format the user message.
-    char msg[1024];
+    // Format the user message; long messages (script tracebacks) spill to the heap.
+    char stackMsg[1024];
     va_list args;
     va_start(args, fmt);
-    vsnprintf(msg, sizeof(msg), fmt, args);
+    va_list sizeArgs;
+    va_copy(sizeArgs, args);
+    const int needed = vsnprintf(stackMsg, sizeof(stackMsg), fmt, sizeArgs);
+    va_end(sizeArgs);
+
+    std::string heapMsg;
+    const char* msg = stackMsg;
+    if (needed >= static_cast<int>(sizeof(stackMsg)))
+    {
+        heapMsg.resize(static_cast<size_t>(needed));
+        vsnprintf(heapMsg.data(), heapMsg.size() + 1, fmt, args);
+        msg = heapMsg.c_str();
+    }
     va_end(args);
 
-    // Build the full log line.
-    char line_buf[1200];
-    snprintf(line_buf, sizeof(line_buf), "[%s] %s(%d): %s\n",
-             k_LevelTag[static_cast<int>(level)], file, line, msg);
+    Write(level, file, line, msg);
+}
+
+void Logger::Write(LogLevel level, const char* file, int line, const char* msg)
+{
+    std::string lineText = "[";
+    lineText += k_LevelTag[static_cast<int>(level)];
+    lineText += "] ";
+    lineText += file;
+    lineText += "(" + std::to_string(line) + "): ";
+    lineText += msg;
+    lineText += '\n';
+
+    std::lock_guard lock(m_mutex);
 
     // VS Output window.
-    OutputDebugStringA(line_buf);
+    OutputDebugStringA(lineText.c_str());
 
     // Console with colour.
     if (m_hasConsole)
     {
         HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
         SetConsoleTextAttribute(hOut, k_LevelColour[static_cast<int>(level)]);
-        fputs(line_buf, stdout);
+        fputs(lineText.c_str(), stdout);
         // Reset to white.
         SetConsoleTextAttribute(hOut, 15);
     }
@@ -95,8 +118,32 @@ void Logger::Log(LogLevel level, const char* file, int line, const char* fmt, ..
     // Log file (no colour codes).
     if (m_logFile)
     {
-        fputs(line_buf, m_logFile);
+        fputs(lineText.c_str(), m_logFile);
         fflush(m_logFile);
+    }
+
+    for (const auto& entry : m_sinks)
+        entry.second(level, file, line, msg);
+}
+
+LogSinkId Logger::AddSink(LogSink sink)
+{
+    std::lock_guard lock(m_mutex);
+    const LogSinkId id = m_nextSinkId++;
+    m_sinks.emplace_back(id, std::move(sink));
+    return id;
+}
+
+void Logger::RemoveSink(LogSinkId id)
+{
+    std::lock_guard lock(m_mutex);
+    for (auto it = m_sinks.begin(); it != m_sinks.end(); ++it)
+    {
+        if (it->first == id)
+        {
+            m_sinks.erase(it);
+            return;
+        }
     }
 }
 
