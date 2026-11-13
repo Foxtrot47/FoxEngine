@@ -116,8 +116,9 @@ public:
 
     // Per-frame driver: hot reload, enable/disable transitions, pending
     // on_start, coroutines, on_update, the scene update (physics steps call
-    // on_fixed_update), then on_late_update. dt is unscaled seconds; the
-    // scene advances by dt * fox.time.scale. Skip it while the scene loads.
+    // on_fixed_update, then new contacts call on_hit), then on_late_update.
+    // dt is unscaled seconds; the scene advances by dt * fox.time.scale.
+    // Skip it while the scene loads.
     // Once a scene is applied, Simulate only holds it (dt 0) and DrawGui
     // draws nothing until OnSceneReady has created the scene's scripts.
     void Simulate(float dt);

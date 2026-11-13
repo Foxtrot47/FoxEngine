@@ -122,7 +122,7 @@ function fox.window.set_title(title) end
 ---Base of every script class. Instances are tables: store state on self
 ---(module-level locals reset on hot reload). Callbacks are optional methods.
 ---Order: on_enable, on_start, then every frame coroutines, on_update, physics
----steps (on_fixed_update), on_late_update, on_gui. A callback that raises an
+---steps (on_fixed_update), on_hit, on_late_update, on_gui. A callback that raises an
 ---error stops the instance until its file is saved again (hot reload).
 ---@class fox.Script
 ---@field entity fox.Entity? Owning entity (nil for autoloads).
@@ -132,6 +132,7 @@ function fox.window.set_title(title) end
 ---@field on_update fun(self, dt: number)? Every frame with scaled dt.
 ---@field on_fixed_update fun(self, dt: number)? Before every physics step (dt = fox.physics.fixed_dt).
 ---@field on_late_update fun(self, dt: number)? After physics and every on_update.
+---@field on_hit fun(self, hit: fox.Hit)? When a body of the entity starts touching another body, after the physics steps (before on_late_update). Once per pair until they separate; a resting pair reports again when it wakes, so filter on hit.speed. Needs a dynamic body on either side: kinematic actor colliders touching level geometry, and the fox.character, report nothing.
 ---@field on_gui fun(self)? Inside the UI frame; the only place fox.ui works.
 ---@field on_enable fun(self)? When the script becomes active: on its first frame and after re-enabling.
 ---@field on_disable fun(self)? When the script or its entity becomes inactive, and before on_destroy.
@@ -794,6 +795,17 @@ function fox.character.jump() end
 ---@field distance number Distance from the ray origin.
 ---@field dynamic boolean True for simulated bodies.
 ---@field entity fox.Entity? The hit entity, for simulated bodies.
+
+---Argument of on_hit, seen from the script's entity.
+---@class fox.Hit
+---@field entity fox.Entity? The other body's entity (actor root or ball); nil for level geometry.
+---@field actor fox.Actor? The other actor's class instance, if the other body belongs to an actor.
+---@field part fox.ActorComponent? This actor's box/sphere/mesh component that was touched.
+---@field other_part fox.ActorComponent? The other actor's component that touched it.
+---@field position fox.Vec3 World-space contact point.
+---@field normal fox.Vec3 The other body's surface normal, pointing at this entity.
+---@field relative_velocity fox.Vec3 This body's velocity minus the other's at the contact, before the impact.
+---@field speed number Closing speed along the normal in m/s (>= 0); small for resting contacts.
 
 ---Rigid-body world (Jolt). Simulation runs at a fixed rate; scripts get on_fixed_update per step.
 ---@class fox.physics
