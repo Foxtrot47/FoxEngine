@@ -126,5 +126,6 @@ int CommandCheck(ToolContext& context, const std::vector<std::string>& args);
 int CommandEval(ToolContext& context, const std::vector<std::string>& args);
 int CommandNew(ToolContext& context, const std::vector<std::string>& args);
 int CommandPublish(ToolContext& context, const std::vector<std::string>& args);
+int CommandUpgrade(ToolContext& context, const std::vector<std::string>& args);
 
 } // namespace FoxProject

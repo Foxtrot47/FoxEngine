@@ -33,6 +33,8 @@ void PrintUsage()
         "  publish [--out <dir>] [--clean]\n"
         "                         check, then copy a standalone build to\n"
         "                         out/Publish/<ProjectName>/ (incremental unless --clean)\n"
+        "  upgrade [scene...]     rewrite legacy unversioned scenes (default: every scene in\n"
+        "                         Assets/Scenes) as FoxLevel version 2\n"
         "  help                   show this text\n",
         SE::ScriptSystem::k_apiStubPath);
 }
@@ -85,6 +87,7 @@ int main(int argc, char** argv)
         { "eval", &FoxProject::CommandEval },
         { "new", &FoxProject::CommandNew },
         { "publish", &FoxProject::CommandPublish },
+        { "upgrade", &FoxProject::CommandUpgrade },
     };
     Handler handler = nullptr;
     for (const Command& candidate : k_commands)

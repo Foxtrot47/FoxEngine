@@ -99,6 +99,7 @@ FoxProject check                          # validate project.json, scripts and s
 FoxProject eval "vec3(1, 2, 3):length()"  # evaluate Lua in a headless session
 FoxProject api                            # regenerate the API reference after changing bindings
 FoxProject publish                        # standalone game in out/Publish/<ProjectName>/
+FoxProject upgrade                        # rewrite legacy unversioned scenes as FoxLevel v2
 ```
 
 The API reference, `Engine/Scripts/types/fox.lua`, is engine-owned and generated from the C++ bindings. Open the repository with the Lua language server (e.g. the VS Code "Lua" extension) for completion and type checks; when opening an external project alone, add `<engine-root>/Engine/Scripts/types` to LuaLS `workspace.library`. `publish` copies the player as `<ProjectName>.exe` with its DLLs, shaders, scripts, and the published scenes with their cooked meshes and textures. Its default output is inside the selected project; `--out` is relative to the invocation directory. Publish from a Release build to distribute; target machines need the Microsoft Visual C++ x64 redistributable. See `AGENTS.md` (Scripting) for the full model.
