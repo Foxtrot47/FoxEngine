@@ -59,7 +59,7 @@ public:
         DirectX::XMFLOAT3   point     = {};
         DirectX::XMFLOAT3   normal    = {};
         DirectX::XMFLOAT3   surfaceVelocity = {}; // velocity of the hit body at point
-        TransformComponent* transform = nullptr;  // set for mirrored dynamic bodies
+        TransformComponent* transform = nullptr;  // mirrored dynamic body or kinematic owner
         BodyHandle          body      = k_invalidBody;
         bool                dynamic   = false;
         Kind                kind      = Kind::Box;
@@ -89,6 +89,17 @@ public:
         DirectX::XMFLOAT3 angularVelocity = {};
     };
 
+    // Shape of a kinematic body. Mesh shapes reuse a prebuilt StaticMeshCollider.
+    struct KinematicShape
+    {
+        enum class Type { Box, Sphere, Mesh };
+        Type              type        = Type::Box;
+        DirectX::XMFLOAT3 halfExtents = { 0.5f, 0.5f, 0.5f };  // Box
+        float             radius      = 0.5f;                   // Sphere
+        std::shared_ptr<const StaticMeshCollider> mesh;         // Mesh
+        DirectX::XMFLOAT3 scale       = { 1.0f, 1.0f, 1.0f };   // Mesh (non-uniform allowed)
+    };
+
     PhysicsWorld();
     ~PhysicsWorld();
     PhysicsWorld(PhysicsWorld&&) noexcept;
@@ -114,6 +125,19 @@ public:
     BodyHandle AddStaticMesh(const std::shared_ptr<const StaticMeshCollider>& collider,
                              DirectX::XMFLOAT3 position, DirectX::XMFLOAT3 eulerDeg,
                              DirectX::XMFLOAT3 scale, float friction = 0.8f);
+    // Moving collision driven by game code (actor colliders): pushes dynamic
+    // bodies, blocks the character, is hit by raycasts. owner is reported as
+    // RaycastHit::transform (may be null). rotation is a quaternion (x, y, z, w).
+    BodyHandle AddKinematicBody(const KinematicShape& shape, DirectX::XMFLOAT3 position,
+                                DirectX::XMFLOAT4 rotation, float friction = 0.5f,
+                                float restitution = 0.2f, TransformComponent* owner = nullptr);
+    // Kinematic bodies: the body reaches the pose over the fixed steps run by the
+    // next Step() call (Jolt MoveKinematic with that duration, so contacts see
+    // its velocity); once there it stops (zero velocity) instead of drifting.
+    // With teleport, the pose is set immediately with zero velocity. Calling it
+    // again before the next Step replaces the target. Ignored for other bodies.
+    void MoveKinematic(BodyHandle body, DirectX::XMFLOAT3 position, DirectX::XMFLOAT4 rotation,
+                       bool teleport = false);
     void RemoveBody(BodyHandle body);
 
     BodyState         GetBodyState(BodyHandle body) const;
