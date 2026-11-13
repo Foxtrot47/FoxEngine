@@ -67,23 +67,27 @@ The selected project owns `Assets/`, `Cache/`, logs, and editor layout files. As
 
 ## Scripting
 
-Gameplay is written in Lua 5.4. A script returns a class with optional callbacks; the properties it declares are editable per entity in the editor:
+Gameplay is written in Lua 5.4. Behaviour lives on **actors**: a class declares the components it is built from and the properties the editor exposes per placement:
 
 ```lua
-local Spinner = fox.script {
+local Brazier = fox.actor {
+    components = {
+        { name = "flames", type = "particle_emitter", preset = "Assets/Particles/Presets/fire_flipbook_default.json" },
+        { name = "light", type = "point_light", color = vec3(2.6, 1.2, 0.45), position = vec3(0, 1.6, 0) },
+    },
     properties = {
-        { name = "speed", type = "number", default = 90, tooltip = "Degrees per second." },
+        { name = "brightness", type = "number", default = 1, tooltip = "Light intensity before flicker." },
     },
 }
 
-function Spinner:on_update(dt)
-    self.transform:rotate(vec3(0, self.speed * dt, 0))
+function Brazier:on_update(dt)
+    self.light.intensity = self.brightness * (1 + 0.2 * math.sin(fox.time.time * 11))
 end
 
-return Spinner
+return Brazier
 ```
 
-Attach scripts to entities in the editor (Details → Add Script) or list global ones under `autoload` in `project.json`, which also names the startup scene, the published scenes, input actions and window settings. Press F5 in the editor to play the level; saving a script while the game runs hot-reloads it.
+Place actors from the editor (Outliner → Add → Actors) and edit their properties, per-component overrides and extra `fox.script` components in Details, or create them at runtime with `fox.world.spawn`. Global scripts go under `autoload` in `project.json`, which also names the startup scene, the published scenes, input actions and window settings. Press F5 in the editor to play the level; saving a script while the game runs hot-reloads it.
 
 `FoxProject` covers the rest of the workflow:
 

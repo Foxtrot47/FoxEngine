@@ -95,13 +95,18 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, a headless `FoxProject` command) gets its own sandboxed VM. The C++ entry point is `SE::ScriptSystem` (`Engine/include/Engine/Scripting/ScriptSystem.h`).
 
 ### Script Model
-- A script is a module under `Assets/Scripts/` returning a class made by `fox.script { properties = { ... } }`. `require("Game.CameraMath")` loads `Assets/Scripts/Game/CameraMath.lua`.
-- **Script components** attach to level entities (mesh, camera, sun, point light, particle emitter, primitive, empty) in a `scripts` array beside `components`. Levels store only property overrides; defaults come from the script, so changing one updates every instance without an override:
+- A script is a module under `Assets/Scripts/` returning a class. `require("Game.CameraMath")` loads `Assets/Scripts/Game/CameraMath.lua`.
+- **Actors** are the only level objects with behaviour. An actor class is `fox.actor { base = ..., components = { ... }, properties = { ... } }`: each component (`mesh`, `point_light`, `particle_emitter`, `box`, `sphere`) becomes a child entity exposed as `self.<name>` (`fox.ActorComponent`). Static entities (meshes, lights, primitives, empties) take no `scripts` or `properties`; the loader rejects them.
+- A placement names its class in `actor`; its `transform` is the actor root, other `components` keys override per-component fields by name (any key except `name`/`type`), `properties` override class properties, and `scripts` adds `fox.script { properties = { ... } }` components that run after the class instance. Levels store only overrides; defaults come from the class, so changing one updates every placement without an override:
   ```json
-  { "id": "0000000000000007", "name": "Turntable",
-    "components": { "transform": { "position": [0, 1, 0] } },
-    "scripts": [ { "script": "Assets/Scripts/Examples/Spinner.lua", "properties": { "speed": 45 } } ] }
+  { "id": "0000000000000005", "name": "Brazier Right",
+    "actor": "Assets/Scripts/Actors/Brazier.lua",
+    "components": { "transform": { "position": [3.5, 0, 2] }, "light": { "color": [0.6, 1.4, 2.8] } },
+    "properties": { "brightness": 1.5 },
+    "scripts": [ { "script": "Assets/Scripts/Examples/Bobber.lua", "properties": { "amplitude": 0.6 } } ] }
   ```
+- Scripts create actors at runtime with `fox.world.spawn(class_or_path, { position = ..., properties = ..., components = ... })`; spawned actors are not saved. `fox.world.actors(class)` and `fox.world.destroy(actor)` complete the set. `Projects/Showcase/Assets/Scenes/actors.json` is the reference scene.
+- Actor classes are Lua, so `SceneRuntime` resolves every placed class on the main thread (`actorClassResolver`) before the level load worker starts; the worker then preloads their meshes. Unresolved classes log a level warning and the actor has no components.
 - **Autoloads** (`project.json` `autoload`) have no entity, live for the whole session across scene loads and receive `on_scene_loaded(scene)`. Global game logic goes there (`Game/PlayerController.lua`, `Game/PauseMenu.lua`).
 - Callbacks are optional methods: `on_enable`, `on_start`, `on_update(dt)`, `on_fixed_update(dt)`, `on_late_update(dt)`, `on_gui`, `on_disable`, `on_destroy`, `on_reload`. Each frame runs coroutines → `on_update` → physics steps (`on_fixed_update`) → `on_late_update` → `on_gui`.
 - Keep state on `self`: module-level locals reset on hot reload. `self:start_coroutine(fn)` with `fox.wait(seconds)` / `fox.wait_frames(n)` sequences work across frames.
@@ -119,7 +124,7 @@ Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, 
 ### API Reference and New Bindings
 - `Engine/Scripts/types/fox.lua` (LuaLS `---@meta`) documents every binding and is **generated** from `Engine/src/Scripting/Bindings/Bind*.cpp`: never edit it. Opening the repo root with the Lua language server gives completion and type checks.
 - Add bindings in the matching `Bind<Area>.cpp` through the `ScriptApi` builders: `api.Module(name, doc)` with `.Function(name, "(path: string, volume?: number) -> boolean", doc, fn)`, `.Property`, `.ReadOnly`; `api.Class<T>(name, doc)` for usertypes. Raise Lua errors with `Raise(fmt, ...)`. The signature and doc strings become the reference, so it cannot drift. Then run `FoxProject api` and commit the stub; `FoxProject check` warns when it is stale.
-- The Lua-side API (`fox.script`, `fox.Script` methods, `fox.wait`, `fox.test`, `fox.inspect`) lives in `Engine/Scripts/fox/runtime.lua`.
+- The Lua-side API (`fox.script`, `fox.actor`, `fox.Script`/`fox.Actor` methods, `fox.wait`, `fox.test`, `fox.inspect`) lives in `Engine/Scripts/fox/runtime.lua`. CTest runs `FoxProject api --check`, so a binding change without a regenerated stub fails the suite.
 
 ### FoxProject CLI
 `build/Tools/FoxProject/<Config>/FoxProject.exe` accepts `--project` before or after the command; without it, the nearest project above cwd or configured sample is used. Diagnostics print as `path(line): error: message`; exit codes: 0 success, 1 failures, 2 usage error. `api` reads/writes the engine's stubs, never a project's copy. Explicit `publish --out` paths are invocation-relative.
@@ -223,6 +228,7 @@ M72: Material workflow correctness (metallic/roughness, packed MR, specular/glos
 M62: TAA (jittered projection, per-object motion vectors, variance-clipped resolve) + geometric specular AA
 M63: FSR 3.1 upscaling (vendored prebuilt DX11 SDK in `ThirdParty/fsr3/`; upscale-only — frame generation needs DX12/Vulkan; Native AA mode is the default AA path, mutually exclusive with TAA)
 M73: Lua scripting (script components + autoloads, lifecycle, coroutines, hot reload; editor Play mode, Console and script properties; generic FoxPlayer; FoxProject CLI with tests, validation and publish)
+M74: Actors (`fox.actor` classes from mesh/light/emitter/collider components, per-placement overrides, `fox.world` spawning, kinematic bodies; editor placement and editing)
 
 ### Next Up
 
