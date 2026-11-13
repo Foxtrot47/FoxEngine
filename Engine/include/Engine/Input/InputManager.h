@@ -32,11 +32,27 @@ public:
     // Call before SetCursorPos so the resulting WM_MOUSEMOVE doesn't count as input delta.
     void IgnoreMouseMoveAt(int32_t clientX, int32_t clientY);
 
+    // Mouse-look capture: hides the cursor, confines it to the capture rect
+    // and re-centres it every NewFrame, so mouse deltas stay unbounded.
+    // Released automatically when the window loses focus.
+    void SetCursorCaptured(bool captured);
+    bool IsCursorCaptured() const { return m_cursorCaptured; }
+    // Client-space rect the captured cursor is confined to (the editor passes
+    // its viewport image). An empty rect means the whole client area.
+    void SetCaptureRect(const RECT& clientRect) { m_captureRect = clientRect; }
+
     // Passed to Window::SetInputHook
     static LRESULT WndProcHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
 private:
     void PollGamepads();
+    RECT CaptureClientRect() const;
+    void RecentreCapturedCursor();
+    void ReleaseAllKeys();
+
+    HWND    m_hwnd = nullptr;
+    bool    m_cursorCaptured = false;
+    RECT    m_captureRect    = {};
 
     bool    m_keyDown    [256] = {};
     bool    m_keyPressed [256] = {};
