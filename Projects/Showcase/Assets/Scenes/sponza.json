@@ -1,48 +1,142 @@
 {
+  "format": "FoxLevel",
+  "version": 2,
   "name": "Sponza Atrium",
-  "mesh": {
-    "path": "Assets/Sponza/Sponza.gltf",
-    "alphaCutoff": 0.5,
-    "transform": {
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0],
-      "scale": 1.0
+  "settings": {
+    "environment": {
+      "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
+      "iblIntensity": 1.0,
+      "diffuseIBLSaturation": 1.0
+    },
+    "physics": {
+      "floor": {
+        "min": [
+          -20.0,
+          -0.5,
+          -20.0
+        ],
+        "max": [
+          20.0,
+          0.0,
+          20.0
+        ],
+        "friction": 0.6000000238418579,
+        "restitution": 0.4000000059604645
+      },
+      "characterSpawn": [
+        0.0,
+        2.0,
+        0.0
+      ],
+      "gravity": true
+    },
+    "toneMapping": {
+      "operator": "ACES",
+      "exposure": 1.0
+    },
+    "colorGrading": {
+      "temperature": 0.0,
+      "tint": 0.0,
+      "saturation": 1.0,
+      "contrast": 1.0,
+      "vignette": 0.0,
+      "vignetteFeather": 0.5
+    },
+    "bloom": {
+      "enabled": true,
+      "threshold": 1.2000000476837158,
+      "intensity": 0.07999999821186066,
+      "scatter": 0.699999988079071
+    },
+    "fog": {
+      "enabled": false,
+      "density": 0.029999999329447746,
+      "anisotropy": 0.7599999904632568,
+      "scatterIntensity": 1.0,
+      "steps": 48,
+      "maxDistance": 60.0,
+      "ambientColor": [
+        0.41999998688697815,
+        0.4399999976158142,
+        0.41999998688697815
+      ],
+      "ambientIntensity": 0.44999998807907104,
+      "heightFalloff": 0.0,
+      "heightBase": 0.0,
+      "noiseStrength": 0.3499999940395355,
+      "noiseScale": 0.03500000014901161,
+      "noiseSpeed": 0.44999998807907104,
+      "nearClearDistance": 0.0,
+      "distanceDensity": 0.0
     }
   },
-  "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
-  "camera": {
-    "eye": [0, 5, 0],
-    "yaw": 0,
-    "pitch": 0,
-    "nearZ": 0.1,
-    "farZ": 1000
-  },
-  "sun": {
-    "elevation": 50.0,
-    "azimuth": -90.0,
-    "intensity": 1.5,
-    "color": [1, 0.98, 0.95]
-  },
-  "iblIntensity": 1.0,
-  "pointLights": [],
-  "physics": {
-    "floor": {
-      "min": [-20, -0.5, -20],
-      "max": [20, 0, 20],
-      "friction": 0.6,
-      "restitution": 0.4
+  "entities": [
+    {
+      "id": "0000000000000001",
+      "name": "SceneMesh",
+      "active": true,
+      "components": {
+        "transform": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotationDegrees": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "meshRenderer": {
+          "mesh": "Assets/Sponza/Sponza.gltf",
+          "alphaCutoff": 0.5,
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false
+        }
+      }
     },
-    "characterSpawn": [0, 2, 0],
-    "gravity": true
-  },
-  "toneMapping": {
-    "operator": "ACES",
-    "exposure": 1.0
-  },
-  "bloom": {
-    "enabled": true,
-    "threshold": 1.2,
-    "intensity": 0.08,
-    "scatter": 0.7
-  }
+    {
+      "id": "0000000000000002",
+      "name": "Camera",
+      "active": true,
+      "components": {
+        "camera": {
+          "eye": [
+            0.0,
+            5.0,
+            0.0
+          ],
+          "yaw": 0.0,
+          "pitch": 0.0,
+          "nearZ": 0.10000000149011612,
+          "farZ": 1000.0,
+          "primary": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000003",
+      "name": "Sun",
+      "active": true,
+      "components": {
+        "directionalLight": {
+          "elevation": 50.0,
+          "azimuth": -90.0,
+          "intensity": 1.5,
+          "color": [
+            1.0,
+            0.9800000190734863,
+            0.949999988079071
+          ]
+        }
+      }
+    }
+  ]
 }
