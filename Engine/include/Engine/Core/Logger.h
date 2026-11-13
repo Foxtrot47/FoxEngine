@@ -1,10 +1,21 @@
 #pragma once
+#include <cstdint>
 #include <cstdio>
+#include <functional>
+#include <mutex>
+#include <utility>
+#include <vector>
 #include <windows.h>
 
 namespace SE {
 
 enum class LogLevel { Debug, Info, Warning, Error, Fatal };
+
+// Receives every formatted log message. Sinks run on the logging thread
+// (level loading logs from workers) under the logger lock, so they must be
+// quick and must not log themselves.
+using LogSink   = std::function<void(LogLevel level, const char* file, int line, const char* message)>;
+using LogSinkId = uint32_t;
 
 class Logger
 {
@@ -15,11 +26,18 @@ public:
     void Shutdown();
     void Log(LogLevel level, const char* file, int line, const char* fmt, ...);
 
+    LogSinkId AddSink(LogSink sink);
+    void      RemoveSink(LogSinkId id);
+
 private:
     Logger() = default;
+    void Write(LogLevel level, const char* file, int line, const char* message);
 
+    std::recursive_mutex m_mutex;
     FILE* m_logFile    = nullptr;
     bool  m_hasConsole = false;
+    std::vector<std::pair<LogSinkId, LogSink>> m_sinks;
+    LogSinkId m_nextSinkId = 1;
 };
 
 } // namespace SE
