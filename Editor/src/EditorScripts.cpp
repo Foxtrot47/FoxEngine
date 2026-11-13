@@ -226,7 +226,15 @@ bool DrawPropertyWidget(const SE::ScriptPropertyInfo& prop, const nlohmann::json
         const bool changed = type == "color"
             ? ImGui::ColorEdit3(label, v, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR)
             : ImGui::DragFloat3(label, v, speed);
-        if (changed) edited = nlohmann::json::array({ v[0], v[1], v[2] });
+        if (changed)
+        {
+            for (float& c : v)
+            {
+                if (prop.min) c = (std::max)(c, static_cast<float>(*prop.min));
+                if (prop.max) c = (std::min)(c, static_cast<float>(*prop.max));
+            }
+            edited = nlohmann::json::array({ v[0], v[1], v[2] });
+        }
         return changed;
     }
     if (type == "enum")
@@ -475,6 +483,11 @@ std::vector<SE::ScriptPropertyInfo> ComponentFields(SE::ActorComponentType type,
         Field("rotation", "vec3", "Euler degrees, relative to the actor."),
         Field("scale", "vec3", "Relative to the actor."),
     };
+    auto shape = [&fields] {
+        fields.push_back(Field("visible", "boolean", "Render the shape; off = collider only."));
+        fields.push_back(Field("color", "color", "Albedo.", 0.0, 1.0));
+        fields.push_back(Field("cast_shadows", "boolean", ""));
+    };
     auto body = [&fields] {
         SE::ScriptPropertyInfo kind = Field("body", "enum",
             "kinematic follows the actor; dynamic is simulated and moves the actor.");
@@ -512,10 +525,12 @@ std::vector<SE::ScriptPropertyInfo> ComponentFields(SE::ActorComponentType type,
     }
     case Type::Box:
         fields.push_back(Field("size", "vec3", "Full extents."));
+        shape();
         body();
         break;
     case Type::Sphere:
         fields.push_back(Field("radius", "number", "", 0.001, {}));
+        shape();
         body();
         break;
     }
@@ -536,6 +551,7 @@ nlohmann::json ComponentValue(const SE::ActorComponentDefinition& d, const std::
     if (key == "color") return vec(d.color);
     if (key == "intensity") return d.intensity;
     if (key == "radius") return d.radius;
+    if (key == "visible") return d.visible;
     if (key == "preset") return d.preset;
     if (key == "size") return vec(d.size);
     if (key == "body") return d.body == SE::ActorBodyType::Dynamic ? "dynamic" : "kinematic";

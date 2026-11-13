@@ -186,15 +186,16 @@ function fox.Actor:is_a(class) end
 ---@field rotation fox.Vec3? Euler degrees.
 ---@field scale fox.Vec3?
 ---@field mesh string? mesh: model path (FBX, glTF, OBJ).
----@field cast_shadows boolean? mesh (default true).
+---@field cast_shadows boolean? mesh, box, sphere (default true).
 ---@field receive_shadows boolean? mesh (default true).
 ---@field alpha_cutoff number? mesh: alpha-test threshold for textures with alpha (0 = off).
 ---@field collision boolean? mesh: kinematic triangle collider that follows the component.
----@field color fox.Vec3? point_light: linear RGB (default white).
+---@field color fox.Vec3? point_light: linear RGB (default white); box/sphere: albedo 0..1 (default 0.8 grey).
 ---@field intensity number? point_light (default 1).
 ---@field radius number? point_light range (default 10); sphere radius (default 0.5).
 ---@field preset string? particle_emitter: Assets/Particles/Presets/*.json.
 ---@field size fox.Vec3? box: full extents (default 1, 1, 1).
+---@field visible boolean? box/sphere: render the shape (default true); false = collider only.
 ---@field body "kinematic"|"dynamic"? box/sphere: kinematic follows the actor (default); dynamic is simulated and moves the actor (one per actor; it is then the actor's only collision).
 ---@field mass number? Dynamic body mass in kg (default 1).
 ---@field friction number? Default 0.5.
@@ -585,7 +586,8 @@ function fox.Entity:add_script(path, properties) end
 ---@field transform fox.Transform Transform relative to the actor.
 ---@field actor fox.Actor The owning actor.
 ---@field enabled boolean Disabled components render nothing, emit nothing and have no collision.
----@field color fox.Vec3 point_light: linear RGB.
+---@field color fox.Vec3 point_light: linear RGB. box/sphere: albedo, 0..1 per channel.
+---@field visible boolean box/sphere: false keeps the collider but renders nothing.
 ---@field intensity number point_light: multiplier on color.
 ---@field radius number point_light: range in m.
 ---@field velocity fox.Vec3 box/sphere with body = "dynamic": linear velocity of the actor in m/s.

@@ -1,5 +1,6 @@
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/PrimitiveMesh.h"
 #include <windows.h>
 #include <d3dcompiler.h>
 #include <cmath>
@@ -72,42 +73,6 @@ void BuildWireSphere(int segs, std::vector<MeshVertex>& verts, std::vector<uint3
     }
 }
 
-void BuildSphereMesh(float radius, int rings, int segs,
-    std::vector<MeshVertex>& verts, std::vector<uint32_t>& indices)
-{
-    const float pi = DirectX::XM_PI;
-    for (int r = 0; r <= rings; ++r)
-    {
-        float phi = -pi * 0.5f + pi * r / rings;
-        for (int s = 0; s <= segs; ++s)
-        {
-            float theta = DirectX::XM_2PI * s / segs;
-            float cp = cosf(phi), sp = sinf(phi);
-            float ct = cosf(theta), st = sinf(theta);
-
-            MeshVertex v;
-            v.x  = cp * ct * radius; v.y = sp * radius; v.z = cp * st * radius;
-            v.nx = cp * ct;          v.ny = sp;          v.nz = cp * st;
-            v.u  = (float)s / segs;  v.v  = (float)r / rings;
-            v.tx = -st;      v.ty = 0.0f; v.tz = ct;
-            v.bx = -sp * ct; v.by = cp;   v.bz = -sp * st;
-            verts.push_back(v);
-        }
-    }
-    for (int r = 0; r < rings; ++r)
-    {
-        for (int s = 0; s < segs; ++s)
-        {
-            uint32_t i0 = static_cast<uint32_t>(r * (segs + 1) + s);
-            uint32_t i1 = i0 + 1;
-            uint32_t i2 = i0 + static_cast<uint32_t>(segs + 1);
-            uint32_t i3 = i2 + 1;
-            indices.push_back(i0); indices.push_back(i2); indices.push_back(i1);
-            indices.push_back(i1); indices.push_back(i2); indices.push_back(i3);
-        }
-    }
-}
-
 } // anonymous namespace
 
 bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders)
@@ -152,7 +117,7 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     {
         std::vector<MeshVertex> verts;
         std::vector<uint32_t>   idx;
-        BuildSphereMesh(1.0f, 16, 16, verts, idx);
+        BuildSphereGeometry(1.0f, 16, 16, verts, idx);
         m_sphereVB.Create(device, verts.data(),
             static_cast<uint32_t>(verts.size() * sizeof(MeshVertex)), sizeof(MeshVertex));
         m_sphereIB.Create(device, idx.data(), static_cast<uint32_t>(idx.size()));
@@ -426,7 +391,8 @@ void ForwardPipeline::ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mo
 void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat)
 {
     MaterialParamsCBData mc = {};
-    mc.albedoTint       = m_globalTint;
+    mc.albedoTint       = { m_globalTint.x * mat.tint.x, m_globalTint.y * mat.tint.y,
+                            m_globalTint.z * mat.tint.z };
     mc.roughnessScale   = mat.roughnessScale * m_globalRoughnessScale;
     mc.metallic         = m_globalMetallic; // texture value scales by the global override
     mc.debugShadow      = m_globalDebugShadow;

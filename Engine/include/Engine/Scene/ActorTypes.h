@@ -29,7 +29,8 @@ struct ActorComponentDefinition
     bool receiveShadows = true;
     bool collision = false;      // kinematic triangle collider that follows the mesh
 
-    // point_light (never casts shadows: point shadow slots belong to level lights)
+    // point_light (never casts shadows: point shadow slots belong to level lights);
+    // box/sphere: albedo of the rendered shape (cast_shadows also applies)
     std::array<float, 3> color = { 1.0f, 1.0f, 1.0f };
     float intensity = 1.0f;
 
@@ -41,8 +42,9 @@ struct ActorComponentDefinition
     std::string preset;
     LevelParticleEmitterDefinition emitter;
 
-    // box and sphere colliders
+    // box and sphere: rendered shape and collider
     std::array<float, 3> size = { 1.0f, 1.0f, 1.0f }; // box full extents
+    bool visible = true; // false: collider only (triggers, invisible walls)
     ActorBodyType body = ActorBodyType::Kinematic;
     float mass = 1.0f;
     float friction = 0.5f;
