@@ -1,0 +1,31 @@
+{
+  "name": "FoxEngine Showcase",
+  "startupScene": "Assets/Scenes/showcase.json",
+  "scenes": [
+    "Assets/Scenes/showcase.json",
+    "Assets/Scenes/bistro.json",
+    "Assets/Scenes/suntemple.json",
+    "Assets/Scenes/specgloss.json"
+  ],
+  "autoload": [
+    "Assets/Scripts/Game/PlayerController.lua",
+    "Assets/Scripts/Game/PauseMenu.lua"
+  ],
+  "input": {
+    "move_forward": ["W", "Up"],
+    "move_back": ["S", "Down"],
+    "move_left": ["A", "Left"],
+    "move_right": ["D", "Right"],
+    "move_up": ["E"],
+    "move_down": ["Q"],
+    "sprint": ["Shift", "Gamepad.LeftThumb"],
+    "jump": ["Space", "Gamepad.A"],
+    "look": ["MouseRight"],
+    "toggle_walk": ["Tab", "Gamepad.Y"],
+    "pause": ["Escape", "Gamepad.Start"]
+  },
+  "window": {
+    "width": 1280,
+    "height": 720
+  }
+}
