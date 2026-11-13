@@ -42,4 +42,9 @@ if(BUILD_TESTING)
     target_compile_options(PhysicsWorldTests PRIVATE /W4 /WX /MP)
     add_test(NAME PhysicsWorldTests COMMAND PhysicsWorldTests)
     set_tests_properties(PhysicsWorldTests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    # The LuaLS reference is generated from the bindings; fail when it drifts.
+    add_test(NAME LuaApiStubs COMMAND FoxProject api --check)
+    add_test(NAME ShowcaseProject COMMAND FoxProject --project "${FOX_DEFAULT_PROJECT}" check)
+    add_test(NAME ShowcaseScriptTests COMMAND FoxProject --project "${FOX_DEFAULT_PROJECT}" test)
 endif()
