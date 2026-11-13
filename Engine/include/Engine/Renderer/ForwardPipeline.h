@@ -35,6 +35,7 @@ public:
         float     glossinessFactor = 1.0f; // spec/gloss: multiplier on t1.a
         bool      receiveShadows = true;
         DirectX::XMFLOAT3 tint = { 1.0f, 1.0f, 1.0f }; // multiplies the albedo (linear RGB)
+        DirectX::XMFLOAT3 emissiveColor = { 1.0f, 1.0f, 1.0f }; // multiplies the emissive map (linear HDR)
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);

@@ -399,7 +399,7 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.alphaCutoff      = mat.alphaMode == AlphaMode::Cutout ? mat.alphaCutoff : 0.0f;
     mc.emissiveIntensity = 1.0f;
-    mc.emissiveColor    = { 1.0f, 1.0f, 1.0f };
+    mc.emissiveColor    = mat.emissiveColor;
     mc.workflow         = static_cast<float>(mat.workflow);
     mc.glossinessFactor = mat.glossinessFactor;
     mc.receiveShadows   = mat.receiveShadows ? 1.0f : 0.0f;

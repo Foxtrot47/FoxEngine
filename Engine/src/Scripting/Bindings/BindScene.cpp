@@ -457,7 +457,7 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
         .Property("color", "fox.Vec3", "point_light: linear RGB. box/sphere: albedo, 0..1 per channel.",
             [&ctx](const ScriptActorPart& self) {
                 const auto& part = ResolvePart(ctx, self);
-                if (part.def.type != ActorComponentType::PointLight && !part.def.IsCollider())
+                if (part.def.type != ActorComponentType::PointLight && !part.def.IsShape())
                     Raise("fox.ActorComponent.color: '%s' is a %s component, not a point_light, box or sphere",
                           part.def.name.c_str(), ActorComponentTypeName(part.def.type));
                 const auto& c = part.def.color;
@@ -472,7 +472,7 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
                     UpdatePartLight(part);
                     return;
                 }
-                if (!part.def.IsCollider())
+                if (!part.def.IsShape())
                     Raise("fox.ActorComponent.color: '%s' is a %s component, not a point_light, box or sphere",
                           part.def.name.c_str(), ActorComponentTypeName(part.def.type));
                 part.def.color = { Clamped(value.x, 0.0, 1.0, "color.x"), Clamped(value.y, 0.0, 1.0, "color.y"),
@@ -483,17 +483,36 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
         .Property("visible", "boolean", "box/sphere: false keeps the collider but renders nothing.",
             [&ctx](const ScriptActorPart& self) {
                 const auto& part = ResolvePart(ctx, self);
-                if (!part.def.IsCollider())
+                if (!part.def.IsShape())
                     Raise("fox.ActorComponent.visible: '%s' is a %s component, not a box or sphere",
                           part.def.name.c_str(), ActorComponentTypeName(part.def.type));
                 return part.def.visible;
             },
             [&ctx](const ScriptActorPart& self, bool value) {
                 auto& part = ResolvePart(ctx, self);
-                if (!part.def.IsCollider())
+                if (!part.def.IsShape())
                     Raise("fox.ActorComponent.visible: '%s' is a %s component, not a box or sphere",
                           part.def.name.c_str(), ActorComponentTypeName(part.def.type));
                 part.def.visible = value;
+            })
+        .Property("emissive", "fox.Vec3", "box/sphere: linear HDR glow added to the shading (above 1 blooms).",
+            [&ctx](const ScriptActorPart& self) {
+                const auto& part = ResolvePart(ctx, self);
+                if (!part.def.IsShape())
+                    Raise("fox.ActorComponent.emissive: '%s' is a %s component, not a box or sphere",
+                          part.def.name.c_str(), ActorComponentTypeName(part.def.type));
+                const auto& e = part.def.emissive;
+                return ScriptVec3{ e[0], e[1], e[2] };
+            },
+            [&ctx](const ScriptActorPart& self, const ScriptVec3& value) {
+                auto& part = ResolvePart(ctx, self);
+                if (!part.def.IsShape())
+                    Raise("fox.ActorComponent.emissive: '%s' is a %s component, not a box or sphere",
+                          part.def.name.c_str(), ActorComponentTypeName(part.def.type));
+                part.def.emissive = { Clamped(value.x, 0.0, 1e4, "emissive.x"), Clamped(value.y, 0.0, 1e4, "emissive.y"),
+                                      Clamped(value.z, 0.0, 1e4, "emissive.z") };
+                for (auto& material : part.materials)
+                    material.emissiveColor = { part.def.emissive[0], part.def.emissive[1], part.def.emissive[2] };
             })
         .Property("intensity", "number", "point_light: multiplier on color.",
             [&ctx](const ScriptActorPart& self) {

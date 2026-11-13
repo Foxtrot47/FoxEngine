@@ -27,7 +27,9 @@ struct ActorComponentDefinition
     float alphaCutoff = 0.0f;
     bool castShadows = true;
     bool receiveShadows = true;
-    bool collision = false;      // kinematic triangle collider that follows the mesh
+    // mesh: kinematic triangle collider that follows the mesh (default off);
+    // box/sphere: the shape's collider (default on; off = render only)
+    bool collision = false;
 
     // point_light (never casts shadows: point shadow slots belong to level lights);
     // box/sphere: albedo of the rendered shape (cast_shadows also applies)
@@ -45,12 +47,13 @@ struct ActorComponentDefinition
     // box and sphere: rendered shape and collider
     std::array<float, 3> size = { 1.0f, 1.0f, 1.0f }; // box full extents
     bool visible = true; // false: collider only (triggers, invisible walls)
+    std::array<float, 3> emissive = { 0.0f, 0.0f, 0.0f }; // linear HDR glow; above 1 blooms
     ActorBodyType body = ActorBodyType::Kinematic;
     float mass = 1.0f;
     float friction = 0.5f;
     float restitution = 0.2f;
 
-    bool IsCollider() const { return type == ActorComponentType::Box || type == ActorComponentType::Sphere; }
+    bool IsShape() const { return type == ActorComponentType::Box || type == ActorComponentType::Sphere; }
 };
 
 const char* ActorComponentTypeName(ActorComponentType type);
