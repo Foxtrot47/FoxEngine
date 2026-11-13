@@ -134,57 +134,76 @@ local function default_for(spec)
     return nil
 end
 
--- Error level 3 points at the script line that called fox.script.
-local function normalize_property(spec, index, names)
-    local where = string.format("fox.script: property #%d", index)
-    if type(spec) ~= "table" then error(where .. " must be a table { name = ..., type = ... }", 3) end
+-- Called through normalize_properties: level 5 (past fail, this function,
+-- normalize_properties and fox.script / fox.actor) is the calling script line.
+local function normalize_property(spec, index, names, api)
+    local function fail(message) error(message, 5) end
+    local where = string.format("%s: property #%d", api, index)
+    if type(spec) ~= "table" then fail(where .. " must be a table { name = ..., type = ... }") end
     for key in pairs(spec) do
         if not SPEC_KEYS[key] then
-            error(string.format("%s: unknown key '%s' (allowed: name, type, default, min, max, step, tooltip, options)",
-                where, tostring(key)), 3)
+            fail(string.format("%s: unknown key '%s' (allowed: name, type, default, min, max, step, tooltip, options)",
+                where, tostring(key)))
         end
     end
     local name = spec.name
-    if type(name) ~= "string" or not is_identifier(name) then error(where .. ": name must be an identifier", 3) end
-    where = string.format("fox.script: property '%s'", name)
+    if type(name) ~= "string" or not is_identifier(name) then fail(where .. ": name must be an identifier") end
+    where = string.format("%s: property '%s'", api, name)
     if RESERVED[name] or name:sub(1, 1) == "_" or name:sub(1, 3) == "on_" then
-        error(where .. ": the name is reserved (entity, transform, enabled, _* and on_* belong to the runtime)", 3)
+        fail(where .. ": the name is reserved (entity, transform, enabled, _* and on_* belong to the runtime)")
     end
-    if names[name] then error(where .. " is declared twice", 3) end
+    if names[name] then fail(where .. " is declared twice") end
     names[name] = true
     if not PROPERTY_TYPES[spec.type] then
-        error(string.format("%s: unknown type '%s' (number, integer, boolean, string, vec3, color, enum, entity, scene)",
-            where, tostring(spec.type)), 3)
+        fail(string.format("%s: unknown type '%s' (number, integer, boolean, string, vec3, color, enum, entity, scene)",
+            where, tostring(spec.type)))
     end
 
     local out = { name = name, type = spec.type, min = spec.min, max = spec.max, step = spec.step, tooltip = spec.tooltip }
     for _, key in ipairs({ "min", "max", "step" }) do
-        if out[key] ~= nil and type(out[key]) ~= "number" then error(string.format("%s: %s must be a number", where, key), 3) end
+        if out[key] ~= nil and type(out[key]) ~= "number" then fail(string.format("%s: %s must be a number", where, key)) end
     end
-    if out.tooltip ~= nil and type(out.tooltip) ~= "string" then error(where .. ": tooltip must be a string", 3) end
+    if out.tooltip ~= nil and type(out.tooltip) ~= "string" then fail(where .. ": tooltip must be a string") end
     if spec.type == "enum" then
         if type(spec.options) ~= "table" or #spec.options == 0 then
-            error(where .. ": enum properties need a non-empty options list", 3)
+            fail(where .. ": enum properties need a non-empty options list")
         end
         out.options = {}
         for i, option in ipairs(spec.options) do
-            if type(option) ~= "string" then error(string.format("%s: option #%d must be a string", where, i), 3) end
+            if type(option) ~= "string" then fail(string.format("%s: option #%d must be a string", where, i)) end
             out.options[i] = option
         end
     elseif spec.options ~= nil then
-        error(where .. ": options only apply to enum properties", 3)
+        fail(where .. ": options only apply to enum properties")
     end
 
     if spec.default == nil then
         out.default = default_for(out)
     elseif spec.type == "entity" then
-        error(where .. ": entity properties cannot have a default", 3)
+        fail(where .. ": entity properties cannot have a default")
     else
         local ok, value = coerce(out, spec.default)
-        if not ok then error(string.format("%s: invalid default (%s)", where, value), 3) end
+        if not ok then fail(string.format("%s: invalid default (%s)", where, value)) end
         out.default = value
     end
     return out
+end
+
+-- Validates a fox.script / fox.actor properties array (error level 3 is the
+-- caller of fox.script / fox.actor).
+local function normalize_properties(list, api)
+    list = list or {}
+    if type(list) ~= "table" then error(api .. ": properties must be an array", 3) end
+    for key in pairs(list) do
+        if math.type(key) ~= "integer" then
+            error(api .. ": properties must be an array of { name = ..., type = ... } (order = editor order)", 3)
+        end
+    end
+    local properties, names = {}, {}
+    for i, spec in ipairs(list) do
+        properties[i] = normalize_property(spec, i, names, api)
+    end
+    return properties
 end
 
 function fox.script(definition)
@@ -197,20 +216,128 @@ function fox.script(definition)
             error(string.format("fox.script: unknown key '%s' (allowed: properties)", tostring(key)), 2)
         end
     end
-    local list = definition.properties or {}
-    if type(list) ~= "table" then error("fox.script: properties must be an array", 2) end
-    for key in pairs(list) do
-        if math.type(key) ~= "integer" then
-            error("fox.script: properties must be an array of { name = ..., type = ... } (order = editor order)", 2)
-        end
-    end
-    local properties, names = {}, {}
-    for i, spec in ipairs(list) do
-        properties[i] = normalize_property(spec, i, names)
-    end
-    local class = { __fox_class = true, __properties = properties, __name = "Script" }
+    local class = { __fox_class = true, __properties = normalize_properties(definition.properties, "fox.script"),
+                    __name = "Script" }
     class.__index = class
     return setmetatable(class, CLASS_MT)
+end
+
+---------------------------------------------------------------------------
+-- Actor classes
+
+local Actor = setmetatable({}, { __index = Script })
+fox.Actor = Actor
+
+local function copy_component(source)
+    local out = {}
+    for key, value in pairs(source) do out[key] = copy_value(value) end
+    return out
+end
+
+-- Components: the base's list, then this definition's entries. An entry
+-- named like a base component (same or no type) changes only the keys it
+-- sets; with another type it replaces the base component in place.
+local function merge_components(base, list)
+    list = list or {}
+    if type(list) ~= "table" then error("fox.actor: components must be an array", 3) end
+    for key in pairs(list) do
+        if math.type(key) ~= "integer" then
+            error("fox.actor: components must be an array of { name = ..., type = ... }", 3)
+        end
+    end
+    local components, index_of = {}, {}
+    if base then
+        for i, component in ipairs(base.__components) do
+            components[i] = copy_component(component)
+            index_of[component.name] = i
+        end
+    end
+    local declared = {}
+    for i, entry in ipairs(list) do
+        local where = string.format("fox.actor: component #%d", i)
+        if type(entry) ~= "table" then error(where .. " must be a table { name = ..., type = ... }", 3) end
+        local name = entry.name
+        if type(name) ~= "string" or not is_identifier(name) then
+            error(where .. ": name must be an identifier (the component is self.<name>)", 3)
+        end
+        where = string.format("fox.actor: component '%s'", name)
+        if RESERVED[name] or name:sub(1, 1) == "_" or name:sub(1, 3) == "on_" then
+            error(where .. ": the name is reserved (entity, transform, enabled, _* and on_* belong to the runtime)", 3)
+        end
+        if declared[name] then error(where .. " is declared twice", 3) end
+        declared[name] = true
+        local index = index_of[name]
+        local merged
+        if index and (entry.type == nil or entry.type == components[index].type) then
+            merged = components[index]
+            for key, value in pairs(entry) do merged[key] = copy_value(value) end
+        else
+            merged = copy_component(entry)
+            if not index then
+                index = #components + 1
+                index_of[name] = index
+            end
+            components[index] = merged
+        end
+        local ok, reason = host.validate_component(merged)
+        if not ok then error("fox.actor: " .. reason, 3) end
+    end
+    return components
+end
+
+function fox.actor(definition)
+    if definition == nil then definition = {} end
+    if type(definition) ~= "table" then
+        error("fox.actor expects a table: fox.actor { components = { ... }, properties = { ... } }", 2)
+    end
+    for key in pairs(definition) do
+        if key ~= "base" and key ~= "components" and key ~= "properties" then
+            error(string.format("fox.actor: unknown key '%s' (allowed: base, components, properties)", tostring(key)), 2)
+        end
+    end
+    local base = definition.base
+    if base ~= nil and not (type(base) == "table" and rawget(base, "__fox_actor")) then
+        error("fox.actor: base must be another fox.actor class (base = require(\"Actors.Lamp\"))", 2)
+    end
+
+    -- Base properties first; redeclaring one replaces it (a new default).
+    local properties, index_of = {}, {}
+    if base then
+        for i, spec in ipairs(base.__properties) do
+            properties[i] = spec
+            index_of[spec.name] = i
+        end
+    end
+    for _, spec in ipairs(normalize_properties(definition.properties, "fox.actor")) do
+        local index = index_of[spec.name] or #properties + 1
+        properties[index] = spec
+        index_of[spec.name] = index
+    end
+
+    local components = merge_components(base, definition.components)
+    for _, component in ipairs(components) do
+        if index_of[component.name] then
+            error(string.format("fox.actor: component '%s' has the name of a property", component.name), 2)
+        end
+    end
+
+    local class = { __fox_class = true, __fox_actor = true, __properties = properties,
+                    __components = components, __base = base, __name = "Actor" }
+    class.__index = class
+    return setmetatable(class, { __index = base or Actor })
+end
+
+function Actor:destroy()
+    fox.world.destroy(self)
+end
+
+function Actor:is_a(class)
+    local current = getmetatable(self)
+    while current do
+        if current == class then return true end
+        current = rawget(current, "__base")
+    end
+    return false
 end
 
 local function find_property(class, name)
@@ -220,14 +347,18 @@ local function find_property(class, name)
     return nil
 end
 
--- C++: creates an instance from JSON-decoded property overrides.
-function rt.new_instance(class, overrides, path, owner, entity, transform)
+-- C++: creates an instance from JSON-decoded property overrides. components
+-- (actors only) maps component names to their fox.ActorComponent handles.
+function rt.new_instance(class, overrides, path, owner, entity, transform, components)
     local self = setmetatable({}, class)
     self.enabled = true
     self.entity = entity
     self.transform = transform
     rawset(self, "_owner", owner)
     rawset(self, "_path", path)
+    if components then
+        for name, handle in pairs(components) do rawset(self, name, handle) end
+    end
     for _, spec in ipairs(class.__properties) do
         local value = overrides and overrides[spec.name]
         if value ~= nil then

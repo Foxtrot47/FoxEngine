@@ -211,6 +211,73 @@ public:
                          const DirectX::XMFLOAT3& velocity = {});
     void RemoveBalls();
 
+    // --- Actors (fox.actor placements and fox.world.spawn) ---
+    // Every part is a child entity of the actor's root entity, so moving the
+    // root (or a part) moves what it renders; kinematic colliders follow
+    // their part each frame. A dynamic body instead drives the actor root.
+    // A part shows (and has its body) while both the root and the part
+    // entity are active; SetEntityActive on either refreshes it.
+    struct ActorPart
+    {
+        ActorComponentDefinition def;
+        TransformComponent*      transform = nullptr; // the part's child entity
+        // mesh
+        AssetHandle<Mesh>                    mesh;
+        std::vector<ForwardPipeline::SubMat> materials;
+        std::vector<ShadowSubMesh>           shadowSubMeshes;
+        std::shared_ptr<const StaticMeshCollider> collider; // def.collision
+        DirectX::XMFLOAT4X4                  prevWorld = {};
+        bool                                 prevWorldValid = false;
+        // point_light: position follows the part every frame
+        LightEnvironment::PointLight         light;
+        // particle_emitter
+        std::unique_ptr<ParticleSystem>      particles;
+        // Kinematic collider (box, sphere, mesh collision) or the dynamic body.
+        BodyHandle                           body = k_invalidBody;
+        DirectX::XMFLOAT3                    bodyPosition = {}; // last pose sent to MoveKinematic
+        DirectX::XMFLOAT4                    bodyRotation = { 0.0f, 0.0f, 0.0f, 1.0f };
+    };
+    struct LoadedActor
+    {
+        SceneDescriptor::ActorEntry def;      // level placement state (+ resolved parts)
+        Entity*                     entity    = nullptr;
+        TransformComponent*         transform = nullptr;
+        std::vector<ActorPart>      parts;
+        bool                        spawned   = false; // fox.world.spawn: never saved
+        int                         dynamicPart = -1;  // index of the part whose body moves the actor
+    };
+    // Main-thread lookup of an actor class (path -> components); the
+    // ScriptSystem installs it while running. Without it actors have no parts.
+    std::function<ResolvedActorClass(const std::string& classPath)> actorClassResolver;
+
+    // Creates an actor at runtime (not saved). Meshes the level did not load
+    // are imported synchronously. Returns null when the class does not
+    // resolve (logged). def.resolved is filled from cls and def.components.
+    LoadedActor* SpawnActor(SceneDescriptor::ActorEntry def, const ResolvedActorClass& cls);
+    // Removes the actor, its parts, bodies and entities (and detaches any
+    // other entity parented to it).
+    void DestroyActor(EntityID root);
+    LoadedActor* FindActor(EntityID root);
+    const LoadedActor* FindActor(EntityID root) const;
+    // The actor and part a part entity belongs to, or null.
+    ActorPart* FindActorPart(EntityID partEntity, LoadedActor** actor = nullptr);
+
+    // Editor tooling for placed actors (indices into actors). Each call
+    // (re)builds the actor from its placement through actorClassResolver,
+    // so it also picks up class edits; entity ids change on every rebuild.
+    // Add/Duplicate return the new index, or -1 without a scene.
+    int AddActor(const std::string& classPath, const DirectX::XMFLOAT3& position);
+    // The placement with the root's current transform (what would be saved).
+    SceneDescriptor::ActorEntry ActorPlacement(int index) const;
+    SceneDescriptor::ActorEntry RemoveActor(int index);
+    void InsertActor(int index, SceneDescriptor::ActorEntry def);
+    int DuplicateActor(int index);
+    void RebuildActor(int index);
+
+    // Off: Update animates (particles, flicker) but does not step physics,
+    // so dynamic actors keep their placement (editor edit mode).
+    bool simulatePhysics = true;
+
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
     AssetHandle<Texture2D> environmentTexture;
@@ -246,6 +313,7 @@ public:
     std::vector<LoadedMesh>                        loadedMeshes;
     std::vector<LoadedObject>                      sceneObjects;
     std::vector<LoadedEmpty>                       emptyEntities;
+    std::vector<LoadedActor>                       actors;
     std::vector<std::unique_ptr<ParticleSystem>>   particleSystems;
     std::vector<SceneDescriptor::ParticleEmitterDesc> particleEmitterDescs;
     std::vector<std::string>                       particlePresetFiles;
@@ -295,6 +363,28 @@ private:
     void BeginAsyncSceneLoad(const std::string& scenePath);
 
     void UpdatePointLightFlicker(float totalTime);
+
+    // Builds the actor's root components, parts (child entities of root in
+    // scene) and bodies into the given world/physics: the incoming ones
+    // during a scene apply. loadMissing imports meshes the asset cache lacks
+    // (runtime spawns).
+    bool BuildActor(LoadedActor& actor, Scene& scene, Entity& root, PhysicsWorld& physics,
+                    bool loadMissing);
+    void CreatePartBody(LoadedActor& actor, ActorPart& part, PhysicsWorld& physics);
+    // Resolves def through actorClassResolver (logging why it has no parts)
+    // and builds it as a placed actor in the current world.
+    LoadedActor CreatePlacedActor(SceneDescriptor::ActorEntry def);
+    // Part visibility, light/emitter state and body presence from the root's
+    // active flag and each part's enabled flag.
+    void RefreshActorState(LoadedActor& actor);
+    // Lights, emitters and kinematic bodies follow their parts; call before
+    // the physics step.
+    void UpdateActors();
+    // Mesh, materials and (when collision) collider of a part mesh: from the
+    // asset cache, or imported now when loadMissing.
+    bool LoadActorMesh(ActorPart& part, bool loadMissing);
+    // Point lights of enabled actor parts, packed for LightEnvironment::BindPS.
+    std::vector<LightEnvironment::PointLight> m_actorLights;
 
     // One visible level mesh with the data every render phase needs, so the
     // shadow, reflection and lit passes stay in step instead of duplicating

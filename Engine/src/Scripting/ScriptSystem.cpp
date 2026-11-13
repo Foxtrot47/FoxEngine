@@ -232,7 +232,9 @@ sol::object JsonToLua(sol::state_view lua, const json& value)
     }
 }
 
-json LuaToJson(lua_State* L, const sol::object& value)
+// Sequences become arrays, string-keyed tables objects (an empty table is an
+// empty object); functions, cycles and other values become null.
+json LuaToJson(lua_State* L, const sol::object& value, int depth = 0)
 {
     switch (value.get_type())
     {
@@ -256,6 +258,33 @@ json LuaToJson(lua_State* L, const sol::object& value)
             return json::array({ v.x, v.y, v.z });
         }
         return nullptr;
+    case sol::type::table:
+    {
+        if (depth >= 32)
+            return nullptr;
+        const sol::table table = value.as<sol::table>();
+        const size_t length = table.size();
+        size_t count = 0;
+        bool stringKeys = true;
+        for (const auto& [key, item] : table)
+        {
+            ++count;
+            stringKeys = stringKeys && key.get_type() == sol::type::string;
+        }
+        if (length > 0 && count == length)
+        {
+            json array = json::array();
+            for (size_t i = 1; i <= length; ++i)
+                array.push_back(LuaToJson(L, table.raw_get<sol::object>(i), depth + 1));
+            return array;
+        }
+        if (!stringKeys)
+            return nullptr;
+        json object = json::object();
+        for (const auto& [key, item] : table)
+            object[key.as<std::string>()] = LuaToJson(L, item, depth + 1);
+        return object;
+    }
     default:
         return nullptr;
     }
@@ -288,6 +317,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         uint32_t owner = 0;           // runtime entity id; 0 for autoloads
         uint32_t generation = 0;      // scene generation the owner belongs to
         bool autoload = false;
+        bool actor = false;           // the class instance of the actor rooted at owner
         sol::table self;
         bool enabledNotified = false; // on_enable ran and on_disable has not
         bool started = false;         // on_start completed
@@ -317,6 +347,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         uint32_t owner = 0;
         uint32_t generation = 0;
         bool autoload = false;
+        bool actor = false;
     };
 
     // Callbacks may add or destroy instances; removal waits until the
@@ -332,6 +363,17 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         DispatchScope(const DispatchScope&) = delete;
         DispatchScope& operator=(const DispatchScope&) = delete;
         Impl& impl;
+    };
+
+    // Describe/ResolveActorClass load modules without logging their errors
+    // (the caller reports them).
+    struct QuietScope
+    {
+        explicit QuietScope(int& counter) : depth(counter) { ++depth; }
+        ~QuietScope() { --depth; }
+        QuietScope(const QuietScope&) = delete;
+        QuietScope& operator=(const QuietScope&) = delete;
+        int& depth;
     };
 
     // Bindings capture m_ctx, so it is declared before (destroyed after) the VM.
@@ -361,6 +403,9 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
     bool m_running = false;
     std::string m_creationContext;  // prefixes runtime warnings while an instance is created
     std::string m_lastLoadError;
+    std::vector<uint32_t> m_actorDestroys;  // fox.world.destroy roots, handled at the end of Simulate
+    // The scene's resolver before Start installed this session's.
+    std::function<ResolvedActorClass(const std::string&)> m_previousResolver;
 
     ~Impl() { Stop(); }
 
@@ -528,6 +573,14 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         return marker.get_type() == sol::type::boolean && marker.as<bool>();
     }
 
+    static bool IsActorClass(const sol::object& value)
+    {
+        if (!IsClass(value))
+            return false;
+        const sol::object marker = value.as<sol::table>().raw_get<sol::object>("__fox_actor");
+        return marker.get_type() == sol::type::boolean && marker.as<bool>();
+    }
+
     // Script classes are named after their file for fox.inspect and errors.
     static void NameClass(Module& module)
     {
@@ -536,7 +589,8 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
             return;
         sol::table cls = module.value.as<sol::table>();
         cls.raw_set("__path", module.path);
-        if (RawString(cls, "__name") == "Script")
+        const std::string name = RawString(cls, "__name");
+        if (name == "Script" || name == "Actor")
             cls.raw_set("__name", fs::path(module.path).stem().string());
     }
 
@@ -737,9 +791,10 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
     }
 
     // reported: the failure was already logged (module load errors are logged
-    // once per file version, not once per instance).
+    // once per file version, not once per instance). actor: create the class
+    // instance of the actor rooted at owner (the class must be a fox.actor).
     ScriptInstanceId Create(const std::string& rawPath, const sol::object& overrides, uint32_t owner,
-                            bool autoload, std::string& error, bool& reported)
+                            bool autoload, bool actor, std::string& error, bool& reported)
     {
         reported = false;
         const std::string path = NormalizeScriptPath(rawPath);
@@ -752,24 +807,46 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         if (!IsClass(module->value))
         {
             error = path + " does not return a script class: end the file with `return MyScript`, "
-                           "where MyScript = fox.script { ... }";
+                           "where MyScript = fox.script { ... } or fox.actor { ... }";
             reported = module->notClassReported;
             module->notClassReported = true;
+            return 0;
+        }
+        if (actor != IsActorClass(module->value))
+        {
+            error = actor
+                ? path + " is a fox.script; actors are instances of a fox.actor { components = { ... } } class"
+                : path + " is an actor class (fox.actor): place it in a level or create it with "
+                         "fox.world.spawn; autoloads and add_script take fox.script classes";
             return 0;
         }
 
         sol::object entity = sol::make_object(*m_lua, sol::lua_nil);
         sol::object transform = entity;
+        sol::object components = entity;
         if (owner != 0)
         {
             const ScriptEntity handle = MakeEntityHandle(m_ctx, owner);
             entity = sol::make_object(*m_lua, handle);
             transform = sol::make_object(*m_lua, ScriptTransform{ handle });
         }
+        if (actor)
+        {
+            const SceneRuntime::LoadedActor* loaded = m_ctx.host.scene ? m_ctx.host.scene->FindActor(owner) : nullptr;
+            if (!loaded)
+            {
+                error = path + ": entity " + std::to_string(owner) + " is not an actor";
+                return 0;
+            }
+            sol::table table = m_lua->create_table();
+            for (const SceneRuntime::ActorPart& part : loaded->parts)
+                table[part.def.name] = ScriptActorPart{ MakeEntityHandle(m_ctx, part.transform->GetOwner()->GetID()) };
+            components = table;
+        }
         m_creationContext = CreationContext(owner);
         sol::object self;
         const bool ok = Call(m_rtNewInstance, &self, &error, module->value, overrides, path,
-                             static_cast<lua_Integer>(owner), entity, transform);
+                             static_cast<lua_Integer>(owner), entity, transform, components);
         m_creationContext.clear();
         if (!ok)
             return 0;
@@ -780,25 +857,27 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         instance->owner = owner;
         instance->generation = m_ctx.sceneGeneration;
         instance->autoload = autoload;
+        instance->actor = actor;
         instance->self = self.as<sol::table>();
         const ScriptInstanceId id = instance->id;
         m_instances.push_back(std::move(instance));
         return id;
     }
 
-    ScriptInstanceId CreateFromJson(const std::string& path, const json& properties, uint32_t owner, bool autoload)
+    ScriptInstanceId CreateFromJson(const std::string& path, const json& properties, uint32_t owner, bool autoload,
+                                    bool actor = false)
     {
         const sol::object overrides = properties.is_object() && !properties.empty()
             ? JsonToLua(*m_lua, properties)
             : sol::make_object(*m_lua, sol::lua_nil);
         std::string error;
         bool reported = false;
-        const ScriptInstanceId id = Create(path, overrides, owner, autoload, error, reported);
+        const ScriptInstanceId id = Create(path, overrides, owner, autoload, actor, error, reported);
         if (id != 0)
             return id;
         if (!reported)
             ReportError(error, NormalizeScriptPath(path));
-        m_pending.push_back({ NormalizeScriptPath(path), properties, owner, m_ctx.sceneGeneration, autoload });
+        m_pending.push_back({ NormalizeScriptPath(path), properties, owner, m_ctx.sceneGeneration, autoload, actor });
         return 0;
     }
 
@@ -822,7 +901,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         {
             if (pending.owner != 0 && !FindEntity(pending.owner, pending.generation))
                 continue;
-            CreateFromJson(pending.path, pending.properties, pending.owner, pending.autoload);
+            CreateFromJson(pending.path, pending.properties, pending.owner, pending.autoload, pending.actor);
         }
     }
 
@@ -957,11 +1036,145 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
             Raise("add_script: properties must be a table of overrides (got %s)", sol::type_name(lua, type).c_str());
         std::string error;
         bool reported = false;
-        const ScriptInstanceId id = Create(path, properties, owner, false, error, reported);
+        const ScriptInstanceId id = Create(path, properties, owner, false, false, error, reported);
         if (id == 0)
             Raise("%s", SplitLocation(error, nullptr, nullptr, nullptr) ? error.c_str()
                                                                         : ("add_script: " + error).c_str());
         return FindInstance(id)->self;
+    }
+
+    sol::object SpawnActor(sol::state_view lua, const sol::object& actorClass, const sol::object& options) override
+    {
+        std::string path;
+        if (actorClass.get_type() == sol::type::string)
+            path = NormalizeScriptPath(actorClass.as<std::string>());
+        else if (IsClass(actorClass))
+            path = RawString(actorClass.as<sol::table>(), "__path");
+        else
+            Raise("fox.world.spawn expects an actor class or its script path, got %s",
+                  sol::type_name(lua, actorClass.get_type()).c_str());
+        if (path.empty())
+            Raise("fox.world.spawn: the class was not returned by a script file; require it or pass its path");
+
+        SceneDescriptor::ActorEntry def;
+        def.actorClass = path;
+        def.name = fs::path(path).stem().string();
+        sol::object properties = sol::make_object(lua, sol::lua_nil);
+        const sol::type optionsType = options.get_type();
+        if (optionsType == sol::type::table)
+        {
+            for (const auto& [key, value] : options.as<sol::table>())
+            {
+                const std::string name = key.get_type() == sol::type::string ? key.as<std::string>() : std::string();
+                const auto readVec3 = [&](std::array<float, 3>& out) {
+                    if (!value.is<ScriptVec3>())
+                        Raise("fox.world.spawn: options.%s must be a fox.Vec3", name.c_str());
+                    out = { static_cast<float>(value.as<ScriptVec3>().x), static_cast<float>(value.as<ScriptVec3>().y),
+                            static_cast<float>(value.as<ScriptVec3>().z) };
+                };
+                if (name == "position")
+                    readVec3(def.position);
+                else if (name == "rotation")
+                    readVec3(def.rotation);
+                else if (name == "scale")
+                    readVec3(def.scale);
+                else if (name == "name" && value.get_type() == sol::type::string)
+                    def.name = value.as<std::string>();
+                else if (name == "properties" && value.get_type() == sol::type::table)
+                    properties = value;
+                else if (name == "components" && value.get_type() == sol::type::table)
+                    def.components = LuaToJson(State(), value);
+                else if (name == "name" || name == "properties" || name == "components")
+                    Raise("fox.world.spawn: options.%s must be a %s", name.c_str(), name == "name" ? "string" : "table");
+                else
+                    Raise("fox.world.spawn: unknown option '%s' (allowed: position, rotation, scale, name, "
+                          "properties, components)", name.c_str());
+            }
+            if (!def.components.is_object())
+                Raise("fox.world.spawn: options.components must be keyed by component name: { mesh = { ... } }");
+        }
+        else if (optionsType != sol::type::lua_nil && optionsType != sol::type::none)
+        {
+            Raise("fox.world.spawn: options must be a table");
+        }
+
+        const ResolvedActorClass cls = ResolveActorClass(path);
+        if (!cls.error.empty())
+            Raise("fox.world.spawn: %s", cls.error.c_str());
+        SceneRuntime& scene = *m_ctx.host.scene;
+        const SceneRuntime::LoadedActor* actor = scene.SpawnActor(std::move(def), cls);
+        if (!actor)
+            Raise("fox.world.spawn: %s could not be created (see the log)", path.c_str());
+        const uint32_t root = actor->entity->GetID();
+        std::string error;
+        bool reported = false;
+        const ScriptInstanceId id = Create(path, properties, root, false, true, error, reported);
+        if (id == 0)
+        {
+            scene.DestroyActor(root);
+            Raise("fox.world.spawn: %s", error.c_str());
+        }
+        return FindInstance(id)->self;
+    }
+
+    void DestroyActor(uint32_t root) override
+    {
+        if (std::find(m_actorDestroys.begin(), m_actorDestroys.end(), root) == m_actorDestroys.end())
+            m_actorDestroys.push_back(root);
+    }
+
+    sol::object ActorInstance(sol::state_view lua, uint32_t root) override
+    {
+        for (const auto& instance : m_instances)
+            if (instance->actor && !instance->destroyed && instance->owner == root &&
+                instance->generation == m_ctx.sceneGeneration)
+                return instance->self;
+        return sol::make_object(lua, sol::lua_nil);
+    }
+
+    sol::table ActorInstances(sol::state_view lua) override
+    {
+        sol::table result = lua.create_table();
+        const SceneRuntime* scene = m_ctx.host.scene;
+        if (!scene || !scene->HasScene())
+            return result;
+        int index = 1;
+        for (const SceneRuntime::LoadedActor& actor : scene->actors)
+        {
+            const sol::object self = ActorInstance(lua, actor.entity->GetID());
+            if (self.get_type() == sol::type::table)
+                result[index++] = self;
+        }
+        return result;
+    }
+
+    // fox.world.destroy requests from this frame: on_disable/on_destroy of the
+    // actor's instances (and of scripts on its parts), then the actor itself.
+    void ProcessActorDestroys()
+    {
+        SceneRuntime* scene = m_ctx.host.scene;
+        while (!m_actorDestroys.empty())
+        {
+            std::vector<uint32_t> roots;
+            roots.swap(m_actorDestroys);
+            for (const uint32_t root : roots)
+            {
+                const SceneRuntime::LoadedActor* actor = scene ? scene->FindActor(root) : nullptr;
+                if (!actor)
+                    continue;
+                std::vector<uint32_t> owners = { root };
+                for (const SceneRuntime::ActorPart& part : actor->parts)
+                    owners.push_back(part.transform->GetOwner()->GetID());
+                for (size_t i = m_instances.size(); i-- > 0;)
+                {
+                    Instance& instance = *m_instances[i];
+                    if (instance.generation == m_ctx.sceneGeneration &&
+                        std::find(owners.begin(), owners.end(), instance.owner) != owners.end())
+                        DestroyNow(instance);
+                }
+                scene->DestroyActor(root); // on_destroy may have spawned: look it up again
+            }
+        }
     }
 
     // host.resolve_entity for entity properties: scene files store the
@@ -1089,6 +1302,13 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         hostApi.set_function("find_script", [this](lua_Integer owner, const std::string& path, sol::this_state s) {
             return FindScript(sol::state_view(s.lua_state()), static_cast<uint32_t>(owner), path);
         });
+        // fox.actor validates each merged component table with the level loader's rules.
+        hostApi.set_function("validate_component", [this](const sol::object& table) {
+            ActorComponentDefinition component;
+            std::string error;
+            const bool ok = ParseActorComponent(LuaToJson(State(), table), component, error);
+            return std::make_tuple(ok, error);
+        });
 
         sol::object result;
         if (!Call(chunk, &result, &error, hostApi))
@@ -1160,8 +1380,12 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
             return false;
         }
         m_running = true;
-        if (m_ctx.host.scene)
-            m_ctx.host.scene->onSceneUnloading = [this] { OnSceneUnloading(); };
+        if (SceneRuntime* scene = m_ctx.host.scene)
+        {
+            scene->onSceneUnloading = [this] { OnSceneUnloading(); };
+            m_previousResolver = std::move(scene->actorClassResolver);
+            scene->actorClassResolver = [this](const std::string& path) { return ResolveActorClass(path); };
+        }
 
         DispatchScope dispatch(*this);
         for (const std::string& path : autoloads)
@@ -1183,6 +1407,8 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         if (SceneRuntime* scene = m_ctx.host.scene)
         {
             scene->onSceneUnloading = nullptr;
+            scene->actorClassResolver = std::move(m_previousResolver);
+            m_previousResolver = nullptr;
             scene->physicsWorld.RemoveStepListener(this);
         }
         if (m_ctx.host.input && m_ctx.host.input->IsCursorCaptured())
@@ -1191,6 +1417,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         // Every reference must be released before the VM closes.
         m_instances.clear();
         m_pending.clear();
+        m_actorDestroys.clear();
         m_modules.clear();
         m_requirePaths.clear();
         m_loadingStack.clear();
@@ -1218,6 +1445,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         m_pending.erase(std::remove_if(m_pending.begin(), m_pending.end(),
                                        [](const PendingCreation& pending) { return pending.owner != 0; }),
                         m_pending.end());
+        m_actorDestroys.clear();
         ++m_ctx.sceneGeneration;
         m_readyGeneration = 0;
     }
@@ -1235,13 +1463,29 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         scene->physicsWorld.AddStepListener(this);
 
         // Copied first: module chunks run below and may create entities.
-        std::vector<std::pair<uint32_t, std::vector<LevelScriptDefinition>>> components;
+        struct Placement
+        {
+            uint32_t owner = 0;
+            std::string actorClass;
+            json properties;
+            std::vector<LevelScriptDefinition> scripts;
+        };
+        std::vector<Placement> placements;
         for (const auto& entity : scene->world.GetScene().GetEntities())
-            if (const auto* component = entity->GetComponent<ScriptComponent>())
-                components.emplace_back(entity->GetID(), component->scripts);
-        for (const auto& [owner, scripts] : components)
-            for (const LevelScriptDefinition& definition : scripts)
-                CreateFromJson(definition.script, definition.properties, owner, false);
+        {
+            const auto* actor = entity->GetComponent<ActorComponent>();
+            if (!actor)
+                continue;
+            const auto* scripts = entity->GetComponent<ScriptComponent>();
+            placements.push_back({ entity->GetID(), actor->actorClass, actor->properties,
+                                   scripts ? scripts->scripts : std::vector<LevelScriptDefinition>{} });
+        }
+        for (const Placement& placement : placements)
+        {
+            CreateFromJson(placement.actorClass, placement.properties, placement.owner, false, true);
+            for (const LevelScriptDefinition& definition : placement.scripts)
+                CreateFromJson(definition.script, definition.properties, placement.owner, false);
+        }
 
         for (size_t i = 0; i < m_instances.size(); ++i)
             if (m_instances[i]->autoload)
@@ -1296,6 +1540,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         for (size_t i = 0; i < m_instances.size(); ++i)
             if (Runnable(*m_instances[i]))
                 Callback(*m_instances[i], "on_late_update", m_ctx.dt);
+        ProcessActorDestroys();
     }
 
     // A click-through window covering the game view, submitted before script
@@ -1428,6 +1673,61 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         return result;
     }
 
+    // The loaded class at path, reloading it first when its file changed
+    // (describing sessions have no hot-reload poll). Call inside a QuietScope.
+    const Module* CurrentClass(const std::string& path, std::string& error)
+    {
+        const auto existing = m_modules.find(path);
+        if (existing != m_modules.end() && existing->second.ok && !existing->second.loading)
+        {
+            fs::file_time_type writeTime{};
+            if (FileWriteTime(path, writeTime) && writeTime != existing->second.writeTime)
+                ReloadModule(existing->second, writeTime);
+        }
+        const Module* module = EnsureModule(path, error);
+        if (!module)
+        {
+            error = FirstLines(error);
+            return nullptr;
+        }
+        if (!module->error.empty()) // the last save does not load; the previous version still runs
+        {
+            error = FirstLines(module->error);
+            return nullptr;
+        }
+        if (!IsClass(module->value))
+        {
+            error = path + " does not return a script class (end it with `return MyScript`)";
+            return nullptr;
+        }
+        return module;
+    }
+
+    ResolvedActorClass ResolveActorClass(const std::string& file)
+    {
+        ResolvedActorClass result;
+        if (!m_running)
+        {
+            result.error = "the script session is not running";
+            return result;
+        }
+        DispatchScope dispatch(*this);
+        QuietScope quiet(m_quietLoads);
+        const std::string path = NormalizeScriptPath(file);
+        const Module* module = CurrentClass(path, result.error);
+        if (!module)
+            return result;
+        if (!IsActorClass(module->value))
+        {
+            result.error = path + " is not an actor class: declare it with fox.actor { components = { ... } }";
+            return result;
+        }
+        result.components = LuaToJson(State(), module->value.as<sol::table>().raw_get<sol::object>("__components"));
+        if (!result.components.is_array()) // an empty Lua table converts to an object
+            result.components = json::array();
+        return result;
+    }
+
     ScriptDescription Describe(const std::string& file)
     {
         ScriptDescription description;
@@ -1437,40 +1737,17 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
             return description;
         }
         DispatchScope dispatch(*this);
-        struct QuietScope
-        {
-            explicit QuietScope(int& counter) : depth(counter) { ++depth; }
-            ~QuietScope() { --depth; }
-            QuietScope(const QuietScope&) = delete;
-            QuietScope& operator=(const QuietScope&) = delete;
-            int& depth;
-        } quiet(m_quietLoads);
+        QuietScope quiet(m_quietLoads);
 
         const std::string path = NormalizeScriptPath(file);
-        // Describing sessions have no hot-reload poll: pick up edits here.
-        const auto existing = m_modules.find(path);
-        if (existing != m_modules.end() && existing->second.ok && !existing->second.loading)
-        {
-            fs::file_time_type writeTime{};
-            if (FileWriteTime(path, writeTime) && writeTime != existing->second.writeTime)
-                ReloadModule(existing->second, writeTime);
-        }
         std::string error;
-        const Module* module = EnsureModule(path, error);
+        const Module* module = CurrentClass(path, description.error);
         if (!module)
-        {
-            description.error = FirstLines(error);
             return description;
-        }
-        if (!module->error.empty()) // the last save does not load; the previous version still runs
+        if (IsActorClass(module->value))
         {
-            description.error = FirstLines(module->error);
-            return description;
-        }
-        if (!IsClass(module->value))
-        {
-            description.error = path + " does not return a script class (end it with `return MyScript`)";
-            return description;
+            description.actor = true;
+            description.components = ResolveActorClass(path).components;
         }
         sol::object list;
         if (!Call(m_rtProperties, &list, &error, module->value) || list.get_type() != sol::type::table)
@@ -1664,6 +1941,11 @@ ScriptEvalResult ScriptSystem::Execute(const std::string& code)
 ScriptDescription ScriptSystem::Describe(const std::string& path)
 {
     return m_impl->Describe(path);
+}
+
+ResolvedActorClass ScriptSystem::ResolveActorClass(const std::string& path)
+{
+    return m_impl->ResolveActorClass(path);
 }
 
 std::vector<ScriptTestResult> ScriptSystem::RunTests(const std::vector<std::string>& files,

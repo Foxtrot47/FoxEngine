@@ -1,6 +1,7 @@
 #include "EditorOutliner.h"
 #include "EditorEntityOps.h"
 #include "EditorIcons.h"
+#include "EditorScripts.h"
 #include "EditorUndo.h"
 
 #include "Engine/Scene/SceneRuntime.h"
@@ -55,6 +56,9 @@ std::string* EntityName(SE::SceneRuntime& scene, Selection::Kind kind, int index
     case Kind::Empty:
         return index < (int)scene.emptyEntities.size()
             ? &scene.emptyEntities[index].def.name : nullptr;
+    case Kind::Actor:
+        return index < (int)scene.actors.size()
+            ? &scene.actors[index].def.name : nullptr;
     default:
         return nullptr;
     }
@@ -225,13 +229,16 @@ bool IconMenuItem(const IconDesc& icon, const char* label, bool enabled = true)
 
 // "+ Add" toolbar button: spawns a new entity at spawnPos and selects it.
 void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
-                 const DirectX::XMFLOAT3& spawnPos)
+                 const DirectX::XMFLOAT3& spawnPos, ScriptCatalog& scripts)
 {
     using Kind = Selection::Kind;
     using ObjType = SE::SceneDescriptor::SceneObject::Type;
     ImGui::BeginDisabled(s_readOnly);
     if (ImGui::Button(ICON_MD_ADD " Add"))
+    {
+        scripts.RescanScriptFiles();
         ImGui::OpenPopup("##add_entity");
+    }
     ImGui::EndDisabled();
     if (!ImGui::BeginPopup("##add_entity"))
         return;
@@ -260,6 +267,25 @@ void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                      "Particle Emitter") &&
         scene.AddParticleEmitter(spawnPos))
         spawned.Set(Kind::Emitter, (int)scene.particleSystems.size() - 1);
+    ImGui::SeparatorText("Actors");
+    const std::vector<std::string> actorClasses = scripts.ActorClasses();
+    for (const std::string& path : actorClasses)
+    {
+        ImGui::PushID(path.c_str());
+        const size_t slash = path.find_last_of('/');
+        const std::string label = path.substr(slash == std::string::npos ? 0 : slash + 1);
+        if (IconMenuItem({ ICON_MD_CATEGORY, IM_COL32(255, 200, 120, 255) }, label.c_str()))
+        {
+            const int index = scene.AddActor(path, spawnPos);
+            if (index >= 0)
+                spawned.Set(Kind::Actor, index);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", path.c_str());
+        ImGui::PopID();
+    }
+    if (actorClasses.empty())
+        ImGui::TextDisabled("No fox.actor classes in Assets/Scripts");
     ImGui::EndPopup();
     if (spawned.kind == Kind::None)
         return;
@@ -344,6 +370,19 @@ RowAction DrawEntityRows(SE::SceneRuntime& scene, Selection& sel)
                 { ICON_MD_CHECK_BOX_OUTLINE_BLANK, IM_COL32(200, 200, 200, 255) },
                 nullptr, true, &name));
     }
+    for (int i = 0; i < (int)scene.actors.size(); ++i)
+    {
+        auto& actor = scene.actors[i];
+        const std::string& path = actor.def.actorClass;
+        const size_t slash = path.find_last_of('/');
+        std::string type = path.substr(slash == std::string::npos ? 0 : slash + 1);
+        if (type.size() > 4 && type.compare(type.size() - 4, 4, ".lua") == 0)
+            type.resize(type.size() - 4);
+        // Spawned actors (play mode) are runtime-only: listed, not editable.
+        merge(DrawRow(sel, Kind::Actor, i, actor.def.name.c_str(), type.c_str(),
+                { ICON_MD_CATEGORY, IM_COL32(255, 200, 120, 255) },
+                nullptr, true, actor.spawned ? nullptr : &actor.def.name));
+    }
     return action;
 }
 
@@ -356,7 +395,7 @@ void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel)
 }
 
 void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
-                       const DirectX::XMFLOAT3& spawnPos, bool playing)
+                       const DirectX::XMFLOAT3& spawnPos, ScriptCatalog& scripts, bool playing)
 {
     ImGui::Begin("Outliner");
     if (!scene.HasScene())
@@ -373,7 +412,7 @@ void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
         ImGui::TextColored(ImVec4(0.45f, 0.8f, 1.0f, 1.0f), "Playing");
         ImGui::SameLine();
     }
-    DrawAddMenu(scene, sel, undo, spawnPos);
+    DrawAddMenu(scene, sel, undo, spawnPos, scripts);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::InputTextWithHint("##search", "Search actors or types...", s_filter.InputBuf,

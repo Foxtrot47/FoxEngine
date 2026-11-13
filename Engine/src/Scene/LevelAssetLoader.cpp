@@ -510,8 +510,29 @@ void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
     }
 }
 
-// Script paths are not asset dependencies: the script system resolves and
-// loads them when the scene plays, so only their shape is validated here.
+// Validates a project-relative .lua path, normalizing separators.
+bool ParseLuaPath(LevelAssetLoadResult& result, const json& value, const std::string& path,
+                  std::string& out)
+{
+    if (!value.is_string())
+    {
+        AddDiagnostic(result, Severity::Error, path, "expected a string");
+        return false;
+    }
+    out = value.get<std::string>();
+    std::replace(out.begin(), out.end(), '\\', '/');
+    constexpr std::string_view k_luaExtension = ".lua";
+    if (out.size() <= k_luaExtension.size() ||
+        out.compare(out.size() - k_luaExtension.size(), k_luaExtension.size(), k_luaExtension) != 0)
+    {
+        AddDiagnostic(result, Severity::Error, path, "expected a path to a .lua file");
+        return false;
+    }
+    return true;
+}
+
+// Script and actor class paths are not asset dependencies: the script system
+// resolves and loads them, so only their shape is validated here.
 void ParseEntityScripts(LevelAssetLoadResult& result, const json& scripts,
                         const std::string& path, std::vector<LevelScriptDefinition>& out)
 {
@@ -538,24 +559,9 @@ void ParseEntityScripts(LevelAssetLoadResult& result, const json& scripts,
             AddDiagnostic(result, Severity::Error, itemPath + "/script", "required field is missing");
             valid = false;
         }
-        else if (!item["script"].is_string())
+        else if (!ParseLuaPath(result, item["script"], itemPath + "/script", script.script))
         {
-            AddDiagnostic(result, Severity::Error, itemPath + "/script", "expected a string");
             valid = false;
-        }
-        else
-        {
-            script.script = item["script"].get<std::string>();
-            std::replace(script.script.begin(), script.script.end(), '\\', '/');
-            constexpr std::string_view k_luaExtension = ".lua";
-            if (script.script.size() <= k_luaExtension.size() ||
-                script.script.compare(script.script.size() - k_luaExtension.size(),
-                                      k_luaExtension.size(), k_luaExtension) != 0)
-            {
-                AddDiagnostic(result, Severity::Error, itemPath + "/script",
-                              "expected a path to a .lua file");
-                valid = false;
-            }
         }
 
         if (item.contains("properties"))
@@ -607,21 +613,57 @@ void ParseEntityDefinition(LevelAssetLoadResult& result, const json& source,
             AddDiagnostic(result, Severity::Error, base + "/active", "expected a boolean");
     }
 
+    // An actor entity's components are its root transform plus override
+    // objects for the class's components; only the transform is validated
+    // here, the class schema is checked when the actor is resolved.
+    if (source.contains("actor"))
+    {
+        LevelActorDefinition actor;
+        if (ParseLuaPath(result, source["actor"], base + "/actor", actor.actorClass))
+            entity.actor = std::move(actor);
+    }
+
     if (!source.contains("components") || !source["components"].is_object())
         AddDiagnostic(result, Severity::Error, base + "/components", "expected an object");
     else
     {
         for (auto it = source["components"].begin(); it != source["components"].end(); ++it)
         {
+            const std::string componentPath = base + "/components/" + it.key();
+            if (source.contains("actor") && it.key() != "transform")
+            {
+                if (!it.value().is_object())
+                    AddDiagnostic(result, Severity::Error, componentPath,
+                                  "expected an object of overrides for the actor component '" + it.key() + "'");
+                else if (entity.actor)
+                    entity.actor->components[it.key()] = it.value();
+                continue;
+            }
             const size_t diagnosticsBefore = result.diagnostics.size();
-            ValidateComponent(result, it.key(), it.value(), base + "/components/" + it.key());
+            ValidateComponent(result, it.key(), it.value(), componentPath);
             if (it.value().is_object() && result.diagnostics.size() == diagnosticsBefore)
                 DecodeComponent(entity, it.key(), it.value());
         }
     }
 
+    constexpr const char* k_behaviourHint =
+        "only actors have behaviour: place an actor (\"actor\": \"Assets/Scripts/....lua\") instead";
+    if (source.contains("properties"))
+    {
+        if (!source.contains("actor"))
+            AddDiagnostic(result, Severity::Error, base + "/properties", k_behaviourHint);
+        else if (!source["properties"].is_object())
+            AddDiagnostic(result, Severity::Error, base + "/properties", "expected an object");
+        else if (entity.actor)
+            entity.actor->properties = source["properties"];
+    }
     if (source.contains("scripts"))
-        ParseEntityScripts(result, source["scripts"], base + "/scripts", entity.scripts);
+    {
+        if (source.contains("actor"))
+            ParseEntityScripts(result, source["scripts"], base + "/scripts", entity.scripts);
+        else
+            AddDiagnostic(result, Severity::Error, base + "/scripts", k_behaviourHint);
+    }
     result.asset.entities.push_back(std::move(entity));
 }
 

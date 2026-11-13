@@ -49,10 +49,10 @@ ForwardPipeline::SubMat ResolveObjectMaterial(AssetManager& assets,
     return mat;
 }
 
-// Static collision from the opaque submeshes (cut-out foliage, glass and
-// decals stay non-solid), in the mesh's own space like its render geometry.
-std::shared_ptr<const StaticMeshCollider> BuildCollider(const MeshSourceData& source,
-                                                        std::string* error)
+} // namespace
+
+std::shared_ptr<const StaticMeshCollider> BuildLevelMeshCollider(const MeshSourceData& source,
+                                                                 std::string* error)
 {
     std::vector<DirectX::XMFLOAT3> vertices;
     std::vector<uint32_t> indices;
@@ -72,6 +72,8 @@ std::shared_ptr<const StaticMeshCollider> BuildCollider(const MeshSourceData& so
     return PhysicsWorld::BuildStaticMeshCollider(vertices, indices, error);
 }
 
+namespace {
+
 LevelAssetLoadResult LoadLevel(const std::string& path, const std::string& levelJson)
 {
     if (levelJson.empty())
@@ -89,6 +91,12 @@ LevelAssetLoadResult LoadLevel(const std::string& path, const std::string& level
     }
 }
 
+// Diagnostics path of an actor placement in the level file.
+std::string ActorPath(const SceneDescriptor::ActorEntry& actor)
+{
+    return "actor '" + actor.name + "' (" + actor.actorClass + ")";
+}
+
 } // namespace
 
 LevelLoadOperation::~LevelLoadOperation() { Cancel(); }
@@ -99,7 +107,7 @@ void LevelLoadOperation::Join()
 }
 
 bool LevelLoadOperation::Start(const std::string& path, AssetCacheSnapshot cache,
-                               std::string levelJson)
+                               std::string levelJson, ActorClassMap actorClasses)
 {
     Cancel();
     {
@@ -117,8 +125,9 @@ bool LevelLoadOperation::Start(const std::string& path, AssetCacheSnapshot cache
         m_uploadMilliseconds = 0.0;
     }
     m_cancelled.store(false);
-    m_coordinator = std::thread([this, path, levelJson = std::move(levelJson)] {
-        try { Prepare(path, levelJson); }
+    m_coordinator = std::thread([this, path, levelJson = std::move(levelJson),
+                                 actorClasses = std::move(actorClasses)] {
+        try { Prepare(path, levelJson, actorClasses); }
         catch (const std::exception& exception) { SetTerminal(LevelLoadState::Failed, exception.what()); }
         catch (...) { SetTerminal(LevelLoadState::Failed, "Unknown CPU preparation failure"); }
     });
@@ -154,7 +163,46 @@ void LevelLoadOperation::AddTiming(const char* name, std::chrono::steady_clock::
     m_status.timings.push_back({ name, std::chrono::duration<double, std::milli>(elapsed).count() });
 }
 
-void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson)
+void LevelLoadOperation::ResolveActors(PreparedLevel& prepared, const ActorClassMap& actorClasses)
+{
+    for (auto& actor : prepared.descriptor.actors)
+    {
+        const auto found = actorClasses.find(LevelDependencyPlan::NormalizePath(actor.actorClass));
+        if (found == actorClasses.end())
+            actor.resolveError = "the actor class was not resolved (no script session)";
+        else if (!found->second.error.empty())
+            actor.resolveError = found->second.error;
+        if (!actor.resolveError.empty())
+        {
+            prepared.diagnostics.push_back({ LevelDiagnosticSeverity::Warning, ActorPath(actor),
+                                             actor.resolveError + "; the actor has no components" });
+            continue;
+        }
+        ActorResolveResult resolved = ResolveActorComponents(found->second.components, actor.components);
+        for (const std::string& warning : resolved.warnings)
+            prepared.diagnostics.push_back({ LevelDiagnosticSeverity::Warning, ActorPath(actor), warning });
+        if (!resolved.Succeeded())
+        {
+            actor.resolveError = resolved.error;
+            prepared.diagnostics.push_back({ LevelDiagnosticSeverity::Warning, ActorPath(actor),
+                                             resolved.error + "; the actor has no components" });
+            continue;
+        }
+        actor.resolved = std::move(resolved.components);
+        const std::string owner = "/actors/" + actor.name;
+        for (const auto& part : actor.resolved)
+        {
+            if (part.type == ActorComponentType::Mesh)
+                prepared.plan.Add(part.mesh, LevelDependencyKind::Mesh, true, owner + "/" + part.name);
+            else if (part.type == ActorComponentType::ParticleEmitter)
+                prepared.plan.Add(part.emitter.texture, LevelDependencyKind::ParticleTexture, false,
+                                  owner + "/" + part.name);
+        }
+    }
+}
+
+void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson,
+                                 const ActorClassMap& actorClasses)
 {
     using Clock = std::chrono::steady_clock;
     const auto parseStart = Clock::now();
@@ -171,6 +219,7 @@ void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson)
         SetTerminal(LevelLoadState::Failed, "Could not build runtime level descriptor");
         return;
     }
+    ResolveActors(*prepared, actorClasses);
     AddTiming("Parse level", Clock::now() - parseStart);
     {
         std::lock_guard lock(m_mutex);
@@ -184,6 +233,10 @@ void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson)
     for (const auto& entry : prepared->descriptor.meshes)
         if (entry.collision)
             collisionPaths.insert(LevelDependencyPlan::NormalizePath(entry.path));
+    for (const auto& actor : prepared->descriptor.actors)
+        for (const auto& part : actor.resolved)
+            if (part.type == ActorComponentType::Mesh && part.collision)
+                collisionPaths.insert(LevelDependencyPlan::NormalizePath(part.mesh));
     std::vector<LevelDependency> meshDependencies;
     for (const auto& dependency : prepared->plan.dependencies)
         if (dependency.kind == LevelDependencyKind::Mesh) meshDependencies.push_back(dependency);
@@ -238,7 +291,7 @@ void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson)
                 if (ok && collisionPaths.count(item.path) != 0)
                 {
                     std::string colliderError;
-                    item.collider = BuildCollider(item.source, &colliderError);
+                    item.collider = BuildLevelMeshCollider(item.source, &colliderError);
                     if (!item.collider)
                     {
                         std::lock_guard lock(m_mutex);

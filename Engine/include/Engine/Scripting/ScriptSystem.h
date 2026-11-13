@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include "Engine/Scene/ActorTypes.h"
 
 namespace SE {
 
@@ -78,6 +79,9 @@ struct ScriptDescription
     bool ok = false;
     std::string error;
     std::vector<ScriptPropertyInfo> properties;
+    // fox.actor classes: placeable actors with components (base classes merged).
+    bool actor = false;
+    nlohmann::json components = nlohmann::json::array();
 };
 
 struct ScriptTestResult
@@ -128,9 +132,9 @@ public:
     bool WantsKeyboard() const;   // a script text field has focus
 
     // Call on the frame SceneRuntime::TickSceneLoad reports a newly applied
-    // scene: destroys the previous scene's entity scripts, instantiates the
-    // new scene's ScriptComponents (entity order) and calls on_scene_loaded
-    // on autoloads (after their on_start).
+    // scene: destroys the previous scene's entity scripts, instantiates each
+    // actor of the new scene (its class, then its script components, in
+    // entity order) and calls on_scene_loaded on autoloads (after their on_start).
     void OnSceneReady();
 
     // Instantiates a script component. properties holds the overrides
@@ -149,6 +153,11 @@ public:
     // Loads a script (reloading it if the file changed) and reports its
     // property schema (editor, validation). Requires a running session.
     ScriptDescription Describe(const std::string& path);
+
+    // The components of an actor class (fox.actor, base classes merged), or
+    // why it cannot be used. Start installs this as the scene's
+    // SceneRuntime::actorClassResolver; Stop restores the previous resolver.
+    ResolvedActorClass ResolveActorClass(const std::string& path);
 
     // Runs fox.test cases from the given *_test.lua files, filtered by a
     // substring of "file: case name". Requires a running session.

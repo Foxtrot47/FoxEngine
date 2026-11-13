@@ -51,7 +51,7 @@ bool ParseSubdirectory(const std::string& raw, std::string& out, std::string& er
 std::string ScriptTemplate(const std::string& name)
 {
     std::string text = R"(--- $NAME: describe what this script does.
---- Attach it to an entity in the editor (Inspector > Add Script), or list it
+--- Add it to a placed actor in the editor (Details > Add Script), or list it
 --- under "autoload" in project.json to run it for the whole game.
 --- API reference: the engine's Engine/Scripts/types/fox.lua (regenerate with `FoxProject api`).
 

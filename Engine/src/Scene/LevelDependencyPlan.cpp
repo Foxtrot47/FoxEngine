@@ -69,6 +69,14 @@ LevelDependencyPlan LevelDependencyPlan::Build(const LevelAsset& level)
     return plan;
 }
 
+void LevelDependencyPlan::Add(const std::string& path, LevelDependencyKind kind, bool required,
+                              const std::string& owner)
+{
+    const std::string normalized = NormalizePath(path);
+    if (!normalized.empty() && !Find(normalized, kind))
+        dependencies.push_back({ normalized, owner, kind, required });
+}
+
 const LevelDependency* LevelDependencyPlan::Find(const std::string& path,
                                                   LevelDependencyKind kind) const
 {

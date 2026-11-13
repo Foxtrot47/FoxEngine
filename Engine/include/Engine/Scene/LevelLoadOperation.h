@@ -57,6 +57,11 @@ struct PreparedLevel
     std::vector<LevelStageTiming> timings;
 };
 
+// Static collision from a mesh's opaque submeshes (cut-out foliage, glass and
+// decals stay non-solid), in the mesh's own space. Thread-safe.
+std::shared_ptr<const StaticMeshCollider> BuildLevelMeshCollider(const MeshSourceData& source,
+                                                                 std::string* error);
+
 class LevelLoadOperation
 {
 public:
@@ -67,7 +72,12 @@ public:
 
     // levelJson, when non-empty, is FoxLevel JSON text parsed instead of
     // reading path; path then only names the level in diagnostics.
-    bool Start(const std::string& path, AssetCacheSnapshot cache, std::string levelJson = {});
+    // actorClasses holds the resolved class of every actor placement (the
+    // script system resolves them on the main thread; see
+    // SceneRuntime::actorClassResolver). Unlisted classes leave the actor
+    // without components.
+    bool Start(const std::string& path, AssetCacheSnapshot cache, std::string levelJson = {},
+               ActorClassMap actorClasses = {});
     void Cancel();
     void PumpUploads(ID3D11Device* device, ID3D11DeviceContext* context,
                      AssetManager& assets);
@@ -90,7 +100,10 @@ private:
     };
 
     void Join();
-    void Prepare(std::string path, const std::string& levelJson);
+    void Prepare(std::string path, const std::string& levelJson, const ActorClassMap& actorClasses);
+    // Applies the class components and overrides to every actor placement and
+    // adds what their parts need to the dependency plan.
+    void ResolveActors(PreparedLevel& prepared, const ActorClassMap& actorClasses);
     void SetTerminal(LevelLoadState state, const std::string& reason = {});
     void PublishProgress(float value, const std::string& current = {});
     void AddTiming(const char* name, std::chrono::steady_clock::duration elapsed);

@@ -20,6 +20,23 @@ fox = {}
 ---@return fox.Script
 function fox.script(definition) end
 
+---Declares an actor class: a placeable, spawnable object built from components.
+---Each component becomes self.<name> (a fox.ActorComponent). Return it from the module:
+---```lua
+---local Lamp = fox.actor {
+---    components = {
+---        { name = "mesh", type = "mesh", mesh = "Assets/Props/Lamp.fbx" },
+---        { name = "light", type = "point_light", color = vec3(1, 0.8, 0.6), position = vec3(0, 2, 0) },
+---    },
+---    properties = { { name = "flicker", type = "boolean", default = false } },
+---}
+---function Lamp:on_update(dt) self.light.intensity = 1 + math.sin(fox.time.time * 9) * 0.2 end
+---return Lamp
+---```
+---@param definition? fox.ActorDefinition
+---@return fox.Actor
+function fox.actor(definition) end
+
 ---Pretty-prints a value (tables sorted by key, cycles marked; default depth 3).
 ---@param value any
 ---@param depth? integer
@@ -138,6 +155,50 @@ function fox.Script:stop_coroutines() end
 ---@param path string
 ---@return fox.Script?
 function fox.Script:get_script(path) end
+
+---Base of every actor class (fox.actor). An actor is a root entity (self.entity,
+---self.transform) whose components are child entities. Actors get every fox.Script
+---callback; on_destroy runs when the actor is destroyed or its scene unloads.
+---@class fox.Actor : fox.Script
+fox.Actor = {}
+
+---Destroys the actor at the end of this frame (fox.world.destroy).
+---@return nil
+function fox.Actor:destroy() end
+
+---True if the actor's class is class or derives from it.
+---@param class fox.Actor
+---@return boolean
+function fox.Actor:is_a(class) end
+
+---Argument of fox.actor.
+---@class fox.ActorDefinition
+---@field base fox.Actor? Base class: its components and properties come first; same-named entries override them.
+---@field components fox.ComponentSpec[]? The actor's parts.
+---@field properties fox.PropertySpec[]? Editable properties in editor order.
+
+---One actor component. Levels override any key except name and type per
+---placement. Transforms are relative to the actor.
+---@class fox.ComponentSpec
+---@field name string Becomes self.<name> (an identifier; not a property name).
+---@field type "mesh"|"point_light"|"particle_emitter"|"box"|"sphere"
+---@field position fox.Vec3?
+---@field rotation fox.Vec3? Euler degrees.
+---@field scale fox.Vec3?
+---@field mesh string? mesh: model path (FBX, glTF, OBJ).
+---@field cast_shadows boolean? mesh (default true).
+---@field receive_shadows boolean? mesh (default true).
+---@field alpha_cutoff number? mesh: alpha-test threshold for textures with alpha (0 = off).
+---@field collision boolean? mesh: kinematic triangle collider that follows the component.
+---@field color fox.Vec3? point_light: linear RGB (default white).
+---@field intensity number? point_light (default 1).
+---@field radius number? point_light range (default 10); sphere radius (default 0.5).
+---@field preset string? particle_emitter: Assets/Particles/Presets/*.json.
+---@field size fox.Vec3? box: full extents (default 1, 1, 1).
+---@field body "kinematic"|"dynamic"? box/sphere: kinematic follows the actor (default); dynamic is simulated and moves the actor (one per actor; it is then the actor's only collision).
+---@field mass number? Dynamic body mass in kg (default 1).
+---@field friction number? Default 0.5.
+---@field restitution number? Bounciness 0..1 (default 0.2).
 
 ---Argument of fox.script.
 ---@class fox.ScriptDefinition
@@ -487,7 +548,8 @@ function fox.input.cursor_captured() end
 ---@field id integer Runtime id, unique within the loaded scene.
 ---@field source_id integer Id in the scene file (0 for entities created at runtime).
 ---@field name string
----@field kind string mesh, primitive, point_light, particle_emitter, camera, sun, rigid_body or empty.
+---@field kind string actor, actor_component, mesh, primitive, point_light, particle_emitter, camera, sun, rigid_body or empty.
+---@field actor fox.Actor? The actor this entity is the root or a component of (its class instance), if any.
 ---@field active boolean Inactive entities are hidden and their scripts receive no updates (on_disable/on_enable run on the transitions). Not inherited by children.
 ---@field transform fox.Transform
 ---@field parent fox.Entity? Parent entity, if any.
@@ -511,6 +573,28 @@ function fox.Entity:get_script(path) end
 ---@param properties? table
 ---@return fox.Script
 function fox.Entity:add_script(path, properties) end
+
+---One component of an actor (self.<name> on the actor), declared in its
+---fox.actor class. Each is a child entity of the actor: its transform is
+---relative to the actor, and moving it moves what it renders and its
+---kinematic collider. Type-specific fields raise on other types.
+---@class fox.ActorComponent
+---@field name string Component name from the class.
+---@field type string mesh, point_light, particle_emitter, box or sphere.
+---@field entity fox.Entity The component's child entity.
+---@field transform fox.Transform Transform relative to the actor.
+---@field actor fox.Actor The owning actor.
+---@field enabled boolean Disabled components render nothing, emit nothing and have no collision.
+---@field color fox.Vec3 point_light: linear RGB.
+---@field intensity number point_light: multiplier on color.
+---@field radius number point_light: range in m.
+---@field velocity fox.Vec3 box/sphere with body = "dynamic": linear velocity of the actor in m/s.
+fox.ActorComponent = {}
+
+---particle_emitter: emits a burst of particles next frame.
+---@param count integer
+---@return nil
+function fox.ActorComponent:emit(count) end
 
 ---Position, rotation and scale of an entity, relative to its parent.
 ---Rotation is euler degrees: x = pitch (positive looks down), y = yaw
@@ -595,6 +679,44 @@ function fox.scene.find_all(name) end
 ---@param source_id integer
 ---@return fox.Entity?
 function fox.scene.get(source_id) end
+
+---Options of fox.world.spawn.
+---@class fox.SpawnOptions
+---@field position fox.Vec3? World position (default origin).
+---@field rotation fox.Vec3? Euler degrees.
+---@field scale fox.Vec3?
+---@field name string? Entity name (default: the class file name).
+---@field properties table? Property overrides, like a level placement's.
+---@field components table<string, table>? Component overrides keyed by component name: { mesh = { mesh = "Assets/Props/Crate2.fbx" } }.
+
+---Actors of the loaded scene: instances of fox.actor classes, placed in the
+---level or spawned at runtime. Spawned actors are not saved and end with the scene.
+---@class fox.world
+fox.world = {}
+
+---Creates an actor from its class (or script path) and returns its instance;
+---on_start runs next frame. Meshes the level did not load are imported now
+---(a hitch): place one instance in the level to preload a class's assets.
+---@param class fox.Actor|string
+---@param options? fox.SpawnOptions
+---@return fox.Actor
+function fox.world.spawn(class, options) end
+
+---Destroys an actor at the end of this frame's update (its scripts get
+---on_disable/on_destroy then). Same as actor:destroy().
+---@param actor fox.Actor|fox.Entity
+---@return nil
+function fox.world.destroy(actor) end
+
+---Every actor in creation order, or those of a class (or its script path) and its subclasses.
+---@param class? fox.Actor|string
+---@return fox.Actor[]
+function fox.world.actors(class) end
+
+---The first actor whose entity has this name.
+---@param name string
+---@return fox.Actor?
+function fox.world.find(name) end
 
 ---The scene camera that renders the game view. Yaw turns clockwise from +Z
 ---seen from above; pitch is degrees above the horizon (clamped to +-89.9).

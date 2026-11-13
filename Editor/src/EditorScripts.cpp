@@ -15,7 +15,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <system_error>
+#include <unordered_set>
 
 namespace Editor {
 
@@ -110,13 +112,12 @@ bool SameValue(const SE::ScriptPropertyInfo& prop, const nlohmann::json& a,
     return a == b;
 }
 
-void SetOverride(SE::LevelScriptDefinition& def, const SE::ScriptPropertyInfo& prop,
-                 nlohmann::json value)
+void SetOverride(nlohmann::json& overrides, const SE::ScriptPropertyInfo& prop, nlohmann::json value)
 {
     if (SameValue(prop, value, prop.defaultValue))
-        def.properties.erase(prop.name);
+        overrides.erase(prop.name);
     else
-        def.properties[prop.name] = std::move(value);
+        overrides[prop.name] = std::move(value);
 }
 
 // --- Entity references ---------------------------------------------------------
@@ -156,6 +157,9 @@ std::vector<EntityChoice> CollectEntities(const SE::SceneRuntime& scene)
         AddChoice(out, emitter.sourceEntityID, emitter.name, "Emitter");
     for (const auto& empty : scene.emptyEntities)
         AddChoice(out, empty.def.sourceEntityID, empty.def.name, "Empty");
+    for (const auto& actor : scene.actors)
+        if (!actor.spawned)
+            AddChoice(out, actor.def.sourceEntityID, actor.def.name, "Actor");
     return out;
 }
 
@@ -218,8 +222,10 @@ bool DrawPropertyWidget(const SE::ScriptPropertyInfo& prop, const nlohmann::json
         float v[3];
         ReadVec3(current, v, 0.0f);
         const float speed = prop.step ? static_cast<float>(*prop.step) : 0.1f;
-        const bool changed = type == "color" ? ImGui::ColorEdit3(label, v)
-                                             : ImGui::DragFloat3(label, v, speed);
+        // Linear colors (light colors especially) go above 1: edit them as floats.
+        const bool changed = type == "color"
+            ? ImGui::ColorEdit3(label, v, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR)
+            : ImGui::DragFloat3(label, v, speed);
         if (changed) edited = nlohmann::json::array({ v[0], v[1], v[2] });
         return changed;
     }
@@ -341,7 +347,7 @@ bool DrawScriptProperties(SE::LevelScriptDefinition& def, const SE::ScriptDescri
         nlohmann::json edited;
         if (DrawPropertyWidget(prop, current, edited, catalog, scene))
         {
-            SetOverride(def, prop, std::move(edited));
+            SetOverride(def.properties, prop, std::move(edited));
             changed = true;
         }
         if (!prop.tooltip.empty() && ImGui::IsItemHovered())
@@ -423,7 +429,11 @@ bool DrawAddScriptPopup(std::vector<SE::LevelScriptDefinition>& scripts,
     bool any = false;
     for (const std::string& path : catalog.ScriptFiles())
     {
-        if (!s_filter.PassFilter(path.c_str()) || !catalog.Describe(path).ok)
+        // Actor classes are placed (Add > Actor), not attached.
+        if (!s_filter.PassFilter(path.c_str()))
+            continue;
+        const SE::ScriptDescription& desc = catalog.Describe(path);
+        if (!desc.ok || desc.actor)
             continue;
         any = true;
         if (ImGui::Selectable(path.c_str()))
@@ -438,6 +448,136 @@ bool DrawAddScriptPopup(std::vector<SE::LevelScriptDefinition>& scripts,
         ImGui::TextDisabled("No loadable scripts in Assets/Scripts");
     ImGui::EndPopup();
     return added;
+}
+
+// --- Actor components ------------------------------------------------------------
+
+SE::ScriptPropertyInfo Field(const char* name, const char* type, const char* tooltip,
+                             std::optional<double> min = {}, std::optional<double> max = {})
+{
+    SE::ScriptPropertyInfo info;
+    info.name = name;
+    info.type = type;
+    info.tooltip = tooltip;
+    info.min = min;
+    info.max = max;
+    return info;
+}
+
+// The overridable keys of a component type (ParseActorComponent's keys), as
+// property schemas so the script property widgets can edit them.
+std::vector<SE::ScriptPropertyInfo> ComponentFields(SE::ActorComponentType type,
+                                                    const SE::SceneRuntime& scene)
+{
+    using Type = SE::ActorComponentType;
+    std::vector<SE::ScriptPropertyInfo> fields = {
+        Field("position", "vec3", "Relative to the actor."),
+        Field("rotation", "vec3", "Euler degrees, relative to the actor."),
+        Field("scale", "vec3", "Relative to the actor."),
+    };
+    auto body = [&fields] {
+        SE::ScriptPropertyInfo kind = Field("body", "enum",
+            "kinematic follows the actor; dynamic is simulated and moves the actor.");
+        kind.options = { "kinematic", "dynamic" };
+        fields.push_back(kind);
+        fields.push_back(Field("mass", "number", "Dynamic body mass in kg.", 0.001, {}));
+        fields.push_back(Field("friction", "number", "", 0.0, {}));
+        fields.push_back(Field("restitution", "number", "Bounciness.", 0.0, 1.0));
+    };
+    switch (type)
+    {
+    case Type::Mesh:
+        fields.push_back(Field("mesh", "string", "Model path (FBX, glTF, OBJ)."));
+        fields.push_back(Field("cast_shadows", "boolean", ""));
+        fields.push_back(Field("receive_shadows", "boolean", ""));
+        fields.push_back(Field("alpha_cutoff", "number", "Alpha-test threshold for textures with alpha (0 = off).",
+                               0.0, 1.0));
+        fields.push_back(Field("collision", "boolean", "Kinematic triangle collider that follows the mesh."));
+        break;
+    case Type::PointLight:
+        fields.push_back(Field("color", "color", "Linear RGB."));
+        fields.push_back(Field("intensity", "number", "", 0.0, {}));
+        fields.push_back(Field("radius", "number", "Range in m.", 0.01, {}));
+        break;
+    case Type::ParticleEmitter:
+    {
+        SE::ScriptPropertyInfo preset = Field("preset", "enum", "Assets/Particles/Presets/*.json");
+        for (std::string path : scene.particlePresetFiles)
+        {
+            std::replace(path.begin(), path.end(), '\\', '/');
+            preset.options.push_back(std::move(path));
+        }
+        fields.push_back(std::move(preset));
+        break;
+    }
+    case Type::Box:
+        fields.push_back(Field("size", "vec3", "Full extents."));
+        body();
+        break;
+    case Type::Sphere:
+        fields.push_back(Field("radius", "number", "", 0.001, {}));
+        body();
+        break;
+    }
+    return fields;
+}
+
+nlohmann::json ComponentValue(const SE::ActorComponentDefinition& d, const std::string& key)
+{
+    auto vec = [](const std::array<float, 3>& v) { return nlohmann::json::array({ v[0], v[1], v[2] }); };
+    if (key == "position") return vec(d.transform.position);
+    if (key == "rotation") return vec(d.transform.rotationDegrees);
+    if (key == "scale") return vec(d.transform.scale);
+    if (key == "mesh") return d.mesh;
+    if (key == "cast_shadows") return d.castShadows;
+    if (key == "receive_shadows") return d.receiveShadows;
+    if (key == "alpha_cutoff") return d.alphaCutoff;
+    if (key == "collision") return d.collision;
+    if (key == "color") return vec(d.color);
+    if (key == "intensity") return d.intensity;
+    if (key == "radius") return d.radius;
+    if (key == "preset") return d.preset;
+    if (key == "size") return vec(d.size);
+    if (key == "body") return d.body == SE::ActorBodyType::Dynamic ? "dynamic" : "kinematic";
+    if (key == "mass") return d.mass;
+    if (key == "friction") return d.friction;
+    if (key == "restitution") return d.restitution;
+    return nullptr;
+}
+
+// Effective value of key: the placement's override, else the class's.
+const nlohmann::json& EffectiveValue(const nlohmann::json& overrides, const std::string& key,
+                                     const nlohmann::json& classValue)
+{
+    const auto it = overrides.find(key);
+    return it != overrides.end() ? *it : classValue;
+}
+
+// Overrides of components the class no longer declares: shown so they can be removed.
+bool DrawStaleComponentOverrides(SE::SceneDescriptor::ActorEntry& actor, const nlohmann::json& classComponents)
+{
+    std::vector<std::string> stale;
+    for (auto it = actor.components.begin(); it != actor.components.end(); ++it)
+    {
+        const bool declared = std::any_of(classComponents.begin(), classComponents.end(),
+            [&](const nlohmann::json& c) { return c.is_object() && c.value("name", std::string()) == it.key(); });
+        if (!declared)
+            stale.push_back(it.key());
+    }
+    bool changed = false;
+    for (const std::string& key : stale)
+    {
+        ImGui::PushID(key.c_str());
+        if (DrawResetSlot(true))
+        {
+            actor.components.erase(key);
+            changed = true;
+        }
+        else
+            ImGui::TextDisabled("%s = %s (no such component)", key.c_str(), actor.components[key].dump().c_str());
+        ImGui::PopID();
+    }
+    return changed;
 }
 
 } // namespace
@@ -481,6 +621,64 @@ const SE::ScriptDescription& ScriptCatalog::Describe(const std::string& path)
         cached.description.error = "Script session is not running";
     }
     return cached.description;
+}
+
+SE::ResolvedActorClass ScriptCatalog::ResolveActorClass(const std::string& path)
+{
+    const SE::ScriptDescription& desc = Describe(path);
+    SE::ResolvedActorClass result;
+    if (!desc.ok)
+        result.error = desc.error;
+    else if (!desc.actor)
+        result.error = path + " is not an actor class: declare it with fox.actor { components = { ... } }";
+    else
+        result.components = desc.components;
+    return result;
+}
+
+std::vector<std::string> ScriptCatalog::ActorClasses()
+{
+    std::vector<std::string> classes;
+    for (const std::string& path : m_files)
+    {
+        const SE::ScriptDescription& desc = Describe(path);
+        if (desc.ok && desc.actor)
+            classes.push_back(path);
+    }
+    return classes;
+}
+
+void ScriptCatalog::RefreshActorPreviews(SE::SceneRuntime& scene)
+{
+    // A class is compared once per frame; a broken save keeps the last preview.
+    std::unordered_set<std::string> changed;
+    std::unordered_set<std::string> seen;
+    for (const auto& actor : scene.actors)
+    {
+        const std::string& path = actor.def.actorClass;
+        if (!seen.insert(path).second)
+            continue;
+        const SE::ScriptDescription& desc = Describe(path);
+        if (!desc.ok || !desc.actor)
+            continue;
+        const auto [it, first] = m_previewedComponents.try_emplace(path, desc.components);
+        if (first)
+        {
+            // The class failed when the level loaded and loads now.
+            if (!actor.def.resolveError.empty())
+                changed.insert(path);
+        }
+        else if (it->second != desc.components)
+        {
+            it->second = desc.components;
+            changed.insert(path);
+        }
+    }
+    if (changed.empty())
+        return;
+    for (int i = 0; i < static_cast<int>(scene.actors.size()); ++i)
+        if (!scene.actors[i].spawned && changed.count(scene.actors[i].def.actorClass))
+            scene.RebuildActor(i);
 }
 
 void ScriptCatalog::RescanScriptFiles()
@@ -544,6 +742,111 @@ bool DrawScriptComponents(std::vector<SE::LevelScriptDefinition>& scripts,
         changed = true;
     }
     changed |= DrawAddScriptPopup(scripts, catalog);
+    return changed;
+}
+
+bool DrawActorClassProperties(SE::SceneDescriptor::ActorEntry& actor, ScriptCatalog& catalog,
+                              const SE::SceneRuntime& scene)
+{
+    ImGui::SeparatorText("Properties");
+    const SE::ScriptDescription& desc = catalog.Describe(actor.actorClass);
+    if (!desc.ok)
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(k_errorColor, "%s", desc.error.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    SE::LevelScriptDefinition def{ actor.actorClass, actor.properties };
+    const bool changed = DrawScriptProperties(def, desc, catalog, scene);
+    if (changed)
+        actor.properties = std::move(def.properties);
+    if (desc.ok && desc.properties.empty())
+        ImGui::TextDisabled("No properties");
+    return changed;
+}
+
+bool DrawActorComponents(SE::SceneDescriptor::ActorEntry& actor, ScriptCatalog& catalog,
+                         const SE::SceneRuntime& scene, ComponentTransformEdit& transformEdit)
+{
+    ImGui::SeparatorText("Components");
+    const SE::ResolvedActorClass cls = catalog.ResolveActorClass(actor.actorClass);
+    if (!cls.error.empty())
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(k_errorColor, "%s", cls.error.c_str());
+        ImGui::PopTextWrapPos();
+        return false;
+    }
+    if (!actor.components.is_object())
+        actor.components = nlohmann::json::object();
+
+    bool changed = false;
+    for (size_t i = 0; i < cls.components.size(); ++i)
+    {
+        // The class was validated when it loaded (fox.actor checks every component).
+        SE::ActorComponentDefinition classDef;
+        std::string error;
+        if (!SE::ParseActorComponent(cls.components[i], classDef, error))
+            continue;
+        ImGui::PushID(static_cast<int>(i));
+        const std::string title = classDef.name + "  (" + SE::ActorComponentTypeName(classDef.type) + ")";
+        const auto existing = actor.components.find(classDef.name);
+        nlohmann::json overrides = existing != actor.components.end() && existing->is_object()
+            ? *existing : nlohmann::json::object();
+        if (ImGui::CollapsingHeader(title.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            bool edited = false;
+            bool transformChanged = false;
+            for (SE::ScriptPropertyInfo& field : ComponentFields(classDef.type, scene))
+            {
+                ImGui::PushID(field.name.c_str());
+                field.defaultValue = ComponentValue(classDef, field.name);
+                const bool overridden = overrides.contains(field.name);
+                if (DrawResetSlot(overridden))
+                {
+                    overrides.erase(field.name);
+                    edited = true;
+                    transformChanged |= field.name == "position" || field.name == "rotation" || field.name == "scale";
+                    ImGui::PopID();
+                    continue;
+                }
+                nlohmann::json value;
+                if (DrawPropertyWidget(field, EffectiveValue(overrides, field.name, field.defaultValue),
+                                       value, catalog, scene))
+                {
+                    SetOverride(overrides, field, std::move(value));
+                    edited = true;
+                    transformChanged |= field.name == "position" || field.name == "rotation" || field.name == "scale";
+                }
+                if (!field.tooltip.empty() && ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", field.tooltip.c_str());
+                ImGui::PopID();
+            }
+            if (edited)
+            {
+                if (overrides.empty())
+                    actor.components.erase(classDef.name);
+                else
+                    actor.components[classDef.name] = overrides;
+                changed = true;
+            }
+            if (transformChanged)
+            {
+                float v[3];
+                transformEdit.part = static_cast<int>(i);
+                ReadVec3(EffectiveValue(overrides, "position", ComponentValue(classDef, "position")), v, 0.0f);
+                transformEdit.position = { v[0], v[1], v[2] };
+                ReadVec3(EffectiveValue(overrides, "rotation", ComponentValue(classDef, "rotation")), v, 0.0f);
+                transformEdit.rotation = { v[0], v[1], v[2] };
+                ReadVec3(EffectiveValue(overrides, "scale", ComponentValue(classDef, "scale")), v, 1.0f);
+                transformEdit.scale = { v[0], v[1], v[2] };
+            }
+        }
+        ImGui::PopID();
+    }
+    changed |= DrawStaleComponentOverrides(actor, cls.components);
+    if (cls.components.empty())
+        ImGui::TextDisabled("No components");
     return changed;
 }
 

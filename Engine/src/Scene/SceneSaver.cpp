@@ -239,44 +239,45 @@ ojson WriteEntities(const SceneDescriptor& desc)
     observe(desc.objects);
     observe(desc.particles);
     observe(desc.empties);
+    observe(desc.actors);
 
     std::unordered_set<uint64_t> usedIDs;
-    ojson entities = ojson::array();
-    auto addEntity = [&](uint64_t id, const std::string& name, ojson components,
-                         const std::vector<LevelScriptDefinition>& scripts) {
+    auto allocateID = [&](uint64_t id) {
         if (id == 0 || !usedIDs.insert(id).second)
         {
             id = ++nextID;
             usedIDs.insert(id);
         }
+        return id;
+    };
+    ojson entities = ojson::array();
+    auto addEntity = [&](uint64_t id, const std::string& name, ojson components) {
         ojson entity = {
-            { "id", FormatEntityID(id) },
+            { "id", FormatEntityID(allocateID(id)) },
             { "name", name },
             { "active", true },
             { "components", std::move(components) }
         };
-        if (!scripts.empty())
-            entity["scripts"] = WriteScripts(scripts);
         entities.push_back(std::move(entity));
     };
 
     for (const auto& mesh : desc.meshes)
-        addEntity(mesh.sourceEntityID, mesh.name, WriteMeshComponents(mesh), mesh.scripts);
+        addEntity(mesh.sourceEntityID, mesh.name, WriteMeshComponents(mesh));
     addEntity(desc.camera.sourceEntityID, desc.camera.name.empty() ? "Camera" : desc.camera.name,
-              { { "camera", WriteCamera(desc.camera) } }, desc.camera.scripts);
+              { { "camera", WriteCamera(desc.camera) } });
     addEntity(desc.sun.sourceEntityID, desc.sun.name.empty() ? "Sun" : desc.sun.name,
               { { "directionalLight", {
                   { "elevation", desc.sun.elevation },
                   { "azimuth", desc.sun.azimuth },
                   { "intensity", desc.sun.intensity },
                   { "color", desc.sun.color }
-              } } }, desc.sun.scripts);
+              } } });
     for (size_t i = 0; i < desc.pointLights.size(); ++i)
     {
         const auto& light = desc.pointLights[i];
         addEntity(light.sourceEntityID,
                   light.name.empty() ? "Point Light " + std::to_string(i + 1) : light.name,
-                  { { "pointLight", WritePointLight(light) } }, light.scripts);
+                  { { "pointLight", WritePointLight(light) } });
     }
     for (size_t i = 0; i < desc.objects.size(); ++i)
     {
@@ -284,15 +285,14 @@ ojson WriteEntities(const SceneDescriptor& desc)
         const bool plane = object.type == SceneDescriptor::SceneObject::Type::Plane;
         addEntity(object.sourceEntityID,
                   object.name.empty() ? "Object " + std::to_string(i + 1) : object.name,
-                  { { plane ? "planeRenderer" : "sphereRenderer", WriteObject(object) } },
-                  object.scripts);
+                  { { plane ? "planeRenderer" : "sphereRenderer", WriteObject(object) } });
     }
     for (size_t i = 0; i < desc.particles.size(); ++i)
     {
         const auto& emitter = desc.particles[i];
         addEntity(emitter.sourceEntityID,
                   emitter.name.empty() ? "Particle Emitter " + std::to_string(i + 1) : emitter.name,
-                  { { "particleEmitter", WriteParticleEmitter(emitter) } }, emitter.scripts);
+                  { { "particleEmitter", WriteParticleEmitter(emitter) } });
     }
     for (const auto& empty : desc.empties)
     {
@@ -303,7 +303,33 @@ ojson WriteEntities(const SceneDescriptor& desc)
             { "scale", empty.scale }
         };
         addEntity(empty.sourceEntityID, empty.name.empty() ? "Empty" : empty.name,
-                  std::move(components), empty.scripts);
+                  std::move(components));
+    }
+    // Actors: the class path plus only what the level overrides.
+    for (const auto& actor : desc.actors)
+    {
+        ojson components = ojson::object();
+        components["transform"] = {
+            { "position", actor.position },
+            { "rotationDegrees", actor.rotation },
+            { "scale", actor.scale }
+        };
+        if (actor.components.is_object())
+            for (const auto& item : actor.components.items())
+                if (item.key() != "transform" && item.value().is_object() && !item.value().empty())
+                    components[item.key()] = ojson(item.value());
+        ojson entity = {
+            { "id", FormatEntityID(allocateID(actor.sourceEntityID)) },
+            { "name", actor.name.empty() ? "Actor" : actor.name },
+            { "active", true },
+            { "actor", actor.actorClass },
+            { "components", std::move(components) }
+        };
+        if (actor.properties.is_object() && !actor.properties.empty())
+            entity["properties"] = ojson(actor.properties);
+        if (!actor.scripts.empty())
+            entity["scripts"] = WriteScripts(actor.scripts);
+        entities.push_back(std::move(entity));
     }
     return entities;
 }

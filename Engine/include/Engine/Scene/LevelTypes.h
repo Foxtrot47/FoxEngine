@@ -8,13 +8,24 @@
 
 namespace SE {
 
-// A script component: a Lua class (fox.script) instantiated for its entity
+// A script component: a Lua class (fox.script) instantiated on an actor
 // when the scene plays. properties holds only overrides of the defaults the
 // script declares; entity references are LevelEntityID integers.
 struct LevelScriptDefinition
 {
     std::string    script;                                 // "Assets/Scripts/Spinner.lua"
     nlohmann::json properties = nlohmann::json::object();
+};
+
+// An actor placement: an instance of a Lua actor class (fox.actor). Only
+// overrides are stored; the class supplies components and property defaults.
+struct LevelActorDefinition
+{
+    std::string    actorClass;                             // "Assets/Scripts/Actors/Door.lua"
+    // Per-component overrides keyed by the class's component name:
+    // { "mesh": { "mesh": "Assets/Props/Door2.fbx" } }.
+    nlohmann::json components = nlohmann::json::object();
+    nlohmann::json properties = nlohmann::json::object();  // class property overrides
 };
 
 struct LevelTransformDefinition
@@ -38,7 +49,6 @@ struct LevelCameraDefinition
     // Stamped from the owning entity, not the component JSON.
     uint64_t sourceEntityID = 0;
     std::string name;
-    std::vector<LevelScriptDefinition> scripts;
 
     std::array<float, 3> eye = { 0.0f, 5.0f, -10.0f };
     float yaw = 0.0f;
@@ -53,7 +63,6 @@ struct LevelDirectionalLightDefinition
     // Stamped from the owning entity, not the component JSON.
     uint64_t sourceEntityID = 0;
     std::string name;
-    std::vector<LevelScriptDefinition> scripts;
 
     float elevation = 63.0f;
     float azimuth = -134.6f;
@@ -66,7 +75,6 @@ struct LevelPointLightDefinition
     // Stamped from the owning entity, not the component JSON.
     uint64_t sourceEntityID = 0;
     std::string name;
-    std::vector<LevelScriptDefinition> scripts;
 
     std::array<float, 3> position = { 0.0f, 5.0f, 0.0f };
     std::array<float, 3> color = { 1.0f, 1.0f, 1.0f };
@@ -112,7 +120,6 @@ struct LevelParticleEmitterDefinition
     // Stamped from the owning entity, not the component JSON.
     uint64_t sourceEntityID = 0;
     std::string name;
-    std::vector<LevelScriptDefinition> scripts;
 
     std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
     float emitRate = 50.0f;

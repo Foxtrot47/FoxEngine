@@ -32,9 +32,12 @@ public:
 
     bool Init(ID3D11Device* device);
 
-    // Fill and bind LightCB (b1) + PointLightCB (b2).
+    // Fill and bind LightCB (b1) + PointLightCB (b2). extraLights (actor
+    // lights) follow lights[] in the slots left of the shader's 8; they never
+    // cast shadows, which belong to lights[0..1].
     void BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos,
-                DirectX::XMMATRIX lightViewProj = DirectX::XMMatrixIdentity());
+                DirectX::XMMATRIX lightViewProj = DirectX::XMMatrixIdentity(),
+                const PointLight* extraLights = nullptr, int extraCount = 0);
 
 private:
     struct LightCBData
