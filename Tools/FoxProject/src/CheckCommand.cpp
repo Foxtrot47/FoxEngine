@@ -7,6 +7,7 @@
 #include "Common.h"
 #include "Engine/Core/Project.h"
 #include "Engine/Core/ProjectRoot.h"
+#include "Engine/Scene/ActorTypes.h"
 #include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scripting/ScriptSystem.h"
@@ -163,6 +164,16 @@ public:
         m_report.errors += PrintCapturedErrors(captured, reported, stdout);
     }
 
+    // Resolves a placement's component overrides like the runtime does. The
+    // engine logs it emits repeat the returned warnings, so they are dropped.
+    SE::ActorResolveResult ResolveComponents(const json& classComponents, const json& overrides)
+    {
+        m_log.BeginCapture();
+        SE::ActorResolveResult resolved = SE::ResolveActorComponents(classComponents, overrides);
+        m_log.EndCapture();
+        return resolved;
+    }
+
     const std::map<std::string, SE::ScriptDescription>& Descriptions() const { return m_descriptions; }
 
 private:
@@ -182,8 +193,8 @@ std::vector<std::string> ScenesToCheck(const SE::ProjectSettings& project)
     return { scenes.begin(), scenes.end() };
 }
 
-void CheckEntityScripts(const SceneCheck& scene, ScriptChecker& checker, CheckReport& report,
-                        std::set<std::string>& referencedScenes)
+void CheckEntityBehaviour(const SceneCheck& scene, ScriptChecker& checker, CheckReport& report,
+                          std::set<std::string>& referencedScenes)
 {
     const auto error = [&](const std::string& where, const std::string& message) {
         PrintDiagnostic(Severity::Error, scene.path, where + ": " + message);
@@ -194,54 +205,94 @@ void CheckEntityScripts(const SceneCheck& scene, ScriptChecker& checker, CheckRe
     for (const SE::LevelEntityDefinition& entity : scene.result.asset.entities)
         entityIds.insert(entity.id);
 
+    // Overrides of the properties a script or actor class declares.
+    const auto checkProperties = [&](const std::string& path, const SE::ScriptDescription& description,
+                                     const json& overrides, const std::string& base) {
+        if (!overrides.is_object())
+        {
+            error(base, "expected an object");
+            return;
+        }
+        for (const auto& item : overrides.items())
+        {
+            const std::string& key = item.key();
+            const json& value = item.value();
+            const std::string where = base + "/" + key;
+            const auto property = std::find_if(description.properties.begin(), description.properties.end(),
+                [&](const SE::ScriptPropertyInfo& info) { return info.name == key; });
+            if (property == description.properties.end())
+            {
+                std::vector<std::string> names;
+                for (const SE::ScriptPropertyInfo& info : description.properties)
+                    names.push_back(info.name);
+                error(where, "'" + path + "' declares no property '" + key + "'" +
+                             (names.empty() ? std::string(" (it declares none)")
+                                            : " (declared: " + Join(names, ", ") + ")"));
+                continue;
+            }
+            const std::string problem = ValidatePropertyValue(*property, value, entityIds);
+            if (!problem.empty())
+                error(where, problem);
+            else if (property->type == "scene" && value.is_string() && !value.get<std::string>().empty())
+                referencedScenes.insert(NormalizePath(value.get<std::string>()));
+        }
+    };
+
+    // Loads a referenced class; nullptr (after reporting) when it is unusable.
+    const auto describe = [&](const std::string& path, const std::string& where) -> const SE::ScriptDescription* {
+        if (!IsRegularFile(path))
+        {
+            error(where, "'" + path + "' does not exist");
+            return nullptr;
+        }
+        const SE::ScriptDescription& description = checker.Describe(path);
+        if (!description.ok)
+        {
+            error(where, "'" + path + "' failed to load (see above)");
+            return nullptr;
+        }
+        return &description;
+    };
+
     const auto& entities = scene.result.asset.entities;
     for (size_t e = 0; e < entities.size(); ++e)
     {
+        const std::string entityBase = "/entities/" + std::to_string(e);
+        if (const auto& actor = entities[e].actor)
+        {
+            const SE::ScriptDescription* description = describe(actor->actorClass, entityBase + "/actor");
+            if (description && !description->actor)
+                error(entityBase + "/actor", "'" + actor->actorClass +
+                      "' is a fox.script; an actor placement needs a fox.actor class");
+            else if (description)
+            {
+                // The runtime drops invalid overrides with a warning; check fails on them instead.
+                const SE::ActorResolveResult resolved =
+                    checker.ResolveComponents(description->components, actor->components);
+                if (!resolved.Succeeded())
+                    error(entityBase + "/actor", "'" + actor->actorClass + "': " + resolved.error);
+                for (const std::string& warning : resolved.warnings)
+                    error(entityBase + "/components", warning);
+                checkProperties(actor->actorClass, *description, actor->properties, entityBase + "/properties");
+            }
+        }
+
         for (size_t s = 0; s < entities[e].scripts.size(); ++s)
         {
             const SE::LevelScriptDefinition& script = entities[e].scripts[s];
-            const std::string base = "/entities/" + std::to_string(e) + "/scripts/" + std::to_string(s);
+            const std::string base = entityBase + "/scripts/" + std::to_string(s);
             if (script.script.empty())
                 continue;
-            if (!IsRegularFile(script.script))
+            const SE::ScriptDescription* description = describe(script.script, base + "/script");
+            if (!description)
+                continue;
+            if (description->actor)
             {
-                error(base + "/script", "script '" + script.script + "' does not exist");
+                error(base + "/script", "'" + script.script +
+                      "' is an actor class (fox.actor); scripts take fox.script classes");
                 continue;
             }
-            const SE::ScriptDescription& description = checker.Describe(script.script);
-            if (!description.ok)
-            {
-                error(base + "/script", "script '" + script.script + "' failed to load (see above)");
-                continue;
-            }
-            if (!script.properties.is_object())
-            {
-                error(base + "/properties", "expected an object");
-                continue;
-            }
-            for (const auto& item : script.properties.items())
-            {
-                const std::string& key = item.key();
-                const json& value = item.value();
-                const std::string where = base + "/properties/" + key;
-                const auto property = std::find_if(description.properties.begin(), description.properties.end(),
-                    [&](const SE::ScriptPropertyInfo& info) { return info.name == key; });
-                if (property == description.properties.end())
-                {
-                    std::vector<std::string> names;
-                    for (const SE::ScriptPropertyInfo& info : description.properties)
-                        names.push_back(info.name);
-                    error(where, "'" + script.script + "' declares no property '" + key + "'" +
-                                 (names.empty() ? std::string(" (it declares none)")
-                                                : " (declared: " + Join(names, ", ") + ")"));
-                    continue;
-                }
-                const std::string problem = ValidatePropertyValue(*property, value, entityIds);
-                if (!problem.empty())
-                    error(where, problem);
-                else if (property->type == "scene" && value.is_string() && !value.get<std::string>().empty())
-                    referencedScenes.insert(NormalizePath(value.get<std::string>()));
-            }
+            checkProperties(script.script, *description, script.properties, base + "/properties");
         }
     }
 }
@@ -275,9 +326,13 @@ CheckReport RunCheck(ToolContext& context)
         {
             scene.result = SE::LevelAssetLoader::LoadFromFile(path);
             for (const SE::LevelEntityDefinition& entity : scene.result.asset.entities)
+            {
+                if (entity.actor && !entity.actor->actorClass.empty())
+                    components.insert(entity.actor->actorClass);
                 for (const SE::LevelScriptDefinition& script : entity.scripts)
                     if (!script.script.empty())
                         components.insert(script.script);
+            }
         }
         scenes.push_back(std::move(scene));
     }
@@ -338,7 +393,7 @@ CheckReport RunCheck(ToolContext& context)
         // Entity indices match the JSON only when every entity parsed; the
         // loader errors above already fail the check otherwise.
         if (scriptsRunning && scene.result.Succeeded())
-            CheckEntityScripts(scene, checker, report, referencedScenes);
+            CheckEntityBehaviour(scene, checker, report, referencedScenes);
     }
     for (const auto& entry : checker.Descriptions())
         for (const SE::ScriptPropertyInfo& property : entry.second.properties)
