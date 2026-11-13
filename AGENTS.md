@@ -2,28 +2,33 @@
 
 ## Project Overview
 
-A from-scratch DirectX 11 engine on Windows. Forward PBR renderer with HDR pipeline, custom physics, and ImGui tooling. Built with C++17/MSVC, CMake, vcpkg dependencies.
+A from-scratch DirectX 11 engine on Windows. Forward PBR renderer with HDR pipeline, custom physics, Lua scripting, and ImGui tooling including a level editor. A game is `project.json` + scenes + Lua scripts, run by the generic `FoxPlayer` executable and shipped with `FoxProject publish`; no game code is compiled. Built with C++17/MSVC, CMake, vcpkg dependencies.
 
 ## Build & Run
 
 ```powershell
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Debug
-# Run: build/Game/Debug/TestGame.exe
-# Or from project root: .\build\Game\Debug\TestGame.exe --scene showcase.json
+# Game:    build/Player/Debug/FoxPlayer.exe [--scene bistro.json]   (runs project.json)
+# Editor:  build/Editor/Debug/FoxEditor.exe                         (F5 plays the open level)
+# Project: build/Tools/FoxProject/Debug/FoxProject.exe help          (scripts, tests, publish)
 ```
 
-The exe auto-detects the project root by walking up from its location until it finds `Engine/` + `Assets/`. No need to set working directory manually.
+The executables auto-detect the project root by walking up from their location until they find `Engine/` + `Assets/`. No need to set the working directory manually.
 
 New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no need to edit CMakeLists, but you must re-run CMake configure for them to be picked up.
 
-**Shader/asset iteration**: Edit shaders in `Engine/Shaders/` or assets in `Assets/` and re-run the exe — no rebuild needed. Only C++ changes require a build.
+**Shader/asset/script iteration**: Edit shaders in `Engine/Shaders/` or assets in `Assets/` and re-run the exe; no rebuild needed. Lua scripts hot reload while FoxPlayer or editor Play mode runs. Only C++ changes require a build.
 
 ## Architecture
 
 - **Engine/** — Static library (`FoxEngine.lib`). All code in `namespace SE {}`.
-- **Game/** — Test executable. Links `FoxEngine`. Integration target for all features.
+- **Player/**: `FoxPlayer.exe`, the generic game executable: loads `project.json`, its startup scene and scripts. Holds no game logic; `FoxProject publish` ships it as `<ProjectName>.exe`.
+- **Editor/**: `FoxEditor.exe` level editor with Play mode, Console and script property editing (see `Editor/README.md`).
+- **Tools/FoxProject/**: Headless project CLI: API stubs, Lua tests, validation, REPL, scaffolding, publish (see Scripting).
 - **Engine/Shaders/** — HLSL files loaded directly from source at runtime via `D3DCompileFromFile`.
+- **Engine/Scripts/**: Lua runtime prelude (`fox/runtime.lua`) and the generated LuaLS API reference (`types/fox.lua`).
+- **Assets/Scripts/**: Game scripts and their `*_test.lua` tests; the `require` root.
 
 ### Renderer Pipeline (forward-only)
 
@@ -53,6 +58,8 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `ShaderLibrary` | Compile + cache shader permutations |
 | `RenderStateCache` | Deduplicate blend/raster/depth-stencil states |
 | `AssetManager` | Path-keyed cache, ref-counted handles |
+| `ScriptSystem` | Lua session: sandboxed VM, script instances + lifecycle, coroutines, hot reload, REPL, tests, API stub generation |
+| `Project` | `project.json` loading/validation, published scene list |
 
 ### Constant Buffer Layout (Basic.hlsl)
 
@@ -80,6 +87,57 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t11 | BRDF integration LUT |
 | t12 | Optional planar reflection |
 
+## Scripting
+
+Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, a headless `FoxProject` command) gets its own sandboxed VM. The C++ entry point is `SE::ScriptSystem` (`Engine/include/Engine/Scripting/ScriptSystem.h`).
+
+### Script Model
+- A script is a module under `Assets/Scripts/` returning a class made by `fox.script { properties = { ... } }`. `require("Game.CameraMath")` loads `Assets/Scripts/Game/CameraMath.lua`.
+- **Script components** attach to level entities (mesh, camera, sun, point light, particle emitter, primitive, empty) in a `scripts` array beside `components`. Levels store only property overrides; defaults come from the script, so changing one updates every instance without an override:
+  ```json
+  { "id": "0000000000000007", "name": "Turntable",
+    "components": { "transform": { "position": [0, 1, 0] } },
+    "scripts": [ { "script": "Assets/Scripts/Examples/Spinner.lua", "properties": { "speed": 45 } } ] }
+  ```
+- **Autoloads** (`project.json` `autoload`) have no entity, live for the whole session across scene loads and receive `on_scene_loaded(scene)`. Global game logic goes there (`Game/PlayerController.lua`, `Game/PauseMenu.lua`).
+- Callbacks are optional methods: `on_enable`, `on_start`, `on_update(dt)`, `on_fixed_update(dt)`, `on_late_update(dt)`, `on_gui`, `on_disable`, `on_destroy`, `on_reload`. Each frame runs coroutines → `on_update` → physics steps (`on_fixed_update`) → `on_late_update` → `on_gui`.
+- Keep state on `self`: module-level locals reset on hot reload. `self:start_coroutine(fn)` with `fox.wait(seconds)` / `fox.wait_frames(n)` sequences work across frames.
+- `fox.time.scale` scales dt, physics and particles; 0 pauses them while `on_update` (with dt 0) and `on_gui` keep running.
+- Input goes through actions declared in `project.json` `input` (`"jump": ["Space", "Gamepad.A"]` → `fox.input.action_pressed("jump")`); key names are the `fox.Key` alias.
+- `fox.ui` (ImGui) works only inside `on_gui`.
+- Reference assets as literal `"Assets/..."` strings: publish scans script literals to ship them.
+
+### Runtime Guarantees
+- `fox.*` module tables are strict: unknown fields raise errors, so typos fail loudly.
+- Sandbox: no `io`, `load`/`loadfile`/`dofile` or `string.dump`; `os` keeps only `clock`/`time`/`date`/`difftime`, `debug` only `traceback`.
+- Script errors are logged as `file(line)` with a traceback and never reach C++; the failing instance stops until its file is saved again. A single callback running longer than 5 s is aborted.
+- Hot reload (development builds): loaded files are polled twice a second; changed classes are patched in place, instances keep `self`, new properties get their defaults and `on_reload` runs.
+
+### API Reference and New Bindings
+- `Engine/Scripts/types/fox.lua` (LuaLS `---@meta`) documents every binding and is **generated** from `Engine/src/Scripting/Bindings/Bind*.cpp`: never edit it. Opening the repo root with the Lua language server gives completion and type checks.
+- Add bindings in the matching `Bind<Area>.cpp` through the `ScriptApi` builders: `api.Module(name, doc)` with `.Function(name, "(path: string, volume?: number) -> boolean", doc, fn)`, `.Property`, `.ReadOnly`; `api.Class<T>(name, doc)` for usertypes. Raise Lua errors with `Raise(fmt, ...)`. The signature and doc strings become the reference, so it cannot drift. Then run `FoxProject api` and commit the stub; `FoxProject check` warns when it is stale.
+- The Lua-side API (`fox.script`, `fox.Script` methods, `fox.wait`, `fox.test`, `fox.inspect`) lives in `Engine/Scripts/fox/runtime.lua`.
+
+### FoxProject CLI
+`build/Tools/FoxProject/<Config>/FoxProject.exe` works from any directory. Diagnostics print as `path(line): error: message`; exit codes: 0 success, 1 failures, 2 usage error.
+
+| Command | Purpose |
+|---------|---------|
+| `new <Name> [--dir <subdir>]` | Create `Assets/Scripts[/<subdir>]/<Name>.lua` and `<Name>_test.lua` |
+| `test [filter]` | Run `Assets/Scripts/**/*_test.lua` headless (`fox.test.case`, `expect`, `expect_eq`, `expect_near`) |
+| `check` | Validate `project.json`, every script and every scene, including script property overrides |
+| `eval <lua...>` | Evaluate Lua in a headless session (no window or scene) |
+| `api [--check]` | Regenerate or verify `Engine/Scripts/types/fox.lua` |
+| `publish [--out <dir>] [--clean]` | `check`, then write the standalone game |
+
+Gameplay loop: edit the script → `FoxProject check` → `FoxProject test` → run FoxPlayer or editor Play mode, whose Console evaluates Lua in the running game.
+
+### project.json and Publishing
+- Keys: `name`, `startupScene`, `scenes` (published scenes; empty = every scene in `Assets/Scenes`), `autoload` (script paths, instantiated in order), `input` (action → key names), `window` (`title`, `width`, `height`, `fullscreen`). Comments are allowed. Unknown keys, bad key names and missing files are errors; FoxPlayer refuses to start on them.
+- `FoxProject publish` writes `out/Publish/<ProjectName>/`, incrementally unless `--clean`: FoxPlayer from FoxProject's own build configuration as `<ProjectName>.exe` with its DLLs, `Engine/Shaders`, `Engine/Scripts` without `types/`, non-test scripts, the listed scenes plus scenes named by `scene` script properties or script literals, their cooked meshes (`Cache/Meshes`), textures and particle presets, and `project.json` marked `"published": true` (no hot reload, no frame stats in the title).
+- Every published scene must load: a scene mesh with neither a source nor a cooked entry aborts the publish. `scenes` lists the scenes whose assets are in the repository (`Assets/Sponza/` is not).
+- Distribute a Release publish: a Debug player opens a log console and needs the Visual Studio debug runtimes (publish warns). Target machines need the Microsoft Visual C++ x64 redistributable.
+
 ## Coding Conventions
 
 - **Naming**: Types/public functions `PascalCase`, locals/private `camelCase`, members `m_` prefix, constants `k_` prefix
@@ -89,12 +147,13 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 - **Comments**: Only when the *why* is non-obvious.
 - **HLSL**: One file per shader. Entry points: `VS_Main` / `PS_Main` / `CS_Main`.
 - **Headers**: Public at `Engine/include/Engine/<Subsystem>/Name.h`, impl at `Engine/src/<Subsystem>/Name.cpp`.
-- **Boundary**: Engine never includes Game headers. Game includes only `<Engine/...>`.
+- **Lua**: `snake_case` functions, fields and script properties; `PascalCase` script classes and their files (`Assets/Scripts/Game/PlayerController.lua`); one class per file, returned from the module; tests in `<Name>_test.lua` beside it.
+- **Boundary**: Engine never includes Player, Editor or Tools headers; they include only `<Engine/...>`. Lua and sol2 stay inside `Engine/src/Scripting/`.
 
 ## Working Rules
 
 1. **One milestone at a time.** Compile, run in test scene, commit before starting next.
-2. **Test scene is canonical.** `Game/` is the live integration target. Wire everything into it.
+2. **Test project is canonical.** `project.json` + `Assets/Scenes/showcase.json`, run by FoxPlayer and editor Play mode, are the live integration target. Wire everything into it; gameplay belongs in Lua scripts, not in `Player/`.
 3. **No premature abstraction.** Refactor only when duplication actually hurts (3+ occurrences).
 4. **Commit format**: Follow Conventional Commits v1.0.0 (e.g., `feat(renderer): add SSAO pass`).
 5. **Dependencies are additive.** Add via vcpkg or `ThirdParty/`. Never inline library source.
@@ -160,6 +219,7 @@ M71: Particle asset serialization / default presets
 M72: Material workflow correctness (metallic/roughness, packed MR, specular/glossiness; node-transform baking at import)
 M62: TAA (jittered projection, per-object motion vectors, variance-clipped resolve) + geometric specular AA
 M63: FSR 3.1 upscaling (vendored prebuilt DX11 SDK in `ThirdParty/fsr3/`; upscale-only — frame generation needs DX12/Vulkan; Native AA mode is the default AA path, mutually exclusive with TAA)
+M73: Lua scripting (script components + autoloads, lifecycle, coroutines, hot reload; editor Play mode, Console and script properties; generic FoxPlayer; FoxProject CLI with tests, validation and publish)
 
 ### Next Up
 
@@ -168,5 +228,4 @@ M63: FSR 3.1 upscaling (vendored prebuilt DX11 SDK in `ThirdParty/fsr3/`; upscal
 ### Deferred
 - Phase 10: Animation (implement when needed)
 - Phase 11: Engine tooling & profiling
-- Phase 12: Scripting (Lua)
 - Phase 13: Editor
