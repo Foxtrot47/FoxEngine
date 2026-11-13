@@ -5,7 +5,8 @@
     "Assets/Scenes/showcase.json",
     "Assets/Scenes/bistro.json",
     "Assets/Scenes/suntemple.json",
-    "Assets/Scenes/specgloss.json"
+    "Assets/Scenes/specgloss.json",
+    "Assets/Scenes/actors.json"
   ],
   "autoload": [
     "Assets/Scripts/Game/PlayerController.lua",

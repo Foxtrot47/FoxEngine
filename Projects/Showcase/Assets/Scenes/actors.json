@@ -1,0 +1,81 @@
+{
+  "format": "FoxLevel",
+  "version": 2,
+  "name": "Actors",
+  "settings": {
+    "environment": {
+      "skybox": "Assets/Textures/citrus_orchard_road_puresky_2k.dds",
+      "iblIntensity": 0.35
+    },
+    "toneMapping": {
+      "operator": "ACES",
+      "exposure": 1.0
+    },
+    "bloom": {
+      "enabled": true,
+      "threshold": 1.0,
+      "intensity": 0.12,
+      "scatter": 0.7
+    }
+  },
+  "entities": [
+    {
+      "id": "0000000000000001",
+      "name": "Main Camera",
+      "components": {
+        "camera": { "eye": [0, 2.4, -9], "yaw": 0, "pitch": -6, "nearZ": 0.05, "farZ": 300 }
+      }
+    },
+    {
+      "id": "0000000000000002",
+      "name": "Sun",
+      "components": {
+        "directionalLight": { "elevation": 12.0, "azimuth": -40.0, "intensity": 0.4, "color": [1.0, 0.75, 0.55] }
+      }
+    },
+    {
+      "id": "0000000000000003",
+      "name": "Floor",
+      "components": {
+        "planeRenderer": {
+          "halfSizeX": 20.0,
+          "halfSizeZ": 20.0,
+          "material": {
+            "albedo": "Assets/Showcase/marble_albedo.dds",
+            "normal": "Assets/Showcase/marble_normal.dds",
+            "roughness": "Assets/Showcase/marble_roughness.dds"
+          }
+        }
+      }
+    },
+    {
+      "id": "0000000000000004",
+      "name": "Brazier Left",
+      "actor": "Assets/Scripts/Actors/Brazier.lua",
+      "components": {
+        "transform": { "position": [-3.5, 0, 2] }
+      }
+    },
+    {
+      "id": "0000000000000005",
+      "name": "Brazier Right",
+      "actor": "Assets/Scripts/Actors/Brazier.lua",
+      "components": {
+        "transform": { "position": [3.5, 0, 2] },
+        "light": { "color": [0.6, 1.4, 2.8] }
+      },
+      "properties": { "brightness": 1.5, "flicker": 0.1 }
+    },
+    {
+      "id": "0000000000000006",
+      "name": "Floating Brazier",
+      "actor": "Assets/Scripts/Actors/Brazier.lua",
+      "components": {
+        "transform": { "position": [0, 1.5, 5] }
+      },
+      "scripts": [
+        { "script": "Assets/Scripts/Examples/Bobber.lua", "properties": { "amplitude": 0.6, "frequency": 0.3 } }
+      ]
+    }
+  ]
+}
