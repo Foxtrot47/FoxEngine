@@ -177,6 +177,125 @@ void TestStaticMeshCollider()
     Simulate(world, 3.0f);
     Require(Near(t.position.y, 2.5f, 0.03f), "ball rests on the mesh");
 }
+
+const XMFLOAT4 k_identity = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+float Length(const XMFLOAT3& v) { return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z); }
+
+// A box swept along +X each frame must shove a resting ball, then stop
+// exactly at its last target instead of coasting.
+void TestKinematicBoxPushesSphere()
+{
+    SE::PhysicsWorld world;
+    world.AddStaticBox(Floor());
+    SE::TransformComponent t;
+    SE::RigidBodyComponent rb;
+    rb.restitution = 0.0f;
+    t.position = { 0.0f, 0.5f, 0.0f };
+    world.AddSphere(&t, &rb, 0.5f);
+    Simulate(world, 1.0f);
+    const float startX = t.position.x;
+
+    SE::PhysicsWorld::KinematicShape shape;
+    shape.halfExtents = { 0.5f, 0.5f, 0.5f };
+    const SE::BodyHandle box = world.AddKinematicBody(shape, { -2.0f, 0.5f, 0.0f }, k_identity);
+    Require(box != SE::k_invalidBody, "kinematic box is added");
+    const int frames = 90;
+    for (int i = 1; i <= frames; ++i)
+    {
+        const float x = -2.0f + 3.0f * static_cast<float>(i) / frames;
+        world.MoveKinematic(box, { x, 0.5f, 0.0f }, k_identity);
+        world.Step(1.0f / 60.0f);
+    }
+    Simulate(world, 0.1f);
+    Require(t.position.x > startX + 0.5f, "moving kinematic box pushes the ball along +X");
+
+    const SE::PhysicsWorld::BodyState state = world.GetBodyState(box);
+    Require(Near(state.position.x, 1.0f, 1e-3f) && Near(state.position.y, 0.5f, 1e-3f) &&
+            Near(state.position.z, 0.0f, 1e-3f), "kinematic box ends at its last target");
+    Require(Length(state.linearVelocity) < 1e-4f && Length(state.angularVelocity) < 1e-4f,
+            "kinematic box stops once it reaches the target");
+}
+
+void TestKinematicRaycastAndRemove()
+{
+    SE::PhysicsWorld world;
+    SE::TransformComponent owner;
+    SE::PhysicsWorld::KinematicShape shape;
+    shape.type   = SE::PhysicsWorld::KinematicShape::Type::Sphere;
+    shape.radius = 1.0f;
+    const SE::BodyHandle body =
+        world.AddKinematicBody(shape, { 10.0f, 1.0f, 0.0f }, k_identity, 0.5f, 0.2f, &owner);
+    Require(body != SE::k_invalidBody, "kinematic sphere is added");
+    world.Step(0.0f);
+
+    SE::PhysicsWorld::RaycastHit hit;
+    SE::Ray sideways;
+    sideways.origin = { 0.0f, 1.0f, 0.0f };
+    sideways.direction = { 1.0f, 0.0f, 0.0f };
+    Require(world.Raycast(sideways, hit), "ray hits the kinematic sphere");
+    Require(hit.transform == &owner && !hit.dynamic && hit.body == body,
+            "kinematic hit reports its owner and is not dynamic");
+    Require(hit.kind == SE::PhysicsWorld::RaycastHit::Kind::Sphere && Near(hit.t, 9.0f, 1e-3f),
+            "kinematic sphere hit geometry");
+
+    world.RemoveBody(body);
+    Require(!world.Raycast(sideways, hit), "removed kinematic body is no longer hit");
+}
+
+void TestKinematicTeleport()
+{
+    SE::PhysicsWorld world;
+    SE::PhysicsWorld::KinematicShape shape;
+    const SE::BodyHandle body = world.AddKinematicBody(shape, { 0.0f, 5.0f, 0.0f }, k_identity);
+    const float s = std::sqrt(0.5f);
+    const XMFLOAT4 yaw90 = { 0.0f, s, 0.0f, s };
+    world.MoveKinematic(body, { 3.0f, 4.0f, -2.0f }, yaw90, true);
+    SE::PhysicsWorld::BodyState state = world.GetBodyState(body);
+    Require(Near(state.position.x, 3.0f, 1e-4f) && Near(state.position.y, 4.0f, 1e-4f) &&
+            Near(state.position.z, -2.0f, 1e-4f), "teleport moves the body before any step");
+    Require(Near(std::fabs(state.rotation.y), s, 1e-4f) && Near(std::fabs(state.rotation.w), s, 1e-4f),
+            "teleport sets the rotation");
+    Require(Length(state.linearVelocity) == 0.0f, "teleported body has no velocity");
+
+    world.MoveKinematic(body, { 6.0f, 4.0f, -2.0f }, yaw90);
+    state = world.GetBodyState(body);
+    Require(Near(state.position.x, 3.0f, 1e-4f), "non-teleport move waits for the next step");
+    world.Step(1.0f / 30.0f);
+    state = world.GetBodyState(body);
+    Require(Near(state.position.x, 6.0f, 1e-3f), "queued move is reached after the step");
+
+    const SE::BodyHandle floor = world.AddStaticBox(Floor());
+    world.MoveKinematic(floor, { 0.0f, 50.0f, 0.0f }, k_identity, true);
+    Require(Near(world.GetBodyState(floor).position.y, -0.25f, 1e-4f),
+            "MoveKinematic ignores non-kinematic bodies");
+}
+
+// A rising kinematic platform must lift the ball resting on it.
+void TestKinematicPlatformCarriesSphere()
+{
+    SE::PhysicsWorld world;
+    SE::PhysicsWorld::KinematicShape shape;
+    shape.halfExtents = { 2.0f, 0.25f, 2.0f };
+    const SE::BodyHandle platform = world.AddKinematicBody(shape, { 0.0f, 0.0f, 0.0f }, k_identity);
+    SE::TransformComponent t;
+    SE::RigidBodyComponent rb;
+    rb.restitution = 0.0f;
+    t.position = { 0.0f, 0.8f, 0.0f };
+    world.AddSphere(&t, &rb, 0.5f);
+    Simulate(world, 1.0f);
+    Require(Near(t.position.y, 0.75f, 0.03f), "ball rests on the kinematic platform");
+
+    const int frames = 60;
+    for (int i = 1; i <= frames; ++i)
+    {
+        world.MoveKinematic(platform, { 0.0f, 2.0f * static_cast<float>(i) / frames, 0.0f },
+                            k_identity);
+        world.Step(1.0f / 60.0f);
+    }
+    Simulate(world, 1.0f); // the platform stops abruptly; let the ball's hop settle
+    Require(Near(t.position.y, 2.75f, 0.05f), "rising platform carries the ball up");
+}
 }
 
 int main()
@@ -187,6 +306,10 @@ int main()
     TestRaycastReportsBodies();
     TestCharacterLandsAndWalks();
     TestStaticMeshCollider();
-    std::puts("PhysicsWorldTests: all six groups passed");
+    TestKinematicBoxPushesSphere();
+    TestKinematicRaycastAndRemove();
+    TestKinematicTeleport();
+    TestKinematicPlatformCarriesSphere();
+    std::puts("PhysicsWorldTests: all ten groups passed");
     return 0;
 }

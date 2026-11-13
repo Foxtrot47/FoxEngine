@@ -80,10 +80,14 @@ struct JoltLibrary
 
 // --- Collision layers ---------------------------------------------------------
 
+// Kinematic bodies get their own layer so the pair filters below skip
+// kinematic-vs-static and kinematic-vs-kinematic tests (Jolt would discard
+// those pairs anyway, but only after the broad phase found them).
 namespace Layers {
-constexpr JPH::ObjectLayer Static  = 0;
-constexpr JPH::ObjectLayer Dynamic = 1;
-constexpr JPH::ObjectLayer Count   = 2;
+constexpr JPH::ObjectLayer Static    = 0;
+constexpr JPH::ObjectLayer Dynamic   = 1;
+constexpr JPH::ObjectLayer Kinematic = 2;
+constexpr JPH::ObjectLayer Count     = 3;
 }
 
 namespace BroadPhaseLayers {
@@ -130,6 +134,12 @@ public:
 
 JPH::Vec3 ToJolt(const XMFLOAT3& v) { return JPH::Vec3(v.x, v.y, v.z); }
 XMFLOAT3 ToSE(JPH::Vec3Arg v) { return { v.GetX(), v.GetY(), v.GetZ() }; }
+
+JPH::Quat ToJolt(const XMFLOAT4& q)
+{
+    const JPH::Quat j(q.x, q.y, q.z, q.w);
+    return j.LengthSq() > 1e-12f ? j.Normalized() : JPH::Quat::sIdentity();
+}
 
 bool operator==(const XMFLOAT3& a, const XMFLOAT3& b)
 {
@@ -230,6 +240,15 @@ struct PhysicsWorld::Impl
         XMFLOAT3 writtenPosition = {};
     };
 
+    struct KinematicBody
+    {
+        JPH::BodyID id;
+        bool        hasTarget = false; // MoveKinematic target waiting for the next steps
+        JPH::RVec3  targetPosition;
+        JPH::Quat   targetRotation;
+        bool        moving = false;    // driven toward a target during the last Step
+    };
+
     explicit Impl(const Settings& settings)
         : tempAllocator(16 * 1024 * 1024)
         , jobs(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers,
@@ -251,6 +270,7 @@ struct PhysicsWorld::Impl
     {
         JPH::BodyIDVector ids;
         for (const auto& d : dynamics) ids.push_back(d.id);
+        for (const auto& k : kinematics) ids.push_back(k.id);
         ids.insert(ids.end(), statics.begin(), statics.end());
         if (!ids.empty())
         {
@@ -258,7 +278,15 @@ struct PhysicsWorld::Impl
             Bodies().DestroyBodies(ids.data(), static_cast<int>(ids.size()));
         }
         dynamics.clear();
+        kinematics.clear();
         statics.clear();
+    }
+
+    KinematicBody* FindKinematic(JPH::BodyID id)
+    {
+        auto it = std::find_if(kinematics.begin(), kinematics.end(),
+                               [id](const KinematicBody& k) { return k.id == id; });
+        return it != kinematics.end() ? &*it : nullptr;
     }
 
     void CaptureCurrent(DynamicBody& d)
@@ -388,6 +416,7 @@ struct PhysicsWorld::Impl
     JPH::PhysicsSystem         system;
 
     std::vector<DynamicBody>          dynamics;
+    std::vector<KinematicBody>        kinematics;
     std::vector<JPH::BodyID>          statics;
     std::vector<PhysicsStepListener*> listeners;
     Character                         character;
@@ -534,6 +563,83 @@ BodyHandle PhysicsWorld::AddStaticBox(const OBB& box, float friction, float rest
     return id.GetIndexAndSequenceNumber();
 }
 
+BodyHandle PhysicsWorld::AddKinematicBody(const KinematicShape& shape, XMFLOAT3 position,
+                                          XMFLOAT4 rotation, float friction, float restitution,
+                                          TransformComponent* owner)
+{
+    Impl& im = GetImpl();
+    JPH::RefConst<JPH::Shape> joltShape;
+    switch (shape.type)
+    {
+    case KinematicShape::Type::Box:
+    {
+        const JPH::Vec3 halfExtents(
+            (std::max)(shape.halfExtents.x, 0.01f), (std::max)(shape.halfExtents.y, 0.01f),
+            (std::max)(shape.halfExtents.z, 0.01f));
+        const float convexRadius = (std::min)(JPH::cDefaultConvexRadius, halfExtents.ReduceMin());
+        joltShape = new JPH::BoxShape(halfExtents, convexRadius);
+        break;
+    }
+    case KinematicShape::Type::Sphere:
+        joltShape = new JPH::SphereShape((std::max)(shape.radius, 0.01f));
+        break;
+    case KinematicShape::Type::Mesh:
+        if (!shape.mesh)
+        {
+            SE_LOG_ERROR("Physics: kinematic mesh body has no collider, not added");
+            return k_invalidBody;
+        }
+        joltShape = shape.mesh->shape;
+        if (shape.scale.x != 1.0f || shape.scale.y != 1.0f || shape.scale.z != 1.0f)
+            joltShape = new JPH::ScaledShape(joltShape, ToJolt(shape.scale));
+        break;
+    }
+
+    JPH::BodyCreationSettings bcs(joltShape, ToJolt(position), ToJolt(rotation),
+                                  JPH::EMotionType::Kinematic, Layers::Kinematic);
+    bcs.mFriction    = friction;
+    bcs.mRestitution = restitution;
+    bcs.mUserData    = reinterpret_cast<JPH::uint64>(owner);
+    // Mesh shapes have no computable mass; kinematic bodies ignore it anyway.
+    bcs.mOverrideMassProperties = JPH::EOverrideMassProperties::MassAndInertiaProvided;
+    bcs.mMassPropertiesOverride.mMass    = 1.0f;
+    bcs.mMassPropertiesOverride.mInertia = JPH::Mat44::sIdentity();
+    const JPH::BodyID id = im.Bodies().CreateAndAddBody(bcs, JPH::EActivation::DontActivate);
+    if (id.IsInvalid())
+    {
+        SE_LOG_ERROR("Physics: body limit reached, kinematic body not added");
+        return k_invalidBody;
+    }
+    Impl::KinematicBody k;
+    k.id = id;
+    im.kinematics.push_back(k);
+    im.broadPhaseDirty = true;
+    return id.GetIndexAndSequenceNumber();
+}
+
+void PhysicsWorld::MoveKinematic(BodyHandle body, XMFLOAT3 position, XMFLOAT4 rotation,
+                                 bool teleport)
+{
+    if (!m_impl || body == k_invalidBody)
+        return;
+    Impl::KinematicBody* k = m_impl->FindKinematic(JPH::BodyID(body));
+    if (!k)
+        return;
+    if (teleport)
+    {
+        JPH::BodyInterface& bi = m_impl->Bodies();
+        bi.SetPositionAndRotation(k->id, ToJolt(position), ToJolt(rotation),
+                                  JPH::EActivation::Activate);
+        bi.SetLinearAndAngularVelocity(k->id, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+        k->hasTarget = false;
+        k->moving    = false;
+        return;
+    }
+    k->hasTarget      = true;
+    k->targetPosition = ToJolt(position);
+    k->targetRotation = ToJolt(rotation);
+}
+
 void PhysicsWorld::RemoveBody(BodyHandle body)
 {
     if (!m_impl || body == k_invalidBody)
@@ -542,10 +648,13 @@ void PhysicsWorld::RemoveBody(BodyHandle body)
     const JPH::BodyID id(body);
     auto dyn = std::find_if(im.dynamics.begin(), im.dynamics.end(),
                             [id](const Impl::DynamicBody& d) { return d.id == id; });
+    auto kin = std::find_if(im.kinematics.begin(), im.kinematics.end(),
+                            [id](const Impl::KinematicBody& k) { return k.id == id; });
     auto stat = std::find(im.statics.begin(), im.statics.end(), id);
-    if (dyn == im.dynamics.end() && stat == im.statics.end())
+    if (dyn == im.dynamics.end() && kin == im.kinematics.end() && stat == im.statics.end())
         return;
     if (dyn != im.dynamics.end()) im.dynamics.erase(dyn);
+    if (kin != im.kinematics.end()) im.kinematics.erase(kin);
     if (stat != im.statics.end()) im.statics.erase(stat);
     im.Bodies().RemoveBody(id);
     im.Bodies().DestroyBody(id);
@@ -750,6 +859,20 @@ void PhysicsWorld::Step(float dt)
         im.accumulator -= steps * fixed;
     }
 
+    if (steps > 0)
+    {
+        JPH::BodyInterface& bi = im.Bodies();
+        const float duration = steps * fixed;
+        for (auto& k : im.kinematics)
+        {
+            if (!k.hasTarget)
+                continue;
+            bi.MoveKinematic(k.id, k.targetPosition, k.targetRotation, duration);
+            k.hasTarget = false;
+            k.moving    = true;
+        }
+    }
+
     for (int i = 0; i < steps; ++i)
     {
         for (auto& d : im.dynamics)
@@ -765,6 +888,15 @@ void PhysicsWorld::Step(float dt)
             SE_LOG_WARN("Physics: update error 0x%x", static_cast<unsigned>(error));
         for (auto& d : im.dynamics)
             im.CaptureCurrent(d);
+    }
+    // A kinematic body keeps its velocity after reaching the target; stop it
+    // there unless a step listener already queued the next target.
+    for (auto& k : im.kinematics)
+    {
+        if (!k.moving || k.hasTarget)
+            continue;
+        im.Bodies().SetLinearAndAngularVelocity(k.id, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+        k.moving = false;
     }
     im.PullState(std::clamp(im.accumulator / fixed, 0.0f, 1.0f));
 }
