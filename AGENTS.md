@@ -131,7 +131,7 @@ Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, 
 
 | Command | Purpose |
 |---------|---------|
-| `new <Name> [--dir <subdir>]` | Create `Assets/Scripts[/<subdir>]/<Name>.lua` and `<Name>_test.lua` |
+| `new <Name> [--dir <subdir>] [--actor]` | Create `Assets/Scripts[/<subdir>]/<Name>.lua` and `<Name>_test.lua`; `--actor` scaffolds a placeable `fox.actor` class instead of a `fox.script` |
 | `test [filter]` | Run `Assets/Scripts/**/*_test.lua` headless (`fox.test.case`, `expect`, `expect_eq`, `expect_near`) |
 | `check` | Validate `project.json`, every script and every scene, including script property overrides |
 | `eval <lua...>` | Evaluate Lua in a headless session (no window or scene) |

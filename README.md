@@ -92,7 +92,8 @@ Place actors from the editor (Outliner → Add → Actors) and edit their proper
 `FoxProject` covers the rest of the workflow:
 
 ```powershell
-FoxProject new Door --dir Game            # Assets/Scripts/Game/Door.lua + Door_test.lua
+FoxProject new Lantern --dir Actors --actor  # placeable fox.actor class + Lantern_test.lua
+FoxProject new Door --dir Game            # fox.script component + Door_test.lua
 FoxProject test                           # run the *_test.lua unit tests headless
 FoxProject check                          # validate project.json, scripts and scenes
 FoxProject eval "vec3(1, 2, 3):length()"  # evaluate Lua in a headless session
