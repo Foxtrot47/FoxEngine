@@ -25,8 +25,10 @@ const TypeInfo k_types[] = {
     { ActorComponentType::Mesh, "mesh", { "mesh", "cast_shadows", "receive_shadows", "alpha_cutoff", "collision" } },
     { ActorComponentType::PointLight, "point_light", { "color", "intensity", "radius" } },
     { ActorComponentType::ParticleEmitter, "particle_emitter", { "preset" } },
-    { ActorComponentType::Box, "box", { "size", "body", "mass", "friction", "restitution" } },
-    { ActorComponentType::Sphere, "sphere", { "radius", "body", "mass", "friction", "restitution" } },
+    { ActorComponentType::Box, "box",
+      { "size", "visible", "color", "cast_shadows", "body", "mass", "friction", "restitution" } },
+    { ActorComponentType::Sphere, "sphere",
+      { "radius", "visible", "color", "cast_shadows", "body", "mass", "friction", "restitution" } },
 };
 
 const TypeInfo* FindType(const std::string& name)
@@ -232,6 +234,16 @@ bool ParseActorComponent(const json& source, ActorComponentDefinition& out, std:
         }
         else if (!ReadPositive(source, "radius", out.radius, fieldError))
         {
+            return fail();
+        }
+        out.color = { 0.8f, 0.8f, 0.8f };
+        if (!ReadBool(source, "visible", out.visible, fieldError) ||
+            !ReadVec3(source, "color", out.color, fieldError) ||
+            !ReadBool(source, "cast_shadows", out.castShadows, fieldError))
+            return fail();
+        if (std::any_of(out.color.begin(), out.color.end(), [](float c) { return c < 0.0f || c > 1.0f; }))
+        {
+            fieldError = "'color' components must be in 0..1 (albedo)";
             return fail();
         }
         if (source.contains("body"))

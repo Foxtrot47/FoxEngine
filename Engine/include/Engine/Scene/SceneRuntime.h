@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Engine/Assets/AssetManager.h"
@@ -383,6 +384,11 @@ private:
     // Mesh, materials and (when collision) collider of a part mesh: from the
     // asset cache, or imported now when loadMissing.
     bool LoadActorMesh(ActorPart& part, bool loadMissing);
+    // Box/sphere parts render a mesh built at their exact size, so editor
+    // picking and framing read correct bounds. Shared by every part of the
+    // same shape and size for the session.
+    void LoadActorPrimitive(ActorPart& part);
+    std::unordered_map<std::string, AssetHandle<Mesh>> m_primitiveMeshes;
     // Point lights of enabled actor parts, packed for LightEnvironment::BindPS.
     std::vector<LightEnvironment::PointLight> m_actorLights;
 

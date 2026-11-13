@@ -8,7 +8,8 @@ local Brazier = fox.actor {
           preset = "Assets/Particles/Presets/fire_flipbook_default.json", position = vec3(0, 1, 0) },
         { name = "light", type = "point_light", color = vec3(2.6, 1.2, 0.45), intensity = 1,
           radius = 9, position = vec3(0, 1.6, 0) },
-        { name = "base", type = "box", size = vec3(0.8, 1, 0.8), position = vec3(0, 0.5, 0) },
+        { name = "base", type = "box", size = vec3(0.8, 1, 0.8), color = vec3(0.09, 0.075, 0.065),
+          position = vec3(0, 0.5, 0) },
     },
     properties = {
         { name = "brightness", type = "number", default = 1, min = 0, max = 10,

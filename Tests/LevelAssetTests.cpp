@@ -11,6 +11,8 @@
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Renderer/Texture2D.h"
 #include "Engine/Scene/MeshMaterialUtil.h"
+#include "Engine/Scene/ActorTypes.h"
+#include "Engine/Renderer/PrimitiveMesh.h"
 
 #include <chrono>
 #include <cmath>
@@ -1113,6 +1115,48 @@ static void TestInMemoryLevelLoad()
     }
 }
 
+static void TestActorShapeComponents()
+{
+    SE::ActorComponentDefinition def;
+    std::string error;
+    Require(SE::ParseActorComponent(json{ { "name", "body" }, { "type", "box" } }, def, error),
+            "minimal box should parse");
+    Require(def.visible && def.castShadows && def.color[0] == 0.8f, "box should default to a visible grey shape");
+
+    Require(SE::ParseActorComponent(json{ { "name", "trigger" }, { "type", "sphere" }, { "visible", false },
+                                          { "color", { 0.1, 0.2, 0.3 } }, { "cast_shadows", false } },
+                                    def, error),
+            "sphere render keys should parse");
+    Require(!def.visible && !def.castShadows && def.color[2] == 0.3f, "sphere render keys were not applied");
+
+    Require(!SE::ParseActorComponent(json{ { "name", "body" }, { "type", "box" }, { "color", { 2, 1, 1 } } },
+                                     def, error) && error.find("'color'") != std::string::npos,
+            "a box albedo above 1 should be rejected");
+    Require(!SE::ParseActorComponent(json{ { "name", "ember" }, { "type", "mesh" }, { "mesh", "a.obj" },
+                                           { "visible", true } }, def, error),
+            "visible is not a mesh key");
+
+    // Back-face culling hides the box from outside if any face winds the wrong way.
+    std::vector<SE::MeshVertex> vertices;
+    std::vector<uint32_t> indices;
+    SE::BuildBoxGeometry({ 1.0f, 2.0f, 3.0f }, vertices, indices);
+    Require(indices.size() == 36, "a box has 12 triangles");
+    for (size_t i = 0; i < indices.size(); i += 3)
+    {
+        const auto at = [&](size_t k) {
+            const SE::MeshVertex& v = vertices[indices[i + k]];
+            return DirectX::XMVectorSet(v.x, v.y, v.z, 0.0f);
+        };
+        const DirectX::XMVECTOR p0 = at(0), p1 = at(1), p2 = at(2);
+        const DirectX::XMVECTOR facing = DirectX::XMVector3Cross(DirectX::XMVectorSubtract(p1, p0),
+                                                                 DirectX::XMVectorSubtract(p2, p0));
+        const DirectX::XMVECTOR centroid = DirectX::XMVectorScale(DirectX::XMVectorAdd(DirectX::XMVectorAdd(p0, p1), p2),
+                                                                  1.0f / 3.0f);
+        Require(DirectX::XMVectorGetX(DirectX::XMVector3Dot(facing, centroid)) > 0.0f,
+                "a box triangle faces inward");
+    }
+}
+
 static void RunTests()
 {
     TestAssetCacheRetainsReleasedHandles();
@@ -1129,6 +1173,7 @@ static void RunTests()
     TestDescriptorStamping();
     TestSaverPreservesIdentity();
     TestLevelWorldComponentPositions();
+    TestActorShapeComponents();
     TestDependencyPlan();
     TestMaterialTexturePath();
     TestCpuTextureDecode();

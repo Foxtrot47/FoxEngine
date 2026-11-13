@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <unordered_set>
 #include "Engine/Assets/MeshCache.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/PrimitiveMesh.h"
 #include "Engine/Renderer/Renderer.h"
 #include "Engine/Scene/LevelDependencyPlan.h"
 #include "Engine/Scene/LevelRuntimeComponents.h"
@@ -138,6 +140,39 @@ bool SceneRuntime::LoadActorMesh(ActorPart& part, bool loadMissing)
     return true;
 }
 
+void SceneRuntime::LoadActorPrimitive(ActorPart& part)
+{
+    constexpr float k_roughness = 0.7f;
+    const ActorComponentDefinition& def = part.def;
+    const bool box = def.type == ActorComponentType::Box;
+    char key[96];
+    if (box)
+        std::snprintf(key, sizeof(key), "box:%g,%g,%g", def.size[0], def.size[1], def.size[2]);
+    else
+        std::snprintf(key, sizeof(key), "sphere:%g", def.radius);
+
+    AssetHandle<Mesh>& mesh = m_primitiveMeshes[key];
+    if (!mesh)
+    {
+        MeshSourceData source = box
+            ? BuildBoxMeshSource({ def.size[0], def.size[1], def.size[2] }, k_roughness)
+            : BuildSphereMeshSource(def.radius, k_roughness);
+        auto created = std::make_shared<Mesh>();
+        if (!created->Upload(m_renderer->GetDevice(), std::move(source)))
+        {
+            SE_LOG_WARN("Actor: %s mesh upload failed", key);
+            m_primitiveMeshes.erase(key);
+            return;
+        }
+        mesh = std::move(created);
+    }
+    part.mesh = mesh;
+    part.materials = BuildSubMeshMaterials(*m_assets, *part.mesh);
+    for (auto& material : part.materials)
+        material.tint = { def.color[0], def.color[1], def.color[2] };
+    part.shadowSubMeshes = BuildShadowSubMeshes(part.materials);
+}
+
 // --- Construction ---------------------------------------------------------------
 
 bool SceneRuntime::BuildActor(LoadedActor& actor, Scene& scene, Entity& root, PhysicsWorld& physics,
@@ -197,6 +232,7 @@ bool SceneRuntime::BuildActor(LoadedActor& actor, Scene& scene, Entity& root, Ph
         }
         case ActorComponentType::Box:
         case ActorComponentType::Sphere:
+            LoadActorPrimitive(part);
             if (def.body == ActorBodyType::Dynamic)
             {
                 if (actor.dynamicPart < 0)
