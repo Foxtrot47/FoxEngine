@@ -1,4 +1,5 @@
 #include "EditorViewportToolbar.h"
+#include "EditorIcons.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
 #include "Engine/Renderer/ForwardPipeline.h"
 #include <cmath>
@@ -137,7 +138,7 @@ void DrawNavigationHelp()
     ImGui::TextDisabled("View changes preserve position and orthographic zoom.");
     ImGui::EndMenu();
 }
-}
+} // namespace
 
 const char* ViewModeLabel(VM mode)
 {
@@ -146,27 +147,68 @@ const char* ViewModeLabel(VM mode)
     return "Perspective";
 }
 
+namespace {
+
+void DrawPlayControls(PlayControls& play)
+{
+    const ImVec4 tint = play.playing ? ImVec4(0.75f, 0.22f, 0.22f, 1.0f)
+                                     : ImVec4(0.20f, 0.55f, 0.25f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, tint);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(tint.x * 1.25f, tint.y * 1.25f, tint.z * 1.25f, 1.0f));
+    ImGui::BeginDisabled(!play.canToggle);
+    if (ImGui::Button(play.playing ? ICON_MD_STOP " Stop" : ICON_MD_PLAY_ARROW " Play"))
+        play.toggleRequested = true;
+    ImGui::EndDisabled();
+    ImGui::PopStyleColor(2);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip(play.playing
+            ? "Stop (F5) and restore the edited scene\nShift+F1 releases game focus"
+            : "Play (F5) the current edit state with the project's scripts");
+    if (!play.playing)
+        return;
+    ImGui::SameLine();
+    if (play.errorCount > 0)
+        ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), ICON_MD_ERROR " %u", play.errorCount);
+    else
+        ImGui::TextDisabled(ICON_MD_ERROR " 0");
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("Script errors this session (details in the Console)");
+    if (play.title && play.title[0] != '\0')
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", play.title);
+    }
+}
+
+} // namespace
+
 void DrawViewportToolbar(EditorCamera& camera, SE::CameraComponent& component,
                          GizmoOp& operation, GizmoSettings& gizmo, ViewportOptions& options,
-                         SE::ForwardPipeline& pipeline)
+                         SE::ForwardPipeline& pipeline, PlayControls& play)
 {
     // Menus retain all commands when the docked viewport is too narrow for
     // the inline transform group. No dead or non-functional toolbar buttons.
     if (!ImGui::BeginMenuBar()) return;
-    if (ImGui::GetWindowWidth() > 840.0f)
-        DrawTransformTools(operation, gizmo);
-    else if (ImGui::BeginMenu("Transform"))
+    DrawPlayControls(play);
+    ImGui::SameLine();
+    if (!play.playing)
     {
-        DrawTransformTools(operation, gizmo);
-        ImGui::EndMenu();
-    }
-    DrawSnapping(gizmo);
-    DrawCameraMenu(camera, component);
-    if (ImGui::BeginMenu("Speed"))
-    {
-        ImGui::SliderFloat("Units / second", &camera.moveSpeed, 0.2f, 400.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
-        ImGui::TextDisabled("RMB + wheel adjusts speed; Shift boosts it.");
-        ImGui::EndMenu();
+        if (ImGui::GetWindowWidth() > 920.0f)
+            DrawTransformTools(operation, gizmo);
+        else if (ImGui::BeginMenu("Transform"))
+        {
+            DrawTransformTools(operation, gizmo);
+            ImGui::EndMenu();
+        }
+        DrawSnapping(gizmo);
+        DrawCameraMenu(camera, component);
+        if (ImGui::BeginMenu("Speed"))
+        {
+            ImGui::SliderFloat("Units / second", &camera.moveSpeed, 0.2f, 400.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+            ImGui::TextDisabled("RMB + wheel adjusts speed; Shift boosts it.");
+            ImGui::EndMenu();
+        }
     }
     DrawShadingMenu(pipeline);
     DrawDisplayMenu(options);

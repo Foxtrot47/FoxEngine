@@ -20,6 +20,13 @@
 #define ICON_MD_INSERT_DRIVE_FILE "\xEE\x89\x8D" // U+E24D generic file
 #define ICON_MD_REFRESH           "\xEE\x97\x95" // U+E5D5 refresh
 #define ICON_MD_VISIBILITY_OFF    "\xEE\xA3\xB5" // U+E8F5 eye closed
+#define ICON_MD_PLAY_ARROW        "\xEE\x80\xB7" // U+E037 play
+#define ICON_MD_STOP              "\xEE\x81\x87" // U+E047 stop
+#define ICON_MD_ERROR             "\xEE\x80\x80" // U+E000 error badge
+#define ICON_MD_CLOSE             "\xEE\x97\x8D" // U+E5CD remove
+#define ICON_MD_OPEN_IN_NEW       "\xEE\xA2\x9E" // U+E89E open file externally
+#define ICON_MD_CODE              "\xEE\xA1\xAF" // U+E86F script component
+#define ICON_MD_CHECK_BOX_OUTLINE_BLANK "\xEE\xA0\xB5" // U+E835 empty entity
 
 namespace Editor {
 inline constexpr unsigned short k_iconRangeMin = 0xE000;

@@ -352,10 +352,12 @@ void ContentBrowser::DrawFilters()
 void ContentBrowser::Draw(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                           SE::AssetManager& assets, ID3D11Device* device,
                           ID3D11DeviceContext* ctx,
-                          const DirectX::XMFLOAT3& spawnPos)
+                          const DirectX::XMFLOAT3& spawnPos, bool readOnly)
 {
     m_thumbs.Update(device, ctx);
-    PumpMeshAdd(scene, sel, undo, assets, device, spawnPos);
+    // A finished import waits for edit mode instead of landing in the play scene.
+    if (!readOnly)
+        PumpMeshAdd(scene, sel, undo, assets, device, spawnPos);
 
     ImGui::Begin("Content Browser");
     if (!m_pendingNavigate.empty())
@@ -368,7 +370,7 @@ void ContentBrowser::Draw(SE::SceneRuntime& scene, Selection& sel, UndoStack& un
     if (m_entriesDirty)
         RefreshEntries();
 
-    const bool canModify = scene.HasScene() && !scene.IsLoading();
+    const bool canModify = scene.HasScene() && !scene.IsLoading() && !readOnly;
     const float statusHeight = ImGui::GetTextLineHeightWithSpacing() + 4.0f;
 
     if (ImGui::BeginChild("##folders", { 190.0f, -statusHeight }, ImGuiChildFlags_ResizeX))

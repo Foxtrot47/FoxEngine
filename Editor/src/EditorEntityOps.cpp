@@ -18,12 +18,13 @@ struct DetachedEntity
     SE::SceneRuntime::DetachedEmitter    emitter;
     SE::SceneRuntime::LoadedObject       object;
     SE::SceneRuntime::LoadedMesh         mesh;
+    SE::SceneRuntime::LoadedEmpty        empty;
 };
 
 bool IsStructural(Kind kind)
 {
     return kind == Kind::PointLight || kind == Kind::Mesh ||
-           kind == Kind::Object || kind == Kind::Emitter;
+           kind == Kind::Object || kind == Kind::Emitter || kind == Kind::Empty;
 }
 
 void Detach(SE::SceneRuntime& scene, Selection target, DetachedEntity& out)
@@ -34,6 +35,7 @@ void Detach(SE::SceneRuntime& scene, Selection target, DetachedEntity& out)
     case Kind::Emitter:    out.emitter = scene.RemoveParticleEmitter(target.index); break;
     case Kind::Object:     out.object  = scene.RemoveSceneObject(target.index); break;
     case Kind::Mesh:       out.mesh    = scene.RemoveMesh(target.index); break;
+    case Kind::Empty:      out.empty   = scene.RemoveEmpty(target.index); break;
     default: break;
     }
 }
@@ -46,6 +48,7 @@ void Attach(SE::SceneRuntime& scene, Selection target, DetachedEntity& in)
     case Kind::Emitter:    scene.InsertParticleEmitter(target.index, std::move(in.emitter)); break;
     case Kind::Object:     scene.InsertSceneObject(target.index, std::move(in.object)); break;
     case Kind::Mesh:       scene.InsertMesh(target.index, std::move(in.mesh)); break;
+    case Kind::Empty:      scene.InsertEmpty(target.index, std::move(in.empty)); break;
     default: break;
     }
 }
@@ -109,6 +112,7 @@ bool DuplicateSelection(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo
     case Kind::Mesh:       newIndex = scene.DuplicateMesh(sel.index); break;
     case Kind::Object:     newIndex = scene.DuplicateSceneObject(sel.index); break;
     case Kind::Emitter:    newIndex = scene.DuplicateParticleEmitter(sel.index); break;
+    case Kind::Empty:      newIndex = scene.DuplicateEmpty(sel.index); break;
     default: return false;
     }
     if (newIndex < 0)

@@ -26,7 +26,12 @@ bool operator==(const XMFLOAT3& a, const XMFLOAT3& b)
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-// Returns the gizmo target's world position (and full TRS for meshes).
+bool HasFullTransform(Selection::Kind kind)
+{
+    return kind == Selection::Kind::Mesh || kind == Selection::Kind::Empty;
+}
+
+// Returns the gizmo target's world position (and full TRS for meshes and empties).
 bool CaptureSnapshot(SE::SceneRuntime& scene, const Selection& sel, Snapshot& out)
 {
     switch (sel.kind)
@@ -35,6 +40,14 @@ bool CaptureSnapshot(SE::SceneRuntime& scene, const Selection& sel, Snapshot& ou
     {
         if (sel.index >= (int)scene.loadedMeshes.size()) return false;
         const auto* t = scene.loadedMeshes[sel.index].transform;
+        if (!t) return false;
+        out = { t->position, t->eulerDeg, t->scale };
+        return true;
+    }
+    case Selection::Kind::Empty:
+    {
+        if (sel.index >= (int)scene.emptyEntities.size()) return false;
+        const auto* t = scene.emptyEntities[sel.index].transform;
         if (!t) return false;
         out = { t->position, t->eulerDeg, t->scale };
         return true;
@@ -77,6 +90,19 @@ void ApplySnapshot(SE::SceneRuntime& scene, const Selection& sel, const Snapshot
         loaded.def.position = { s.position.x, s.position.y, s.position.z };
         loaded.def.rotation = { s.euler.x, s.euler.y, s.euler.z };
         loaded.def.scale    = { s.scale.x, s.scale.y, s.scale.z };
+        return;
+    }
+    case Selection::Kind::Empty:
+    {
+        if (sel.index >= (int)scene.emptyEntities.size()) return;
+        auto& empty = scene.emptyEntities[sel.index];
+        if (!empty.transform) return;
+        empty.transform->position = s.position;
+        empty.transform->eulerDeg = s.euler;
+        empty.transform->scale    = s.scale;
+        empty.def.position = { s.position.x, s.position.y, s.position.z };
+        empty.def.rotation = { s.euler.x, s.euler.y, s.euler.z };
+        empty.def.scale    = { s.scale.x, s.scale.y, s.scale.z };
         return;
     }
     case Selection::Kind::PointLight:
@@ -317,7 +343,7 @@ void ApplyManipulation(SE::SceneRuntime& scene, const Selection& sel,
 {
     Snapshot edited;
     MatrixToSnapshot(matrix, edited);
-    if (sel.kind != Selection::Kind::Mesh) // keep untouched components exact
+    if (!HasFullTransform(sel.kind)) // keep untouched components exact
     {
         edited.euler = current.euler;
         edited.scale = current.scale;
@@ -357,7 +383,7 @@ bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
     }
 
     // Point-target selections only support translation.
-    if (sel.kind != Selection::Kind::Mesh && op != GizmoOp::Translate)
+    if (!HasFullTransform(sel.kind) && op != GizmoOp::Translate)
         op = GizmoOp::Translate;
 
     XMFLOAT4X4 matrix;

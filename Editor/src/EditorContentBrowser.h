@@ -27,10 +27,11 @@ class UndoStack;
 class ContentBrowser
 {
 public:
-    // Draws the panel and pumps async thumbnail/import work.
+    // Draws the panel and pumps async thumbnail/import work. readOnly (play
+    // mode) blocks adding meshes to the scene.
     void Draw(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
               SE::AssetManager& assets, ID3D11Device* device, ID3D11DeviceContext* ctx,
-              const DirectX::XMFLOAT3& spawnPos);
+              const DirectX::XMFLOAT3& spawnPos, bool readOnly);
 
     // Scene path the user asked to open since the last call, or empty.
     std::string TakeSceneOpenRequest() { return std::exchange(m_sceneOpenRequest, {}); }

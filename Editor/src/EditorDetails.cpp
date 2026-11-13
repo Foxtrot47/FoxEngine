@@ -1,6 +1,7 @@
 #include "EditorDetails.h"
 #include "EditorPanels.h"
 #include "EditorPropertyUndo.h"
+#include "EditorScripts.h"
 #include "EditorSettings.h"
 
 #include "Engine/Scene/SceneRuntime.h"
@@ -20,13 +21,14 @@ bool DetailsMatch(Selection::Kind kind)
     switch (kind)
     {
     case Kind::World: return true; // world categories filter individually
-    case Kind::Camera: return s_detailsFilter.PassFilter("Camera FOV Near Far Eye Projection");
-    case Kind::Sun: return s_detailsFilter.PassFilter("Sun Lighting Elevation Azimuth Intensity Color IBL Shadow");
+    case Kind::Camera: return s_detailsFilter.PassFilter("Camera FOV Near Far Eye Projection Scripts");
+    case Kind::Sun: return s_detailsFilter.PassFilter("Sun Lighting Elevation Azimuth Intensity Color IBL Shadow Scripts");
     case Kind::SpotLight: return s_detailsFilter.PassFilter("Spot Light Position Direction Color Range Angle Intensity Shadow");
-    case Kind::PointLight: return s_detailsFilter.PassFilter("Point Light Position Color Radius Flicker Shadow");
-    case Kind::Mesh: return s_detailsFilter.PassFilter("Mesh Transform Position Rotation Scale Rendering Shadows");
-    case Kind::Object: return s_detailsFilter.PassFilter("Object Transform Position Size Radius Material Tint Metallic Roughness Emissive");
-    case Kind::Emitter: return s_detailsFilter.PassFilter("Emitter Particles Preset Emission Transform Lifetime Size Color Velocity Physics Texture");
+    case Kind::PointLight: return s_detailsFilter.PassFilter("Point Light Position Color Radius Flicker Shadow Scripts");
+    case Kind::Mesh: return s_detailsFilter.PassFilter("Mesh Transform Position Rotation Scale Rendering Shadows Scripts");
+    case Kind::Object: return s_detailsFilter.PassFilter("Object Transform Position Size Radius Material Tint Metallic Roughness Emissive Scripts");
+    case Kind::Emitter: return s_detailsFilter.PassFilter("Emitter Particles Preset Emission Transform Lifetime Size Color Velocity Physics Texture Scripts");
+    case Kind::Empty: return s_detailsFilter.PassFilter("Empty Transform Position Rotation Scale Scripts");
     default: return true;
     }
 }
@@ -62,6 +64,26 @@ void DrawMeshDetails(SE::SceneRuntime& scene, int index)
     if (ImGui::Checkbox("Receive Shadows", &loaded.def.receiveShadows))
         for (auto& material : loaded.materials)
             material.receiveShadows = loaded.def.receiveShadows;
+}
+
+void DrawEmptyDetails(SE::SceneRuntime& scene, int index)
+{
+    if (index < 0 || index >= static_cast<int>(scene.emptyEntities.size())) return;
+    auto& empty = scene.emptyEntities[index];
+    auto* t     = empty.transform;
+    if (!t)
+        return;
+
+    ImGui::Text("%s", empty.def.name.c_str());
+    ImGui::TextDisabled("Empty Entity");
+    ImGui::Separator();
+
+    ImGui::DragFloat3("Position", &t->position.x, 0.1f);
+    ImGui::DragFloat3("Rotation", &t->eulerDeg.x, 0.5f);
+    ImGui::DragFloat3("Scale", &t->scale.x, 0.01f);
+    empty.def.position = { t->position.x, t->position.y, t->position.z };
+    empty.def.rotation = { t->eulerDeg.x, t->eulerDeg.y, t->eulerDeg.z };
+    empty.def.scale    = { t->scale.x, t->scale.y, t->scale.z };
 }
 
 void DrawCameraDetails(SE::SceneRuntime& scene)
@@ -112,9 +134,40 @@ void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel,
     case Selection::Kind::Emitter:
         DrawEmitterProps(scene, sel.index, assets, device, shaders);
         break;
+    case Selection::Kind::Empty: DrawEmptyDetails(scene, sel.index); break;
     default:
         ImGui::TextDisabled("Nothing selected");
         break;
+    }
+}
+
+// Script components of the selected entity, or nullptr for kinds without
+// scripts (world, spot light) and stale indices.
+std::vector<SE::LevelScriptDefinition>* SelectionScripts(SE::SceneRuntime& scene,
+                                                         const Selection& sel)
+{
+    using Kind = Selection::Kind;
+    const int i = sel.index;
+    if (i < 0)
+        return nullptr;
+    switch (sel.kind)
+    {
+    case Kind::Camera: return &scene.currentDesc.camera.scripts;
+    case Kind::Sun:    return &scene.currentDesc.sun.scripts;
+    case Kind::Mesh:
+        return i < (int)scene.loadedMeshes.size() ? &scene.loadedMeshes[i].def.scripts : nullptr;
+    case Kind::Object:
+        return i < (int)scene.sceneObjects.size() ? &scene.sceneObjects[i].def.scripts : nullptr;
+    case Kind::PointLight:
+        return i < scene.lights.numLights && i < (int)scene.pointLightDescs.size()
+            ? &scene.pointLightDescs[i].scripts : nullptr;
+    case Kind::Emitter:
+        return i < (int)scene.particleEmitterDescs.size()
+            ? &scene.particleEmitterDescs[i].scripts : nullptr;
+    case Kind::Empty:
+        return i < (int)scene.emptyEntities.size() ? &scene.emptyEntities[i].def.scripts : nullptr;
+    default:
+        return nullptr;
     }
 }
 
@@ -122,7 +175,8 @@ void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel,
 
 void DrawDetailsPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
                       SE::AssetManager& assets, ID3D11Device* device,
-                      SE::ShaderLibrary& shaders, uint32_t outWidth, uint32_t outHeight)
+                      SE::ShaderLibrary& shaders, uint32_t outWidth, uint32_t outHeight,
+                      ScriptCatalog& scripts, bool playing)
 {
     ImGui::Begin("Details");
     ImGui::SetNextItemWidth(-FLT_MIN);
@@ -136,9 +190,21 @@ void DrawDetailsPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
         ImGui::TextDisabled("No matching property groups");
     else
     {
+        // Play mode shows the live play-session values read-only; edits
+        // belong to the edit state restored on Stop.
+        if (playing)
+        {
+            ImGui::TextColored(ImVec4(0.45f, 0.8f, 1.0f, 1.0f), "Playing: stop (F5) to edit");
+            ImGui::BeginDisabled();
+        }
         s_propertyUndo.Begin(scene, sel);
         DrawSelectionDetails(scene, sel, assets, device, shaders, outWidth, outHeight);
+        if (auto* list = SelectionScripts(scene, sel))
+            if (DrawScriptComponents(*list, scripts, scene))
+                s_propertyUndo.MarkEdited();
         s_propertyUndo.End(scene, undo, device, shaders);
+        if (playing)
+            ImGui::EndDisabled();
     }
     ImGui::End();
 }
