@@ -11,6 +11,7 @@
 #include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
@@ -194,6 +195,61 @@ JPH::Quat AxesToQuat(const OBB& box)
 
 constexpr float k_contactSlop = 0.05f; // character contacts closer than this count as touching
 
+// Collects contacts that begin during PhysicsSystem::Update. Jolt calls it
+// from job threads with all bodies locked; Step reports them afterwards.
+class ContactCollector final : public JPH::ContactListener
+{
+public:
+    explicit ContactCollector(const JPH::PhysicsSystem& system) : m_system(system) {}
+
+    void OnContactAdded(const JPH::Body& body1, const JPH::Body& body2, const JPH::ContactManifold& manifold,
+                        JPH::ContactSettings&) override
+    {
+        // Jolt reports each sub-shape pair (mesh triangle); another one
+        // touching last step means these bodies were already in contact.
+        if (m_system.WereBodiesInContact(body1.GetID(), body2.GetID()))
+            return;
+        const JPH::uint count = manifold.mRelativeContactPointsOn1.size();
+        JPH::Vec3 sum = JPH::Vec3::sZero();
+        for (JPH::uint i = 0; i < count; ++i)
+            sum += manifold.GetWorldSpaceContactPointOn1(i) + manifold.GetWorldSpaceContactPointOn2(i);
+        const JPH::Vec3 point = sum / (2.0f * static_cast<float>((std::max)(count, 1u)));
+
+        PhysicsContact contact;
+        contact.bodyA = body1.GetID().GetIndexAndSequenceNumber();
+        contact.bodyB = body2.GetID().GetIndexAndSequenceNumber();
+        contact.point = ToSE(point);
+        contact.normal = ToSE(manifold.mWorldSpaceNormal);
+        contact.relativeVelocity = ToSE(body1.GetPointVelocity(point) - body2.GetPointVelocity(point));
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (const PhysicsContact& existing : m_contacts) // another sub-shape pair in this step
+            if ((existing.bodyA == contact.bodyA && existing.bodyB == contact.bodyB) ||
+                (existing.bodyA == contact.bodyB && existing.bodyB == contact.bodyA))
+                return;
+        m_contacts.push_back(contact);
+    }
+
+    // In body order, so dispatch does not depend on job scheduling.
+    std::vector<PhysicsContact> Take()
+    {
+        std::vector<PhysicsContact> contacts;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            contacts.swap(m_contacts);
+        }
+        std::sort(contacts.begin(), contacts.end(), [](const PhysicsContact& a, const PhysicsContact& b) {
+            return a.bodyA != b.bodyA ? a.bodyA < b.bodyA : a.bodyB < b.bodyB;
+        });
+        return contacts;
+    }
+
+private:
+    const JPH::PhysicsSystem&   m_system;
+    std::mutex                  m_mutex;
+    std::vector<PhysicsContact> m_contacts;
+};
+
 } // namespace
 
 // Immutable, shareable level collision. Holds a Jolt registration so the
@@ -256,6 +312,7 @@ struct PhysicsWorld::Impl
     {
         system.Init(65536, 0, 65536, 16384, broadPhaseLayers, objectVsBroadPhase, objectPairs);
         system.SetGravity(ToJolt(settings.gravity));
+        system.SetContactListener(&contacts);
     }
 
     ~Impl()
@@ -406,6 +463,12 @@ struct PhysicsWorld::Impl
         return d.id.GetIndexAndSequenceNumber();
     }
 
+    TransformComponent* Owner(BodyHandle body) const
+    {
+        JPH::BodyLockRead lock(system.GetBodyLockInterface(), JPH::BodyID(body));
+        return lock.Succeeded() ? reinterpret_cast<TransformComponent*>(lock.GetBody().GetUserData()) : nullptr;
+    }
+
     // Member order matters: the library guard must outlive everything below.
     JoltLibrary                library;
     JPH::TempAllocatorImpl     tempAllocator;
@@ -414,6 +477,7 @@ struct PhysicsWorld::Impl
     ObjectVsBroadPhaseFilter   objectVsBroadPhase;
     ObjectPairFilter           objectPairs;
     JPH::PhysicsSystem         system;
+    ContactCollector           contacts{ system };
 
     std::vector<DynamicBody>          dynamics;
     std::vector<KinematicBody>        kinematics;
@@ -899,6 +963,17 @@ void PhysicsWorld::Step(float dt)
         k.moving = false;
     }
     im.PullState(std::clamp(im.accumulator / fixed, 0.0f, 1.0f));
+
+    // Owners are resolved per call: an earlier callback may have removed a body.
+    for (PhysicsContact& contact : im.contacts.Take())
+    {
+        for (size_t l = 0; l < im.listeners.size(); ++l)
+        {
+            contact.ownerA = im.Owner(contact.bodyA);
+            contact.ownerB = im.Owner(contact.bodyB);
+            im.listeners[l]->OnPhysicsContact(*this, contact);
+        }
+    }
 }
 
 } // namespace SE

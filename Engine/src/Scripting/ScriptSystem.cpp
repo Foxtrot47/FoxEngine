@@ -1271,6 +1271,79 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
         m_ctx.dt = frameDt;
     }
 
+    // One body of a contact, resolved before any script runs: on_hit may
+    // remove bodies and entities.
+    struct HitSide
+    {
+        uint32_t entity = 0; // body owner (actor root, ball); 0 for level geometry
+        uint32_t part = 0;   // the actor component entity whose body touched, if any
+    };
+
+    static HitSide ResolveHitSide(const SceneRuntime& scene, const TransformComponent* owner, BodyHandle body)
+    {
+        HitSide side;
+        if (!owner || !owner->GetOwner())
+            return side;
+        side.entity = owner->GetOwner()->GetID();
+        if (const SceneRuntime::LoadedActor* actor = scene.FindActor(side.entity))
+            for (const SceneRuntime::ActorPart& part : actor->parts)
+                if (part.body == body && part.transform && part.transform->GetOwner())
+                    side.part = part.transform->GetOwner()->GetID();
+        return side;
+    }
+
+    void OnPhysicsContact(PhysicsWorld&, const PhysicsContact& contact) override
+    {
+        SceneRuntime* scene = m_ctx.host.scene;
+        if (!m_running || !m_inSceneUpdate || !scene)
+            return;
+        const HitSide a = ResolveHitSide(*scene, contact.ownerA, contact.bodyA);
+        const HitSide b = ResolveHitSide(*scene, contact.ownerB, contact.bodyB);
+        if (a.entity == 0 && b.entity == 0)
+            return;
+        const DirectX::XMFLOAT3& n = contact.normal;
+        const DirectX::XMFLOAT3& v = contact.relativeVelocity;
+        const double speed = (std::max)(0.0f, v.x * n.x + v.y * n.y + v.z * n.z); // same for both sides
+        DispatchScope dispatch(*this);
+        // Each side gets the other's surface normal (pointing at itself) and
+        // its own velocity relative to the other.
+        DispatchHit(a, b, contact.point, { -n.x, -n.y, -n.z }, v, speed);
+        DispatchHit(b, a, contact.point, n, { -v.x, -v.y, -v.z }, speed);
+    }
+
+    void DispatchHit(const HitSide& self, const HitSide& other, const DirectX::XMFLOAT3& point,
+                     const DirectX::XMFLOAT3& normal, const DirectX::XMFLOAT3& relativeVelocity, double speed)
+    {
+        if (self.entity == 0)
+            return;
+        sol::table hit; // built for the first listener, shared by the rest
+        for (size_t i = 0; i < m_instances.size(); ++i)
+        {
+            Instance& instance = *m_instances[i];
+            if (instance.owner != self.entity || instance.generation != m_ctx.sceneGeneration ||
+                !Runnable(instance) || FindMethod(instance.self, "on_hit").get_type() != sol::type::function)
+                continue;
+            if (!hit.valid())
+            {
+                hit = m_lua->create_table();
+                if (other.entity != 0)
+                {
+                    hit["entity"] = MakeEntityHandle(m_ctx, other.entity);
+                    hit["actor"] = ActorInstance(*m_lua, other.entity);
+                }
+                if (self.part != 0)
+                    hit["part"] = ScriptActorPart{ MakeEntityHandle(m_ctx, self.part) };
+                if (other.part != 0)
+                    hit["other_part"] = ScriptActorPart{ MakeEntityHandle(m_ctx, other.part) };
+                hit["position"] = FromFloat3(point);
+                hit["normal"] = FromFloat3(normal);
+                hit["relative_velocity"] = FromFloat3(relativeVelocity);
+                hit["speed"] = speed;
+            }
+            Callback(instance, "on_hit", hit);
+        }
+    }
+
     // --- Session ---------------------------------------------------------------------
 
     void BindActions()

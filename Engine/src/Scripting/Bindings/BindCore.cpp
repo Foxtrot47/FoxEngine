@@ -167,7 +167,7 @@ void BindCore(ScriptApi& api, ScriptContext& ctx)
         "Base of every script class. Instances are tables: store state on self\n"
         "(module-level locals reset on hot reload). Callbacks are optional methods.\n"
         "Order: on_enable, on_start, then every frame coroutines, on_update, physics\n"
-        "steps (on_fixed_update), on_late_update, on_gui. A callback that raises an\n"
+        "steps (on_fixed_update), on_hit, on_late_update, on_gui. A callback that raises an\n"
         "error stops the instance until its file is saved again (hot reload).",
         {}, true);
     script.fields = {
@@ -178,6 +178,11 @@ void BindCore(ScriptApi& api, ScriptContext& ctx)
         { "on_update", "fun(self, dt: number)?", "Every frame with scaled dt." },
         { "on_fixed_update", "fun(self, dt: number)?", "Before every physics step (dt = fox.physics.fixed_dt)." },
         { "on_late_update", "fun(self, dt: number)?", "After physics and every on_update." },
+        { "on_hit", "fun(self, hit: fox.Hit)?",
+          "When a body of the entity starts touching another body, after the physics steps\n"
+          "(before on_late_update). Once per pair until they separate; a resting pair reports\n"
+          "again when it wakes, so filter on hit.speed. Needs a dynamic body on either side:\n"
+          "kinematic actor colliders touching level geometry, and the fox.character, report nothing." },
         { "on_gui", "fun(self)?", "Inside the UI frame; the only place fox.ui works." },
         { "on_enable", "fun(self)?", "When the script becomes active: on its first frame and after re-enabling." },
         { "on_disable", "fun(self)?", "When the script or its entity becomes inactive, and before on_destroy." },

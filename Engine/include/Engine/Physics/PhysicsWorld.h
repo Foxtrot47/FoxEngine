@@ -19,13 +19,33 @@ struct StaticMeshCollider; // opaque; see PhysicsWorld::BuildStaticMeshCollider
 using BodyHandle = uint32_t;
 inline constexpr BodyHandle k_invalidBody = 0xFFFFFFFFu;
 
-// Receives a callback before every fixed simulation step, on the thread that
-// calls PhysicsWorld::Step. Forces added here act during that step.
+// Two bodies that started touching during a fixed step. Reported once per
+// pair until they separate; contacts between sleeping bodies end, so a pair
+// reports again when one of them wakes. Only pairs with a dynamic body touch.
+struct PhysicsContact
+{
+    BodyHandle          bodyA  = k_invalidBody;
+    BodyHandle          bodyB  = k_invalidBody;
+    // Dynamic mirror or kinematic owner (RaycastHit::transform); null for
+    // level geometry and owner-less bodies.
+    TransformComponent* ownerA = nullptr;
+    TransformComponent* ownerB = nullptr;
+    DirectX::XMFLOAT3   point  = {};             // world space
+    DirectX::XMFLOAT3   normal = {};             // unit, from A toward B
+    DirectX::XMFLOAT3   relativeVelocity = {};   // velocity of A minus B at point, before the impact
+};
+
+// Receives simulation callbacks on the thread that calls PhysicsWorld::Step.
 class PhysicsStepListener
 {
 public:
     virtual ~PhysicsStepListener() = default;
+    // Before every fixed step. Forces added here act during that step.
     virtual void OnPhysicsStep(PhysicsWorld& world, float dt) = 0;
+    // At the end of Step, after bodies were mirrored to their components, for
+    // each contact that began during its fixed steps. Bodies may be added or
+    // removed here; owners of removed bodies are reported as null.
+    virtual void OnPhysicsContact(PhysicsWorld& /*world*/, const PhysicsContact& /*contact*/) {}
 };
 
 // Rigid-body world backed by Jolt Physics. Jolt types stay inside the

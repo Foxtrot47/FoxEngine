@@ -296,6 +296,74 @@ void TestKinematicPlatformCarriesSphere()
     Simulate(world, 1.0f); // the platform stops abruptly; let the ball's hop settle
     Require(Near(t.position.y, 2.75f, 0.05f), "rising platform carries the ball up");
 }
+
+struct ContactRecorder : SE::PhysicsStepListener
+{
+    std::vector<SE::PhysicsContact> contacts;
+    void OnPhysicsStep(SE::PhysicsWorld&, float) override {}
+    void OnPhysicsContact(SE::PhysicsWorld&, const SE::PhysicsContact& contact) override
+    {
+        contacts.push_back(contact);
+    }
+};
+
+// A ball landing on a many-triangle level mesh reports one contact with its
+// impact speed, and rolling across further triangles does not report more.
+void TestContactBeginsOncePerPair()
+{
+    std::vector<XMFLOAT3> vertices;
+    std::vector<uint32_t> indices;
+    const int cells = 20;
+    for (int z = 0; z <= cells; ++z)
+        for (int x = 0; x <= cells; ++x)
+            vertices.push_back({ x - cells * 0.5f, 0.0f, z - cells * 0.5f });
+    for (int z = 0; z < cells; ++z)
+        for (int x = 0; x < cells; ++x)
+        {
+            const uint32_t i = static_cast<uint32_t>(z * (cells + 1) + x);
+            const uint32_t row = cells + 1;
+            indices.insert(indices.end(), { i, i + row, i + row + 1, i, i + row + 1, i + 1 });
+        }
+    auto collider = SE::PhysicsWorld::BuildStaticMeshCollider(vertices, indices);
+    Require(collider != nullptr, "grid collider builds");
+
+    SE::PhysicsWorld world;
+    const SE::BodyHandle ground =
+        world.AddStaticMesh(collider, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 1.0f });
+    ContactRecorder recorder;
+    world.AddStepListener(&recorder);
+
+    SE::TransformComponent t;
+    SE::RigidBodyComponent rb;
+    rb.restitution = 0.0f;
+    t.position = { -5.0f, 3.0f, 0.3f };
+    const SE::BodyHandle ball = world.AddSphere(&t, &rb, 0.5f);
+    Simulate(world, 1.0f);
+    Require(recorder.contacts.size() == 1, "landing reports exactly one contact");
+
+    const SE::PhysicsContact& c = recorder.contacts[0];
+    const bool ballIsA = c.bodyA == ball;
+    Require(ballIsA ? c.bodyB == ground : (c.bodyA == ground && c.bodyB == ball), "contact names both bodies");
+    Require((ballIsA ? c.ownerA : c.ownerB) == &t, "ball side reports its transform");
+    Require((ballIsA ? c.ownerB : c.ownerA) == nullptr, "level geometry has no owner");
+    Require(Near(c.normal.y, ballIsA ? -1.0f : 1.0f, 0.01f), "normal points from A toward B");
+    Require(Near(c.point.y, 0.0f, 0.05f), "contact point lies on the ground");
+    // Fell 2.5 m: sqrt(2 * 9.81 * 2.5) = 7.0 m/s, closing along the normal.
+    const float closing = c.relativeVelocity.x * c.normal.x + c.relativeVelocity.y * c.normal.y +
+                          c.relativeVelocity.z * c.normal.z;
+    Require(Near(closing, 7.0f, 0.3f), "relative velocity is the impact velocity");
+
+    rb.velocity = { 4.0f, 0.0f, 0.0f };
+    Simulate(world, 3.0f);
+    Require(t.position.x > 2.0f, "ball rolled across many triangles");
+    Require(recorder.contacts.size() == 1, "rolling on the same body reports no new contact");
+
+    t.position = { -5.0f, 3.0f, 0.3f }; // lift off and land again
+    rb.velocity = { 0.0f, 0.0f, 0.0f };
+    Simulate(world, 1.0f);
+    Require(recorder.contacts.size() == 2, "separating and landing again reports a new contact");
+    world.RemoveStepListener(&recorder);
+}
 }
 
 int main()
@@ -310,6 +378,7 @@ int main()
     TestKinematicRaycastAndRemove();
     TestKinematicTeleport();
     TestKinematicPlatformCarriesSphere();
-    std::puts("PhysicsWorldTests: all ten groups passed");
+    TestContactBeginsOncePerPair();
+    std::puts("PhysicsWorldTests: all eleven groups passed");
     return 0;
 }

@@ -930,6 +930,18 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
         { "entity", "fox.Entity?", "The hit entity, for simulated bodies." },
     };
 
+    ApiDocs::Block& contact = api.DocClass("fox.Hit", "Argument of on_hit, seen from the script's entity.");
+    contact.fields = {
+        { "entity", "fox.Entity?", "The other body's entity (actor root or ball); nil for level geometry." },
+        { "actor", "fox.Actor?", "The other actor's class instance, if the other body belongs to an actor." },
+        { "part", "fox.ActorComponent?", "This actor's box/sphere/mesh component that was touched." },
+        { "other_part", "fox.ActorComponent?", "The other actor's component that touched it." },
+        { "position", "fox.Vec3", "World-space contact point." },
+        { "normal", "fox.Vec3", "The other body's surface normal, pointing at this entity." },
+        { "relative_velocity", "fox.Vec3", "This body's velocity minus the other's at the contact, before the impact." },
+        { "speed", "number", "Closing speed along the normal in m/s (>= 0); small for resting contacts." },
+    };
+
     api.Module("physics", "Rigid-body world (Jolt). Simulation runs at a fixed rate; scripts get on_fixed_update per step.")
         .Function("raycast", "(origin: fox.Vec3, direction: fox.Vec3, max_distance?: number) -> fox.RaycastHit?",
             "Closest hit along the ray (ignores the character), or nil.",
