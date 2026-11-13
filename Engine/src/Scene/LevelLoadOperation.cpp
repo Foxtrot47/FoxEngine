@@ -72,6 +72,23 @@ std::shared_ptr<const StaticMeshCollider> BuildCollider(const MeshSourceData& so
     return PhysicsWorld::BuildStaticMeshCollider(vertices, indices, error);
 }
 
+LevelAssetLoadResult LoadLevel(const std::string& path, const std::string& levelJson)
+{
+    if (levelJson.empty())
+        return LevelAssetLoader::LoadFromFile(path);
+    try
+    {
+        return LevelAssetLoader::Parse(nlohmann::json::parse(levelJson), path);
+    }
+    catch (const nlohmann::json::exception& error)
+    {
+        LevelAssetLoadResult result;
+        result.diagnostics.push_back({ LevelDiagnosticSeverity::Error, "/",
+                                       "JSON parse error in '" + path + "': " + error.what() });
+        return result;
+    }
+}
+
 } // namespace
 
 LevelLoadOperation::~LevelLoadOperation() { Cancel(); }
@@ -81,7 +98,8 @@ void LevelLoadOperation::Join()
     if (m_coordinator.joinable()) m_coordinator.join();
 }
 
-bool LevelLoadOperation::Start(const std::string& path, AssetCacheSnapshot cache)
+bool LevelLoadOperation::Start(const std::string& path, AssetCacheSnapshot cache,
+                               std::string levelJson)
 {
     Cancel();
     {
@@ -99,8 +117,8 @@ bool LevelLoadOperation::Start(const std::string& path, AssetCacheSnapshot cache
         m_uploadMilliseconds = 0.0;
     }
     m_cancelled.store(false);
-    m_coordinator = std::thread([this, path] {
-        try { Prepare(path); }
+    m_coordinator = std::thread([this, path, levelJson = std::move(levelJson)] {
+        try { Prepare(path, levelJson); }
         catch (const std::exception& exception) { SetTerminal(LevelLoadState::Failed, exception.what()); }
         catch (...) { SetTerminal(LevelLoadState::Failed, "Unknown CPU preparation failure"); }
     });
@@ -136,11 +154,11 @@ void LevelLoadOperation::AddTiming(const char* name, std::chrono::steady_clock::
     m_status.timings.push_back({ name, std::chrono::duration<double, std::milli>(elapsed).count() });
 }
 
-void LevelLoadOperation::Prepare(std::string path)
+void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson)
 {
     using Clock = std::chrono::steady_clock;
     const auto parseStart = Clock::now();
-    const auto result = LevelAssetLoader::LoadFromFile(path);
+    const auto result = LoadLevel(path, levelJson);
     if (m_cancelled.load()) return;
     if (!result.Succeeded()) { SetTerminal(LevelLoadState::Failed, "Level parsing failed"); return; }
 

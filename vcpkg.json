@@ -7,8 +7,13 @@
     "imguizmo",
     "directxtex",
     "joltphysics",
+    "lua",
     "nlohmann-json",
+    "sol2",
     "zstd"
+  ],
+  "overrides": [
+    { "name": "lua", "version": "5.4.8" }
   ],
   "builtin-baseline": "7147ac1294ef9647e8679e1183ac440a5d0a63b7"
 }

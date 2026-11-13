@@ -23,6 +23,7 @@ struct SceneDescriptor
         bool castShadows = true;
         bool receiveShadows = true;
         bool collision = false; // static triangle collision, built at level load
+        std::vector<LevelScriptDefinition> scripts;
     };
     std::vector<MeshEntry> meshes;
 
@@ -113,7 +114,10 @@ struct SceneDescriptor
     {
         enum class Type { Sphere, Plane } type = Type::Sphere;
 
-        std::string name; // stamped from the owning entity, not the component JSON
+        // Stamped from the owning entity, not the component JSON.
+        uint64_t sourceEntityID = 0;
+        std::string name;
+        std::vector<LevelScriptDefinition> scripts;
 
         std::array<float, 3> position = { 0.f, 0.f, 0.f };
         float radius    = 1.0f;   // sphere radius
@@ -137,6 +141,19 @@ struct SceneDescriptor
         float metallicScale = 1.0f;
     };
     std::vector<SceneObject> objects;
+
+    // Entities with only a transform (and usually scripts): spawn points,
+    // triggers, game logic. Rendered as nothing.
+    struct EmptyEntity
+    {
+        uint64_t sourceEntityID = 0;
+        std::string name = "Empty";
+        std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
+        std::array<float, 3> rotation = { 0.0f, 0.0f, 0.0f }; // euler degrees (pitch, yaw, roll)
+        std::array<float, 3> scale = { 1.0f, 1.0f, 1.0f };
+        std::vector<LevelScriptDefinition> scripts;
+    };
+    std::vector<EmptyEntity> empties;
 
     // Particle emitters
     using ParticleEmitterDesc = LevelParticleEmitterDefinition;

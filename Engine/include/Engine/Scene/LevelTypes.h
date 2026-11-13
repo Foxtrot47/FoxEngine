@@ -3,8 +3,19 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
+#include <nlohmann/json.hpp>
 
 namespace SE {
+
+// A script component: a Lua class (fox.script) instantiated for its entity
+// when the scene plays. properties holds only overrides of the defaults the
+// script declares; entity references are LevelEntityID integers.
+struct LevelScriptDefinition
+{
+    std::string    script;                                 // "Assets/Scripts/Spinner.lua"
+    nlohmann::json properties = nlohmann::json::object();
+};
 
 struct LevelTransformDefinition
 {
@@ -24,6 +35,11 @@ struct LevelMeshRendererDefinition
 
 struct LevelCameraDefinition
 {
+    // Stamped from the owning entity, not the component JSON.
+    uint64_t sourceEntityID = 0;
+    std::string name;
+    std::vector<LevelScriptDefinition> scripts;
+
     std::array<float, 3> eye = { 0.0f, 5.0f, -10.0f };
     float yaw = 0.0f;
     float pitch = 0.0f;
@@ -34,6 +50,11 @@ struct LevelCameraDefinition
 
 struct LevelDirectionalLightDefinition
 {
+    // Stamped from the owning entity, not the component JSON.
+    uint64_t sourceEntityID = 0;
+    std::string name;
+    std::vector<LevelScriptDefinition> scripts;
+
     float elevation = 63.0f;
     float azimuth = -134.6f;
     float intensity = 1.0f;
@@ -42,7 +63,11 @@ struct LevelDirectionalLightDefinition
 
 struct LevelPointLightDefinition
 {
-    std::string name; // stamped from the owning entity, not the component JSON
+    // Stamped from the owning entity, not the component JSON.
+    uint64_t sourceEntityID = 0;
+    std::string name;
+    std::vector<LevelScriptDefinition> scripts;
+
     std::array<float, 3> position = { 0.0f, 5.0f, 0.0f };
     std::array<float, 3> color = { 1.0f, 1.0f, 1.0f };
     float radius = 50.0f;
@@ -84,7 +109,11 @@ struct LevelPrimitiveRendererDefinition
 
 struct LevelParticleEmitterDefinition
 {
-    std::string name; // stamped from the owning entity, not the component JSON
+    // Stamped from the owning entity, not the component JSON.
+    uint64_t sourceEntityID = 0;
+    std::string name;
+    std::vector<LevelScriptDefinition> scripts;
+
     std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
     float emitRate = 50.0f;
     int maxParticles = 1000;

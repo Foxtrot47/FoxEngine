@@ -10,6 +10,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <string_view>
 
 #include <nlohmann/json.hpp>
 
@@ -509,6 +510,75 @@ void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
     }
 }
 
+// Script paths are not asset dependencies: the script system resolves and
+// loads them when the scene plays, so only their shape is validated here.
+void ParseEntityScripts(LevelAssetLoadResult& result, const json& scripts,
+                        const std::string& path, std::vector<LevelScriptDefinition>& out)
+{
+    if (!scripts.is_array())
+    {
+        AddDiagnostic(result, Severity::Error, path, "expected an array");
+        return;
+    }
+
+    for (size_t i = 0; i < scripts.size(); ++i)
+    {
+        const auto& item = scripts[i];
+        const std::string itemPath = path + "/" + std::to_string(i);
+        if (!item.is_object())
+        {
+            AddDiagnostic(result, Severity::Error, itemPath, "expected an object");
+            continue;
+        }
+
+        LevelScriptDefinition script;
+        bool valid = true;
+        if (!item.contains("script"))
+        {
+            AddDiagnostic(result, Severity::Error, itemPath + "/script", "required field is missing");
+            valid = false;
+        }
+        else if (!item["script"].is_string())
+        {
+            AddDiagnostic(result, Severity::Error, itemPath + "/script", "expected a string");
+            valid = false;
+        }
+        else
+        {
+            script.script = item["script"].get<std::string>();
+            std::replace(script.script.begin(), script.script.end(), '\\', '/');
+            constexpr std::string_view k_luaExtension = ".lua";
+            if (script.script.size() <= k_luaExtension.size() ||
+                script.script.compare(script.script.size() - k_luaExtension.size(),
+                                      k_luaExtension.size(), k_luaExtension) != 0)
+            {
+                AddDiagnostic(result, Severity::Error, itemPath + "/script",
+                              "expected a path to a .lua file");
+                valid = false;
+            }
+        }
+
+        if (item.contains("properties"))
+        {
+            if (item["properties"].is_object())
+                script.properties = item["properties"];
+            else
+            {
+                AddDiagnostic(result, Severity::Error, itemPath + "/properties", "expected an object");
+                valid = false;
+            }
+        }
+
+        for (auto it = item.begin(); it != item.end(); ++it)
+            if (it.key() != "script" && it.key() != "properties")
+                AddDiagnostic(result, Severity::Warning, itemPath + "/" + it.key(),
+                              "unknown field is ignored");
+
+        if (valid)
+            out.push_back(std::move(script));
+    }
+}
+
 void ParseEntityDefinition(LevelAssetLoadResult& result, const json& source,
                            const std::string& base, std::unordered_set<LevelEntityID>& ids)
 {
@@ -549,6 +619,9 @@ void ParseEntityDefinition(LevelAssetLoadResult& result, const json& source,
                 DecodeComponent(entity, it.key(), it.value());
         }
     }
+
+    if (source.contains("scripts"))
+        ParseEntityScripts(result, source["scripts"], base + "/scripts", entity.scripts);
     result.asset.entities.push_back(std::move(entity));
 }
 

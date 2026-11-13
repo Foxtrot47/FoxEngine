@@ -65,7 +65,9 @@ public:
     LevelLoadOperation(const LevelLoadOperation&) = delete;
     LevelLoadOperation& operator=(const LevelLoadOperation&) = delete;
 
-    bool Start(const std::string& path, AssetCacheSnapshot cache);
+    // levelJson, when non-empty, is FoxLevel JSON text parsed instead of
+    // reading path; path then only names the level in diagnostics.
+    bool Start(const std::string& path, AssetCacheSnapshot cache, std::string levelJson = {});
     void Cancel();
     void PumpUploads(ID3D11Device* device, ID3D11DeviceContext* context,
                      AssetManager& assets);
@@ -88,7 +90,7 @@ private:
     };
 
     void Join();
-    void Prepare(std::string path);
+    void Prepare(std::string path, const std::string& levelJson);
     void SetTerminal(LevelLoadState state, const std::string& reason = {});
     void PublishProgress(float value, const std::string& current = {});
     void AddTiming(const char* name, std::chrono::steady_clock::duration elapsed);

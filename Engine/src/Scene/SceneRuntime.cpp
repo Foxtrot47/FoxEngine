@@ -9,6 +9,7 @@
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneLoader.h"
+#include "Engine/Scene/LevelRuntimeComponents.h"
 
 using namespace DirectX;
 
@@ -170,10 +171,14 @@ void SceneRuntime::Shutdown()
 
 // --- Async scene loading -----------------------------------------------------
 
-void SceneRuntime::RequestSceneLoad(const std::string& scenePath)
+void SceneRuntime::RequestSceneLoad(const std::string& scenePath, std::string levelJson)
 {
     m_pendingSceneLoad = scenePath;
     lastRequestedScenePath = scenePath;
+    // Also the pending request's JSON: BeginAsyncSceneLoad reads it, and a
+    // retry via RequestSceneLoad(lastRequestedScenePath, lastRequestedSceneJson)
+    // reloads the same in-memory level.
+    lastRequestedSceneJson = std::move(levelJson);
 }
 
 void SceneRuntime::BeginAsyncSceneLoad(const std::string& scenePath)
@@ -182,7 +187,7 @@ void SceneRuntime::BeginAsyncSceneLoad(const std::string& scenePath)
     sceneLoadError.clear();
     m_completeSceneLoadNextFrame = false;
     m_loadingScenePath = scenePath;
-    m_levelLoad.Start(scenePath, m_assets->CaptureSnapshot());
+    m_levelLoad.Start(scenePath, m_assets->CaptureSnapshot(), lastRequestedSceneJson);
 }
 
 bool SceneRuntime::TickSceneLoad(const std::function<bool()>& pumpMessages)
@@ -448,11 +453,23 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
         newCamera->nearZ = desc.camera.nearZ;
         newCamera->farZ = desc.camera.farZ;
     }
-    CameraController newCameraController = camCtrl;
-    newCameraController.freeFly.eye      = { desc.camera.eye[0], desc.camera.eye[1], desc.camera.eye[2] };
-    newCameraController.freeFly.yawDeg   = desc.camera.yaw;
-    newCameraController.freeFly.pitchDeg = desc.camera.pitch;
-    newCameraController.Update(0.0f, *m_input, *newCamera, m_hwnd);
+    {
+        // Initial look direction from the authored yaw/pitch (degrees).
+        const float yaw   = XMConvertToRadians(desc.camera.yaw);
+        const float pitch = XMConvertToRadians(desc.camera.pitch);
+        const XMFLOAT3 forward = {
+            sinf(yaw) * cosf(pitch),
+            sinf(pitch),
+            cosf(yaw) * cosf(pitch)
+        };
+        newCamera->eye = { desc.camera.eye[0], desc.camera.eye[1], desc.camera.eye[2] };
+        newCamera->target = {
+            newCamera->eye.x + forward.x,
+            newCamera->eye.y + forward.y,
+            newCamera->eye.z + forward.z
+        };
+        newCamera->up = { 0.0f, 1.0f, 0.0f };
+    }
 
     for (auto& loaded : newLoadedMeshes)
     {
@@ -462,6 +479,21 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
             sceneLoadError = "Mesh entity was not instantiated";
             return false;
         }
+    }
+
+    std::vector<LoadedEmpty> newEmptyEntities;
+    newEmptyEntities.reserve(desc.empties.size());
+    for (const auto& def : desc.empties)
+    {
+        Entity* emptyEntity = newWorld.FindBySourceID(def.sourceEntityID);
+        LoadedEmpty loaded;
+        loaded.def = def;
+        if (!emptyEntity || !(loaded.transform = emptyEntity->GetComponent<TransformComponent>()))
+        {
+            sceneLoadError = "Empty entity was not instantiated";
+            return false;
+        }
+        newEmptyEntities.push_back(std::move(loaded));
     }
 
     // --- Physics world (rebuild) ---
@@ -511,11 +543,12 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
     std::vector<int> newSelectedParticlePreset = MatchParticlePresets(newParticleEmitterDescs);
 
     // Commit only after every replacement mesh has completed its import.
+    if (onSceneUnloading && HasScene())
+        onSceneUnloading();
     // Balls reference the outgoing world/physics, so they go first.
     balls.clear(); // their entities and bodies die with the outgoing world
     world            = std::move(newWorld);
     camera           = newCamera;
-    camCtrl          = std::move(newCameraController);
     physicsWorld     = std::move(newPhysicsWorld);
     floorBody        = newFloorBody;
     floorY           = newFloorY;
@@ -527,6 +560,7 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
     particleEmitterDescs = std::move(newParticleEmitterDescs);
     selectedParticlePreset = std::move(newSelectedParticlePreset);
     loadedMeshes     = std::move(newLoadedMeshes);
+    emptyEntities    = std::move(newEmptyEntities);
     environmentTexture = std::move(prepared.environment);
     iblTexture = std::move(prepared.iblEnvironment);
     levelDiagnostics = std::move(prepared.diagnostics);
@@ -653,6 +687,21 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     desc.objects.clear();
     for (const auto& object : sceneObjects)
         desc.objects.push_back(object.def);
+    desc.empties.clear();
+    for (const auto& empty : emptyEntities)
+    {
+        SceneDescriptor::EmptyEntity def = empty.def;
+        if (empty.transform)
+        {
+            def.position = { empty.transform->position.x, empty.transform->position.y,
+                             empty.transform->position.z };
+            def.rotation = { empty.transform->eulerDeg.x, empty.transform->eulerDeg.y,
+                             empty.transform->eulerDeg.z };
+            def.scale = { empty.transform->scale.x, empty.transform->scale.y,
+                          empty.transform->scale.z };
+        }
+        desc.empties.push_back(std::move(def));
+    }
 
     // Particles: live edits target ParticleSystem::config
     for (size_t i = 0; i < particleSystems.size() && i < particleEmitterDescs.size(); ++i)
@@ -873,6 +922,7 @@ int SceneRuntime::DuplicatePointLight(int index)
     // Descs hold base color/flicker; position and radius are live-edited on
     // the bound slot, so copy those from the source light.
     SceneDescriptor::PointLightDesc def = pointLightDescs[index];
+    def.sourceEntityID = 0; // a fresh id is assigned on save
     const auto& source = lights.lights[index];
     def.position = { source.position.x, source.position.y, source.position.z };
     def.radius = source.radius;
@@ -894,6 +944,7 @@ int SceneRuntime::DuplicateParticleEmitter(int index)
 
     SceneDescriptor::ParticleEmitterDesc def = particleEmitterDescs[index];
     SyncParticleDescFromSystem(*particleSystems[index], def);
+    def.sourceEntityID = 0; // a fresh id is assigned on save
 
     auto ps = std::make_unique<ParticleSystem>();
     ApplyParticleDescToSystem(def, *ps);
@@ -915,6 +966,7 @@ int SceneRuntime::DuplicateSceneObject(int index)
     LoadedObject copy;
     copy.def = sceneObjects[index].def;
     copy.def.planarReflection = false; // only one authored planar reflector
+    copy.def.sourceEntityID = 0; // a fresh id is assigned on save
     copy.mat = sceneObjects[index].mat;
     sceneObjects.push_back(std::move(copy));
     return static_cast<int>(sceneObjects.size()) - 1;
@@ -971,6 +1023,125 @@ int SceneRuntime::AddLoadedMesh(const std::string& path, AssetHandle<Mesh> mesh,
     entry.transform = transform;
     loadedMeshes.push_back(std::move(entry));
     return static_cast<int>(loadedMeshes.size()) - 1;
+}
+
+bool SceneRuntime::AddEmpty(const XMFLOAT3& position)
+{
+    LoadedEmpty entry;
+    entry.def.position = { position.x, position.y, position.z };
+    Entity* entity = world.GetScene().CreateEntity(entry.def.name);
+    entity->AddComponent<LevelIdentityComponent>(0);
+    auto* transform = entity->AddComponent<TransformComponent>();
+    transform->position = position;
+    entry.transform = transform;
+    emptyEntities.push_back(std::move(entry));
+    return true;
+}
+
+SceneRuntime::LoadedEmpty SceneRuntime::RemoveEmpty(int index)
+{
+    if (index < 0 || index >= static_cast<int>(emptyEntities.size()))
+        return {};
+    LoadedEmpty out = std::move(emptyEntities[index]);
+    emptyEntities.erase(emptyEntities.begin() + index);
+    return out;
+}
+
+void SceneRuntime::InsertEmpty(int index, LoadedEmpty empty)
+{
+    index = std::clamp(index, 0, static_cast<int>(emptyEntities.size()));
+    emptyEntities.insert(emptyEntities.begin() + index, std::move(empty));
+}
+
+int SceneRuntime::DuplicateEmpty(int index)
+{
+    if (index < 0 || index >= static_cast<int>(emptyEntities.size()))
+        return -1;
+    const LoadedEmpty& source = emptyEntities[index];
+    LoadedEmpty copy;
+    copy.def = source.def;
+    copy.def.sourceEntityID = 0; // a fresh id is assigned on save
+
+    Entity* entity = world.GetScene().CreateEntity(copy.def.name);
+    entity->AddComponent<LevelIdentityComponent>(0);
+    auto* transform = entity->AddComponent<TransformComponent>();
+    if (source.transform)
+    {
+        transform->position = source.transform->position;
+        transform->eulerDeg = source.transform->eulerDeg;
+        transform->scale    = source.transform->scale;
+    }
+    copy.transform = transform;
+    emptyEntities.push_back(std::move(copy));
+    return static_cast<int>(emptyEntities.size()) - 1;
+}
+
+// --- Scripted entity state ---------------------------------------------------
+
+void SceneRuntime::ApplyEntityTransform(const Entity& entity)
+{
+    const auto* transform = entity.GetComponent<TransformComponent>();
+    if (!transform)
+        return;
+
+    const auto* identity = entity.GetComponent<LevelIdentityComponent>();
+    if (identity && identity->sourceID != 0)
+    {
+        const LevelEntityID id = identity->sourceID;
+        XMFLOAT3 worldPosition;
+        XMStoreFloat3(&worldPosition, transform->GetWorldMatrix().r[3]);
+        const std::array<float, 3> position = { worldPosition.x, worldPosition.y, worldPosition.z };
+
+        const int lightCount = (std::min)(lights.numLights, static_cast<int>(pointLightDescs.size()));
+        for (int i = 0; i < lightCount; ++i)
+        {
+            if (pointLightDescs[i].sourceEntityID != id)
+                continue;
+            lights.lights[i].position = worldPosition;
+            pointLightDescs[i].position = position;
+        }
+        for (size_t i = 0; i < particleSystems.size() && i < particleEmitterDescs.size(); ++i)
+        {
+            if (particleEmitterDescs[i].sourceEntityID != id)
+                continue;
+            particleSystems[i]->config.position = worldPosition;
+            particleEmitterDescs[i].position = position;
+        }
+        for (auto& object : sceneObjects)
+            if (object.def.sourceEntityID == id)
+                object.def.position = position;
+    }
+
+    for (const TransformComponent* child : transform->children)
+        if (const Entity* owner = child->GetOwner())
+            ApplyEntityTransform(*owner);
+}
+
+void SceneRuntime::SetEntityActive(Entity& entity, bool active)
+{
+    entity.active = active;
+
+    if (const auto* transform = entity.GetComponent<TransformComponent>())
+        for (auto& mesh : loadedMeshes)
+            if (mesh.transform == transform)
+                mesh.visible = active;
+
+    const auto* identity = entity.GetComponent<LevelIdentityComponent>();
+    if (!identity || identity->sourceID == 0)
+        return;
+    const LevelEntityID id = identity->sourceID;
+
+    // Same switches as the editor outliner's visibility toggles.
+    const int lightCount = (std::min)(lights.numLights, static_cast<int>(pointLightDescs.size()));
+    for (int i = 0; i < lightCount; ++i)
+        if (pointLightDescs[i].sourceEntityID == id)
+            lights.lights[i].enabled = active;
+    for (size_t i = 0; i < particleSystems.size() && i < particleEmitterDescs.size(); ++i)
+        if (particleEmitterDescs[i].sourceEntityID == id)
+            particleSystems[i]->enabled = active;
+    for (auto& object : sceneObjects)
+        if (object.def.sourceEntityID == id)
+            object.visible = active;
 }
 
 void SceneRuntime::RefreshParticlePresets()

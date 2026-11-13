@@ -38,6 +38,9 @@ struct LevelEntityDefinition
     std::optional<LevelPointLightDefinition> pointLight;
     std::optional<LevelPrimitiveRendererDefinition> primitiveRenderer;
     std::optional<LevelParticleEmitterDefinition> particleEmitter;
+
+    // Entity-level "scripts" array (sibling of "components").
+    std::vector<LevelScriptDefinition> scripts;
 };
 
 struct LevelAsset
