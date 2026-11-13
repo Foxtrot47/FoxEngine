@@ -1,0 +1,5 @@
+{
+  "name": "ActorCheck",
+  "startupScene": "Assets/Scenes/placements.json",
+  "scenes": ["Assets/Scenes/placements.json"]
+}

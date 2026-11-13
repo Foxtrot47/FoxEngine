@@ -1,0 +1,23 @@
+{
+  "format": "FoxLevel",
+  "version": 2,
+  "name": "Placements",
+  "entities": [
+    { "id": "0000000000000001", "name": "Valid", "actor": "Assets/Scripts/Lamp.lua",
+      "components": { "transform": { "position": [0, 0, 0] }, "light": { "color": [1, 0.5, 0.2] } },
+      "properties": { "brightness": 2 },
+      "scripts": [ { "script": "Assets/Scripts/Blink.lua", "properties": { "rate": 4 } } ] },
+    { "id": "0000000000000002", "name": "MissingClass", "actor": "Assets/Scripts/Missing.lua", "components": {} },
+    { "id": "0000000000000003", "name": "ScriptAsActor", "actor": "Assets/Scripts/Blink.lua", "components": {} },
+    { "id": "0000000000000004", "name": "UnknownComponent", "actor": "Assets/Scripts/Lamp.lua",
+      "components": { "lamp": { "color": [1, 1, 1] } } },
+    { "id": "0000000000000005", "name": "UnknownField", "actor": "Assets/Scripts/Lamp.lua",
+      "components": { "light": { "colour": [1, 1, 1] } } },
+    { "id": "0000000000000006", "name": "UnknownProperty", "actor": "Assets/Scripts/Lamp.lua",
+      "components": {}, "properties": { "brightnes": 2 } },
+    { "id": "0000000000000007", "name": "WrongPropertyType", "actor": "Assets/Scripts/Lamp.lua",
+      "components": {}, "properties": { "brightness": "high" } },
+    { "id": "0000000000000008", "name": "ActorAsScript", "actor": "Assets/Scripts/Lamp.lua",
+      "components": {}, "scripts": [ { "script": "Assets/Scripts/Lamp.lua" } ] }
+  ]
+}

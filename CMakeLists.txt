@@ -47,4 +47,8 @@ if(BUILD_TESTING)
     add_test(NAME LuaApiStubs COMMAND FoxProject api --check)
     add_test(NAME ShowcaseProject COMMAND FoxProject --project "${FOX_DEFAULT_PROJECT}" check)
     add_test(NAME ShowcaseScriptTests COMMAND FoxProject --project "${FOX_DEFAULT_PROJECT}" test)
+    # Each broken actor placement in the fixture must surface as exactly one error.
+    add_test(NAME ActorPlacementCheck
+        COMMAND FoxProject --project "${CMAKE_SOURCE_DIR}/Tests/Fixtures/ActorCheckProject" check)
+    set_tests_properties(ActorPlacementCheck PROPERTIES PASS_REGULAR_EXPRESSION "check: 7 error\\(s\\), 0 warning\\(s\\)")
 endif()
