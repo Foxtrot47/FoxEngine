@@ -1810,7 +1810,9 @@ void SceneRuntime::ResizeRenderTargets(uint32_t rw, uint32_t rh, uint32_t w, uin
 // Create/destroy the FSR context when its configuration changes.
 void SceneRuntime::UpdateFsrLifetime(uint32_t rw, uint32_t rh, uint32_t w, uint32_t h)
 {
-    if (!fsrEnabled || camera->orthographic)
+    // FSR's half-resolution internal textures require at least 2x2 input.
+    // Empty dock layouts can briefly report 1px; keep the selected AA mode.
+    if (!fsrEnabled || camera->orthographic || rw < 2 || rh < 2)
     {
         if (fsr.IsInitialized())
         {
