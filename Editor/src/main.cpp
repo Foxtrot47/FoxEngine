@@ -70,6 +70,11 @@ public:
             return false;
         // Script schemas for Details; a failure only disables property editing.
         m_scriptCatalog.Start();
+        // Edit mode previews placed actors from their class files; the play
+        // session installs its own resolver while it runs.
+        m_scene.actorClassResolver = [this](const std::string& path) {
+            return m_scriptCatalog.ResolveActorClass(path);
+        };
 
         const auto sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
         if (sceneFiles.empty() && scenePath.empty())
@@ -153,6 +158,7 @@ private:
         if (m_playState == PlayState::Playing)
         {
             m_scene.drawDebugHelpers = false;
+            m_scene.simulatePhysics = true;
             UpdatePlayViewport(dt);
             m_scene.Render(aspect);
             return;
@@ -161,6 +167,7 @@ private:
         {
             // Between play transitions: keep the image valid, simulate nothing.
             m_scene.drawDebugHelpers = false;
+            m_scene.simulatePhysics = false;
             m_scene.Update(0.0f, m_previewTime);
             m_scene.Render(aspect);
             return;
@@ -174,6 +181,10 @@ private:
         const float sceneDt = m_viewOptions.realtime ? dt : 0.0f;
         m_previewTime += sceneDt;
         m_scene.drawDebugHelpers = !m_viewOptions.gameView && m_viewOptions.showLights;
+        // Edit mode animates the preview but never moves dynamic actors.
+        m_scene.simulatePhysics = false;
+        if (!m_scene.IsLoading())
+            m_scriptCatalog.RefreshActorPreviews(m_scene);
         m_scene.Update(sceneDt, m_previewTime);
         m_scene.Render(aspect);
     }
@@ -604,7 +615,7 @@ private:
         HandleHotkeys();
         if (m_viewOptions.immersive) return;
         const bool playing = IsPlaySession();
-        Editor::DrawOutlinerPanel(m_scene, m_selection, m_undo, SpawnPosition(), playing);
+        Editor::DrawOutlinerPanel(m_scene, m_selection, m_undo, SpawnPosition(), m_scriptCatalog, playing);
         Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
                                  GetRenderer().GetDevice(), GetShaders(),
                                  m_viewportRT.GetWidth(), m_viewportRT.GetHeight(),

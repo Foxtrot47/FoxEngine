@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 
 #include "Engine/Core/Logger.h"
 #include "Engine/Physics/Ray.h"
@@ -9,6 +11,7 @@
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Scene/SceneLoader.h"
+#include "Engine/Scene/LevelDependencyPlan.h"
 #include "Engine/Scene/LevelRuntimeComponents.h"
 
 using namespace DirectX;
@@ -16,6 +19,45 @@ using namespace DirectX;
 namespace SE {
 
 namespace {
+
+// Actor classes are Lua modules, so they resolve here on the main thread and
+// the load worker then plans their meshes. Levels without actors skip the parse;
+// unreadable or malformed levels resolve nothing and the worker reports why.
+ActorClassMap ResolvePlacedActorClasses(const std::string& scenePath, const std::string& levelJson,
+                                        const std::function<ResolvedActorClass(const std::string&)>& resolver)
+{
+    ActorClassMap classes;
+    if (!resolver)
+        return classes;
+    std::string text = levelJson;
+    if (text.empty())
+    {
+        std::ifstream file(scenePath, std::ios::binary);
+        if (!file)
+            return classes;
+        text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    if (text.find("\"actor\"") == std::string::npos)
+        return classes;
+    const nlohmann::json level = nlohmann::json::parse(text, nullptr, false);
+    if (!level.is_object())
+        return classes;
+    const auto entities = level.find("entities");
+    if (entities == level.end() || !entities->is_array())
+        return classes;
+    for (const auto& entity : *entities)
+    {
+        if (!entity.is_object())
+            continue;
+        const auto actor = entity.find("actor");
+        if (actor == entity.end() || !actor->is_string())
+            continue;
+        const std::string path = LevelDependencyPlan::NormalizePath(actor->get<std::string>());
+        if (classes.find(path) == classes.end())
+            classes.emplace(path, resolver(path));
+    }
+    return classes;
+}
 
 bool NearlyEqual(float a, float b, float eps = 0.0001f)
 {
@@ -187,7 +229,8 @@ void SceneRuntime::BeginAsyncSceneLoad(const std::string& scenePath)
     sceneLoadError.clear();
     m_completeSceneLoadNextFrame = false;
     m_loadingScenePath = scenePath;
-    m_levelLoad.Start(scenePath, m_assets->CaptureSnapshot(), lastRequestedSceneJson);
+    m_levelLoad.Start(scenePath, m_assets->CaptureSnapshot(), lastRequestedSceneJson,
+                      ResolvePlacedActorClasses(scenePath, lastRequestedSceneJson, actorClassResolver));
 }
 
 bool SceneRuntime::TickSceneLoad(const std::function<bool()>& pumpMessages)
@@ -542,11 +585,31 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
         return false;
     std::vector<int> newSelectedParticlePreset = MatchParticlePresets(newParticleEmitterDescs);
 
+    // --- Actors: parts, entities and bodies go into the incoming world ---
+    std::vector<LoadedActor> newActors;
+    newActors.reserve(desc.actors.size());
+    for (const auto& def : desc.actors)
+    {
+        Entity* root = newWorld.FindBySourceID(def.sourceEntityID);
+        if (!root)
+        {
+            sceneLoadError = "Actor entity was not instantiated";
+            return false;
+        }
+        LoadedActor actor;
+        actor.def = def;
+        BuildActor(actor, newWorld.GetScene(), *root, newPhysicsWorld, false);
+        if (auto* rigidBody = root->GetComponent<RigidBodyComponent>())
+            rigidBody->useGravity = desc.physics.gravity;
+        newActors.push_back(std::move(actor));
+    }
+
     // Commit only after every replacement mesh has completed its import.
     if (onSceneUnloading && HasScene())
         onSceneUnloading();
-    // Balls reference the outgoing world/physics, so they go first.
+    // Balls and actors reference the outgoing world/physics, so they go first.
     balls.clear(); // their entities and bodies die with the outgoing world
+    actors.clear();
     world            = std::move(newWorld);
     camera           = newCamera;
     physicsWorld     = std::move(newPhysicsWorld);
@@ -561,9 +624,13 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
     selectedParticlePreset = std::move(newSelectedParticlePreset);
     loadedMeshes     = std::move(newLoadedMeshes);
     emptyEntities    = std::move(newEmptyEntities);
+    actors           = std::move(newActors);
     environmentTexture = std::move(prepared.environment);
     iblTexture = std::move(prepared.iblEnvironment);
     levelDiagnostics = std::move(prepared.diagnostics);
+    for (const LevelDiagnostic& diagnostic : levelDiagnostics)
+        if (diagnostic.severity == LevelDiagnosticSeverity::Warning)
+            SE_LOG_WARN("%s: %s: %s", scenePath.c_str(), diagnostic.path.c_str(), diagnostic.message.c_str());
     skybox.SetPanorama(environmentTexture ? environmentTexture->GetSRV() : nullptr);
     if (!environmentLighting.Build(device, m_renderer->GetContext(),
                                    iblTexture ? iblTexture->GetSRV() : nullptr))
@@ -701,6 +768,22 @@ void SceneRuntime::SyncDescriptorFromRuntime()
                           empty.transform->scale.z };
         }
         desc.empties.push_back(std::move(def));
+    }
+    // Placed actors (spawned ones are runtime-only).
+    desc.actors.clear();
+    for (const auto& actor : actors)
+    {
+        if (actor.spawned)
+            continue;
+        SceneDescriptor::ActorEntry def = actor.def;
+        if (actor.transform)
+        {
+            const auto& t = *actor.transform;
+            def.position = { t.position.x, t.position.y, t.position.z };
+            def.rotation = { t.eulerDeg.x, t.eulerDeg.y, t.eulerDeg.z };
+            def.scale = { t.scale.x, t.scale.y, t.scale.z };
+        }
+        desc.actors.push_back(std::move(def));
     }
 
     // Particles: live edits target ParticleSystem::config
@@ -1126,6 +1209,18 @@ void SceneRuntime::SetEntityActive(Entity& entity, bool active)
             if (mesh.transform == transform)
                 mesh.visible = active;
 
+    if (entity.GetComponent<ActorComponent>())
+    {
+        if (LoadedActor* actor = FindActor(entity.GetID()))
+            RefreshActorState(*actor);
+    }
+    else
+    {
+        LoadedActor* owner = nullptr;
+        if (FindActorPart(entity.GetID(), &owner))
+            RefreshActorState(*owner);
+    }
+
     const auto* identity = entity.GetComponent<LevelIdentityComponent>();
     if (!identity || identity->sourceID == 0)
         return;
@@ -1156,9 +1251,15 @@ void SceneRuntime::Update(float dt, float totalTime)
     ID3D11DeviceContext* ctx = m_renderer->GetContext();
 
     world.GetScene().Update(dt);
-    physicsWorld.Step(dt);
+    UpdateActors();
+    if (simulatePhysics)
+        physicsWorld.Step(dt);
     for (auto& ps : particleSystems)
         ps->Update(ctx, dt);
+    for (auto& actor : actors)
+        for (auto& part : actor.parts)
+            if (part.particles)
+                part.particles->Update(ctx, dt);
 
     UpdatePointLightFlicker(totalTime);
 
@@ -1227,6 +1328,23 @@ void SceneRuntime::Render(float aspect)
     m_cachedProj = proj;
     m_cachedView = view;
 
+    // Actor point lights follow their parts; they fill the slots the level's
+    // lights leave free.
+    m_actorLights.clear();
+    for (const auto& actor : actors)
+    {
+        if (!actor.entity || !actor.entity->active)
+            continue;
+        for (const auto& part : actor.parts)
+        {
+            if (part.def.type != ActorComponentType::PointLight || !part.transform->GetOwner()->active)
+                continue;
+            LightEnvironment::PointLight light = part.light;
+            XMStoreFloat3(&light.position, part.transform->GetWorldMatrix().r[3]);
+            m_actorLights.push_back(light);
+        }
+    }
+
     const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
     if (litView) RenderShadowMaps(ctx);
 
@@ -1269,6 +1387,25 @@ void SceneRuntime::ForEachMeshInstance(Fn&& fn) const
         instance.shadowSubMeshes  = &loaded.shadowSubMeshes;
         instance.castsShadows     = loaded.def.castShadows;
         fn(instance);
+    }
+    for (const auto& actor : actors)
+    {
+        if (!actor.entity || !actor.entity->active)
+            continue;
+        for (const auto& part : actor.parts)
+        {
+            if (!part.mesh || !part.transform->GetOwner()->active)
+                continue;
+            const XMMATRIX model = part.transform->GetWorldMatrix();
+            MeshInstance instance;
+            instance.mesh             = part.mesh.get();
+            instance.model            = model;
+            instance.prevModel        = part.prevWorldValid ? XMLoadFloat4x4(&part.prevWorld) : model;
+            instance.materials        = &part.materials;
+            instance.shadowSubMeshes  = &part.shadowSubMeshes;
+            instance.castsShadows     = part.def.castShadows;
+            fn(instance);
+        }
     }
 }
 
@@ -1360,7 +1497,8 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
     m_planarReflectionRT.Begin(ctx, reflectionClear);
     skybox.Draw(ctx, reflectedView, m_cachedProj);
     shadowMap.BindForLitPass(ctx);
-    lights.BindPS(ctx, reflectedEye, shadowMap.GetLightViewProj());
+    lights.BindPS(ctx, reflectedEye, shadowMap.GetLightViewProj(),
+                  m_actorLights.data(), static_cast<int>(m_actorLights.size()));
     pipeline.Begin(ctx, reflectedView, m_cachedProj);
     pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
 
@@ -1450,6 +1588,14 @@ void SceneRuntime::RecordPrevTransforms()
         XMStoreFloat4x4(&ball.prevWorld, BallModel(ball));
         ball.prevWorldValid = true;
     }
+    for (auto& actor : actors)
+        for (auto& part : actor.parts)
+        {
+            if (!part.mesh)
+                continue;
+            XMStoreFloat4x4(&part.prevWorld, part.transform->GetWorldMatrix());
+            part.prevWorldValid = true;
+        }
 }
 
 BodyHandle SceneRuntime::SpawnBall(const XMFLOAT3& position, float radius, const XMFLOAT3& velocity)
@@ -1527,7 +1673,8 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
         ptSRVs[i] = pointShadowMaps[i].GetSRV();
 
     shadowMap.BindForLitPass(ctx);
-    lights.BindPS(ctx, camera->eye, shadowMap.GetLightViewProj());
+    lights.BindPS(ctx, camera->eye, shadowMap.GetLightViewProj(),
+                  m_actorLights.data(), static_cast<int>(m_actorLights.size()));
     pipeline.Begin(ctx, m_cachedView, m_cachedProj);
     pipeline.SetTemporalMatrices(m_prevViewProjNoJitter, m_viewProjNoJitter);
     pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
@@ -1593,6 +1740,30 @@ void SceneRuntime::RenderDebugShapes(ID3D11DeviceContext* ctx)
         for (const PhysicsBall& ball : balls)
             pipeline.DrawWireSphere(ctx, ball.transform->position, ball.radius,
                                     { 0.0f, 1.0f, 0.2f });
+        for (const LoadedActor& actor : actors)
+            for (const ActorPart& part : actor.parts)
+            {
+                if (part.body == k_invalidBody)
+                    continue;
+                const XMMATRIX partWorld = part.transform->GetWorldMatrix();
+                if (part.def.type == ActorComponentType::Box)
+                {
+                    const XMMATRIX half = XMMatrixScaling(part.def.size[0] * 0.5f,
+                        part.def.size[1] * 0.5f, part.def.size[2] * 0.5f);
+                    pipeline.DrawWireBox(ctx, half * partWorld, { 0.2f, 0.8f, 1.0f });
+                }
+                else if (part.def.type == ActorComponentType::Sphere)
+                {
+                    XMFLOAT3 center, scale;
+                    XMVECTOR s, r, t;
+                    XMMatrixDecompose(&s, &r, &t, partWorld);
+                    XMStoreFloat3(&center, t);
+                    XMStoreFloat3(&scale, XMVectorAbs(s));
+                    pipeline.DrawWireSphere(ctx, center,
+                        part.def.radius * (std::max)({ scale.x, scale.y, scale.z }),
+                        { 0.2f, 0.8f, 1.0f });
+                }
+            }
 
         XMFLOAT3 bottom = { cc.position.x, cc.position.y + cc.radius, cc.position.z };
         pipeline.DrawWireSphere(ctx, bottom, cc.radius, { 1.0f, 0.4f, 0.8f });
@@ -1633,32 +1804,37 @@ void SceneRuntime::RenderDebugShapes(ID3D11DeviceContext* ctx)
 // Use read-only DSV so depth SRV can be bound simultaneously for soft particles.
 void SceneRuntime::RenderParticles(ID3D11DeviceContext* ctx)
 {
-    if (particleSystems.empty())
+    std::vector<ParticleSystem*> systems;
+    for (auto& ps : particleSystems)
+        systems.push_back(ps.get());
+    for (auto& actor : actors)
+        for (auto& part : actor.parts)
+            if (part.particles)
+                systems.push_back(part.particles.get());
+    if (systems.empty())
         return;
 
     ID3D11RenderTargetView* rtv = m_forwardHDR_RT.GetRTV();
     auto* readOnlyDSV = m_forwardHDR_RT.GetReadOnlyDSV();
     auto* dsv = readOnlyDSV ? readOnlyDSV : m_forwardHDR_RT.GetDSV();
     ctx->OMSetRenderTargets(1, &rtv, dsv);
-    for (auto& ps : particleSystems)
-    {
-        const float er = XMConvertToRadians(lights.elevDeg);
-        const float ar = XMConvertToRadians(lights.azimDeg);
-        XMFLOAT3 particleLightDir = {
-            cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar)
-        };
-        XMFLOAT3 particleLightColor = {
-            lights.lightColor[0] * lights.lightIntensity,
-            lights.lightColor[1] * lights.lightIntensity,
-            lights.lightColor[2] * lights.lightIntensity
-        };
+    const float er = XMConvertToRadians(lights.elevDeg);
+    const float ar = XMConvertToRadians(lights.azimDeg);
+    const XMFLOAT3 particleLightDir = {
+        cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar)
+    };
+    const XMFLOAT3 particleLightColor = {
+        lights.lightColor[0] * lights.lightIntensity,
+        lights.lightColor[1] * lights.lightIntensity,
+        lights.lightColor[2] * lights.lightIntensity
+    };
+    for (ParticleSystem* ps : systems)
         ps->Render(ctx, m_cachedView, m_cachedProj,
             m_forwardHDR_RT.GetWidth(), m_forwardHDR_RT.GetHeight(),
             m_forwardHDR_RT.GetDepthSRV(),
             camera->nearZ, camera->farZ,
             particleLightDir, particleLightColor,
             0.18f * lights.iblIntensity);
-    }
 }
 
 // --- Post-process ------------------------------------------------------------

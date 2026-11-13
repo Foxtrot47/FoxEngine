@@ -11,7 +11,8 @@ bool LightEnvironment::Init(ID3D11Device* device)
 }
 
 void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 cameraPos,
-                               DirectX::XMMATRIX lightViewProj)
+                              DirectX::XMMATRIX lightViewProj,
+                              const PointLight* extraLights, int extraCount)
 {
     using namespace DirectX;
 
@@ -33,15 +34,18 @@ void LightEnvironment::BindPS(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 camera
     m_lightCB.BindPS(ctx, 1);
 
     PointLightCBData pl = {};
-    pl.num = numLights;
+    auto add = [&pl](const PointLight& light) {
+        if (pl.num >= 8) return;
+        PointEntryData& entry = pl.lights[pl.num++];
+        entry.pos    = light.position;
+        entry.radius = light.radius;
+        entry.color  = light.enabled ? light.color : DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
+        entry._pad   = 0.0f;
+    };
     for (int i = 0; i < numLights; ++i)
-    {
-        pl.lights[i].pos    = lights[i].position;
-        pl.lights[i].radius = lights[i].radius;
-        pl.lights[i].color  = lights[i].enabled ? lights[i].color
-                                                : DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };
-        pl.lights[i]._pad   = 0.0f;
-    }
+        add(lights[i]);
+    for (int i = 0; i < extraCount; ++i)
+        add(extraLights[i]);
     m_pointLightCB.Update(ctx, pl);
     m_pointLightCB.BindPS(ctx, 2);
 }

@@ -38,4 +38,11 @@ struct ScriptTransform
     ScriptEntity entity;
 };
 
+// fox.ActorComponent: one component (part) of an actor, addressed by the
+// part's child entity.
+struct ScriptActorPart
+{
+    ScriptEntity entity;
+};
+
 } // namespace SE::Scripting

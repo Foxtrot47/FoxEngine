@@ -19,9 +19,6 @@ struct EntityState
     // Camera
     float fovDeg = 0.0f, nearZ = 0.0f, farZ = 0.0f;
 
-    // Camera / Sun script components (the other kinds keep them in their defs)
-    std::vector<SE::LevelScriptDefinition> scripts;
-
     // Sun
     float elevDeg = 0.0f, azimDeg = 0.0f, sunIntensity = 0.0f;
     float sunColor[3] = {};
@@ -53,6 +50,9 @@ struct EntityState
     // Empty
     SE::SceneDescriptor::EmptyEntity emptyDef;
     DirectX::XMFLOAT3 emptyPosition = {}, emptyEuler = {}, emptyScale = {};
+
+    // Actor: the placement with its root transform
+    SE::SceneDescriptor::ActorEntry actorDef;
 };
 
 namespace {
@@ -69,6 +69,7 @@ const char* EditLabel(Kind kind)
     case Kind::Object:     return "Edit Object";
     case Kind::Emitter:    return "Edit Emitter";
     case Kind::Empty:      return "Edit Empty";
+    case Kind::Actor:      return "Edit Actor";
     default:               return "Edit";
     }
 }
@@ -87,7 +88,6 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
         s->fovDeg = scene.camera->fovDeg;
         s->nearZ  = scene.camera->nearZ;
         s->farZ   = scene.camera->farZ;
-        s->scripts = scene.currentDesc.camera.scripts;
         return s;
     case Kind::Sun:
     {
@@ -99,7 +99,6 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
         s->iblIntensity         = l.iblIntensity;
         s->diffuseIBLSaturation = l.diffuseIBLSaturation;
         s->pointShadowBias      = scene.pointShadowBias;
-        s->scripts              = scene.currentDesc.sun.scripts;
         return s;
     }
     case Kind::SpotLight:
@@ -163,6 +162,10 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
         s->emptyScale    = e.transform->scale;
         return s;
     }
+    case Kind::Actor:
+        if (i < 0 || i >= (int)scene.actors.size() || !scene.actors[i].transform) return nullptr;
+        s->actorDef = scene.ActorPlacement(i);
+        return s;
     default:
         return nullptr;
     }
@@ -179,7 +182,6 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
         scene.camera->fovDeg = s.fovDeg;
         scene.camera->nearZ  = s.nearZ;
         scene.camera->farZ   = s.farZ;
-        scene.currentDesc.camera.scripts = s.scripts;
         return;
     case Kind::Sun:
     {
@@ -191,7 +193,6 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
         l.iblIntensity         = s.iblIntensity;
         l.diffuseIBLSaturation = s.diffuseIBLSaturation;
         scene.pointShadowBias  = s.pointShadowBias;
-        scene.currentDesc.sun.scripts = s.scripts;
         return;
     }
     case Kind::SpotLight:
@@ -257,6 +258,26 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
         e.transform->position = s.emptyPosition;
         e.transform->eulerDeg = s.emptyEuler;
         e.transform->scale    = s.emptyScale;
+        return;
+    }
+    case Kind::Actor:
+    {
+        if (i < 0 || i >= (int)scene.actors.size()) return;
+        auto& actor = scene.actors[i];
+        // Class and component changes need new parts; the rest is placement state.
+        if (actor.def.actorClass != s.actorDef.actorClass || actor.def.components != s.actorDef.components)
+        {
+            scene.RemoveActor(i);
+            scene.InsertActor(i, s.actorDef);
+            return;
+        }
+        const auto& d = s.actorDef;
+        actor.def.name       = d.name;
+        actor.def.properties = d.properties;
+        actor.def.scripts    = d.scripts;
+        actor.transform->position = { d.position[0], d.position[1], d.position[2] };
+        actor.transform->eulerDeg = { d.rotation[0], d.rotation[1], d.rotation[2] };
+        actor.transform->scale    = { d.scale[0], d.scale[1], d.scale[2] };
         return;
     }
     default:

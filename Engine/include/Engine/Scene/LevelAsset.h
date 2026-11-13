@@ -39,7 +39,10 @@ struct LevelEntityDefinition
     std::optional<LevelPrimitiveRendererDefinition> primitiveRenderer;
     std::optional<LevelParticleEmitterDefinition> particleEmitter;
 
-    // Entity-level "scripts" array (sibling of "components").
+    // "actor" (class path) plus "properties" and the non-transform keys of
+    // "components". Only actors carry behaviour.
+    std::optional<LevelActorDefinition> actor;
+    // Entity-level "scripts" array (sibling of "components"); actors only.
     std::vector<LevelScriptDefinition> scripts;
 };
 

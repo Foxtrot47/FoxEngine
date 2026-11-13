@@ -89,8 +89,6 @@ bool LevelWorld::Instantiate(const LevelAsset& asset)
             if (definition.active && (!m_primaryCamera || definition.camera->primary))
                 m_primaryCamera = camera;
         }
-        if (!definition.scripts.empty())
-            entity->AddComponent<ScriptComponent>(definition.scripts);
 
         m_entitiesBySourceID.emplace(definition.id, entity);
     }
@@ -143,6 +141,26 @@ Entity* LevelWorld::FindBySourceID(LevelEntityID id) const
 {
     const auto found = m_entitiesBySourceID.find(id);
     return found == m_entitiesBySourceID.end() ? nullptr : found->second;
+}
+
+void LevelWorld::DestroyEntity(Entity& entity)
+{
+    if (auto* transform = entity.GetComponent<TransformComponent>())
+    {
+        const std::vector<TransformComponent*> children = transform->children;
+        for (TransformComponent* child : children)
+            child->Unparent();
+        transform->Unparent();
+    }
+    if (const auto* identity = entity.GetComponent<LevelIdentityComponent>())
+    {
+        const auto found = m_entitiesBySourceID.find(identity->sourceID);
+        if (found != m_entitiesBySourceID.end() && found->second == &entity)
+            m_entitiesBySourceID.erase(found);
+    }
+    if (m_primaryCamera && m_primaryCamera->GetOwner() == &entity)
+        m_primaryCamera = nullptr;
+    m_scene.DestroyEntity(entity.GetID());
 }
 
 } // namespace SE

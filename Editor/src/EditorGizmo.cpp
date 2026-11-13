@@ -28,7 +28,8 @@ bool operator==(const XMFLOAT3& a, const XMFLOAT3& b)
 
 bool HasFullTransform(Selection::Kind kind)
 {
-    return kind == Selection::Kind::Mesh || kind == Selection::Kind::Empty;
+    return kind == Selection::Kind::Mesh || kind == Selection::Kind::Empty ||
+           kind == Selection::Kind::Actor;
 }
 
 // Returns the gizmo target's world position (and full TRS for meshes and empties).
@@ -48,6 +49,14 @@ bool CaptureSnapshot(SE::SceneRuntime& scene, const Selection& sel, Snapshot& ou
     {
         if (sel.index >= (int)scene.emptyEntities.size()) return false;
         const auto* t = scene.emptyEntities[sel.index].transform;
+        if (!t) return false;
+        out = { t->position, t->eulerDeg, t->scale };
+        return true;
+    }
+    case Selection::Kind::Actor:
+    {
+        if (sel.index >= (int)scene.actors.size()) return false;
+        const auto* t = scene.actors[sel.index].transform;
         if (!t) return false;
         out = { t->position, t->eulerDeg, t->scale };
         return true;
@@ -103,6 +112,16 @@ void ApplySnapshot(SE::SceneRuntime& scene, const Selection& sel, const Snapshot
         empty.def.position = { s.position.x, s.position.y, s.position.z };
         empty.def.rotation = { s.euler.x, s.euler.y, s.euler.z };
         empty.def.scale    = { s.scale.x, s.scale.y, s.scale.z };
+        return;
+    }
+    case Selection::Kind::Actor:
+    {
+        if (sel.index >= (int)scene.actors.size()) return;
+        auto* t = scene.actors[sel.index].transform;
+        if (!t) return;
+        t->position = s.position;
+        t->eulerDeg = s.euler;
+        t->scale    = s.scale;
         return;
     }
     case Selection::Kind::PointLight:
@@ -250,18 +269,18 @@ bool RayAABB(XMVECTOR origin, XMVECTOR dir, const SE::AABB& box, float& tOut,
     return true;
 }
 
-// World-space hit distance for a mesh, or FLT_MAX on miss. The ray is tested
-// in mesh-local space against the mesh AABB.
-float HitDistanceMesh(const PickRay& ray, const SE::SceneRuntime::LoadedMesh& loaded)
+// World-space hit distance for a mesh drawn with transform, or FLT_MAX on
+// miss. The ray is tested in mesh-local space against the mesh AABB.
+float HitDistanceMesh(const PickRay& ray, const SE::Mesh* mesh, const SE::TransformComponent* transform)
 {
-    if (!loaded.mesh || !loaded.transform)
+    if (!mesh || !transform)
         return FLT_MAX;
-    XMMATRIX world    = loaded.transform->GetWorldMatrix();
+    XMMATRIX world    = transform->GetWorldMatrix();
     XMMATRIX invWorld = XMMatrixInverse(nullptr, world);
     XMVECTOR lo = XMVector3TransformCoord(ray.origin, invWorld);
     XMVECTOR ld = XMVector3TransformNormal(ray.dir, invWorld);
     float t, tExit;
-    if (!RayAABB(lo, ld, loaded.mesh->GetBounds(), t, &tExit))
+    if (!RayAABB(lo, ld, mesh->GetBounds(), t, &tExit))
         return FLT_MAX;
     // Camera inside the mesh bounds (typical for level geometry): score the
     // exit distance so entities inside the AABB stay clickable and the mesh
@@ -270,6 +289,29 @@ float HitDistanceMesh(const PickRay& ray, const SE::SceneRuntime::LoadedMesh& lo
         t = tExit;
     XMVECTOR hitWorld = XMVector3TransformCoord(XMVectorAdd(lo, XMVectorScale(ld, t)), world);
     return XMVectorGetX(XMVector3Length(XMVectorSubtract(hitWorld, ray.origin)));
+}
+
+// Nearest hit over an actor's mesh parts; actors without meshes pick through
+// a proxy box at the root, like point lights.
+float HitDistanceActor(const PickRay& ray, const SE::SceneRuntime::LoadedActor& actor)
+{
+    float best = FLT_MAX;
+    bool hasMesh = false;
+    for (const auto& part : actor.parts)
+        if (part.mesh)
+        {
+            hasMesh = true;
+            best = (std::min)(best, HitDistanceMesh(ray, part.mesh.get(), part.transform));
+        }
+    if (!hasMesh && actor.transform)
+    {
+        XMFLOAT3 p;
+        XMStoreFloat3(&p, actor.transform->GetWorldMatrix().r[3]);
+        float t;
+        if (RayAABB(ray.origin, ray.dir, SE::AABB::FromCenterExtents(p, { 0.5f, 0.5f, 0.5f }), t))
+            best = t;
+    }
+    return best;
 }
 
 float HitDistanceObject(const PickRay& ray, const SE::SceneRuntime::LoadedObject& lo)
@@ -398,14 +440,12 @@ bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
 
 namespace {
 
-// World-space framing sphere of a mesh: transform the 8 local AABB corners.
-void MeshBounds(const SE::SceneRuntime::LoadedMesh& loaded, XMFLOAT3& outCenter,
-                float& outRadius)
+// Grows [wmin, wmax] by the mesh AABB's 8 corners in world space.
+void AccumulateBounds(const SE::Mesh& mesh, const SE::TransformComponent& transform,
+                      XMVECTOR& wmin, XMVECTOR& wmax)
 {
-    const SE::AABB& b = loaded.mesh->GetBounds();
-    XMMATRIX world = loaded.transform->GetWorldMatrix();
-    XMVECTOR wmin = XMVectorReplicate(FLT_MAX);
-    XMVECTOR wmax = XMVectorReplicate(-FLT_MAX);
+    const SE::AABB& b = mesh.GetBounds();
+    XMMATRIX world = transform.GetWorldMatrix();
     for (int i = 0; i < 8; ++i)
     {
         XMVECTOR corner = XMVectorSet((i & 1) ? b.max.x : b.min.x,
@@ -415,6 +455,10 @@ void MeshBounds(const SE::SceneRuntime::LoadedMesh& loaded, XMFLOAT3& outCenter,
         wmin = XMVectorMin(wmin, corner);
         wmax = XMVectorMax(wmax, corner);
     }
+}
+
+void StoreSphere(XMVECTOR wmin, XMVECTOR wmax, XMFLOAT3& outCenter, float& outRadius)
+{
     XMStoreFloat3(&outCenter, XMVectorScale(XMVectorAdd(wmin, wmax), 0.5f));
     outRadius = 0.5f * XMVectorGetX(XMVector3Length(XMVectorSubtract(wmax, wmin)));
 }
@@ -433,9 +477,30 @@ bool GetSelectionBounds(SE::SceneRuntime& scene, const Selection& sel,
     switch (sel.kind)
     {
     case Selection::Kind::Mesh:
-        if (scene.loadedMeshes[sel.index].mesh)
-            MeshBounds(scene.loadedMeshes[sel.index], outCenter, outRadius);
+    {
+        const auto& loaded = scene.loadedMeshes[sel.index];
+        if (loaded.mesh)
+        {
+            XMVECTOR wmin = XMVectorReplicate(FLT_MAX), wmax = XMVectorReplicate(-FLT_MAX);
+            AccumulateBounds(*loaded.mesh, *loaded.transform, wmin, wmax);
+            StoreSphere(wmin, wmax, outCenter, outRadius);
+        }
         break;
+    }
+    case Selection::Kind::Actor:
+    {
+        XMVECTOR wmin = XMVectorReplicate(FLT_MAX), wmax = XMVectorReplicate(-FLT_MAX);
+        bool any = false;
+        for (const auto& part : scene.actors[sel.index].parts)
+            if (part.mesh && part.transform)
+            {
+                AccumulateBounds(*part.mesh, *part.transform, wmin, wmax);
+                any = true;
+            }
+        if (any)
+            StoreSphere(wmin, wmax, outCenter, outRadius);
+        break;
+    }
     case Selection::Kind::Emitter:
         outRadius = (std::max)(
             scene.particleSystems[sel.index]->config.spawnRadius, 2.0f);
@@ -467,7 +532,7 @@ Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
 
     for (int i = 0; i < (int)scene.loadedMeshes.size(); ++i)
     {
-        const float d = HitDistanceMesh(ray, scene.loadedMeshes[i]);
+        const float d = HitDistanceMesh(ray, scene.loadedMeshes[i].mesh.get(), scene.loadedMeshes[i].transform);
         if (d < best)
         {
             best = d;
@@ -481,6 +546,15 @@ Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
         {
             best = d;
             result.Set(Selection::Kind::Object, i);
+        }
+    }
+    for (int i = 0; i < (int)scene.actors.size(); ++i)
+    {
+        const float d = HitDistanceActor(ray, scene.actors[i]);
+        if (d < best)
+        {
+            best = d;
+            result.Set(Selection::Kind::Actor, i);
         }
     }
     // Invisible helpers last: small proxy boxes for point lights and emitters.

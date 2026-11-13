@@ -25,6 +25,10 @@ struct LevelDependencyPlan
 
     static std::string NormalizePath(const std::string& path);
     static LevelDependencyPlan Build(const LevelAsset& level);
+    // Appends a dependency discovered after Build (actor class components),
+    // skipping duplicates.
+    void Add(const std::string& path, LevelDependencyKind kind, bool required,
+             const std::string& owner);
     const LevelDependency* Find(const std::string& path,
                                 LevelDependencyKind kind) const;
 };

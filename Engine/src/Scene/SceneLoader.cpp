@@ -116,7 +116,6 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             mesh.castShadows = entity.meshRenderer->castShadows;
             mesh.receiveShadows = entity.meshRenderer->receiveShadows;
             mesh.collision = entity.meshRenderer->collision;
-            mesh.scripts = entity.scripts;
             if (entity.transform)
             {
                 mesh.position = entity.transform->position;
@@ -130,28 +129,24 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             out.camera = *entity.camera;
             out.camera.sourceEntityID = entity.id;
             out.camera.name = entity.name;
-            out.camera.scripts = entity.scripts;
         }
         if (entity.directionalLight)
         {
             out.sun = *entity.directionalLight;
             out.sun.sourceEntityID = entity.id;
             out.sun.name = entity.name;
-            out.sun.scripts = entity.scripts;
         }
         if (entity.pointLight)
         {
             auto& light = out.pointLights.emplace_back(*entity.pointLight);
             light.sourceEntityID = entity.id;
             light.name = entity.name;
-            light.scripts = entity.scripts;
         }
         if (entity.particleEmitter)
         {
             auto& emitter = out.particles.emplace_back(*entity.particleEmitter);
             emitter.sourceEntityID = entity.id;
             emitter.name = entity.name;
-            emitter.scripts = entity.scripts;
         }
         if (entity.primitiveRenderer)
         {
@@ -159,7 +154,6 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             SceneDescriptor::SceneObject object;
             object.sourceEntityID = entity.id;
             object.name = entity.name;
-            object.scripts = entity.scripts;
             object.type = source.type == LevelPrimitiveType::Plane
                 ? SceneDescriptor::SceneObject::Type::Plane
                 : SceneDescriptor::SceneObject::Type::Sphere;
@@ -183,6 +177,25 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             out.objects.push_back(std::move(object));
         }
 
+        if (entity.actor)
+        {
+            SceneDescriptor::ActorEntry actor;
+            actor.sourceEntityID = entity.id;
+            actor.name = entity.name;
+            actor.actorClass = entity.actor->actorClass;
+            actor.components = entity.actor->components;
+            actor.properties = entity.actor->properties;
+            actor.scripts = entity.scripts;
+            if (entity.transform)
+            {
+                actor.position = entity.transform->position;
+                actor.rotation = entity.transform->rotationDegrees;
+                actor.scale = entity.transform->scale;
+            }
+            out.actors.push_back(std::move(actor));
+            continue;
+        }
+
         const bool hasKnownComponent = entity.meshRenderer || entity.camera ||
             entity.directionalLight || entity.pointLight || entity.primitiveRenderer ||
             entity.particleEmitter;
@@ -191,7 +204,6 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             SceneDescriptor::EmptyEntity empty;
             empty.sourceEntityID = entity.id;
             empty.name = entity.name;
-            empty.scripts = entity.scripts;
             if (entity.transform)
             {
                 empty.position = entity.transform->position;

@@ -142,6 +142,20 @@ void BindCore(ScriptApi& api, ScriptContext& ctx)
             "function Spinner:on_update(dt) self.transform:rotate(vec3(0, self.speed * dt, 0)) end\n"
             "return Spinner\n"
             "```")
+        .LuaFunction("actor", "(definition?: fox.ActorDefinition) -> fox.Actor",
+            "Declares an actor class: a placeable, spawnable object built from components.\n"
+            "Each component becomes self.<name> (a fox.ActorComponent). Return it from the module:\n"
+            "```lua\n"
+            "local Lamp = fox.actor {\n"
+            "    components = {\n"
+            "        { name = \"mesh\", type = \"mesh\", mesh = \"Assets/Props/Lamp.fbx\" },\n"
+            "        { name = \"light\", type = \"point_light\", color = vec3(1, 0.8, 0.6), position = vec3(0, 2, 0) },\n"
+            "    },\n"
+            "    properties = { { name = \"flicker\", type = \"boolean\", default = false } },\n"
+            "}\n"
+            "function Lamp:on_update(dt) self.light.intensity = 1 + math.sin(fox.time.time * 9) * 0.2 end\n"
+            "return Lamp\n"
+            "```")
         .LuaFunction("inspect", "(value: any, depth?: integer) -> string",
             "Pretty-prints a value (tables sorted by key, cycles marked; default depth 3).")
         .LuaFunction("wait", "(seconds: number) -> nil",
@@ -180,6 +194,50 @@ void BindCore(ScriptApi& api, ScriptContext& ctx)
         { "stop_coroutines", "() -> nil", "Stops every coroutine started by this script.", true },
         { "get_script", "(path: string) -> fox.Script?",
           "Another script instance on the same entity (autoloads: another autoload).", true },
+    };
+
+    ApiDocs::Block& actor = api.DocClass("fox.Actor",
+        "Base of every actor class (fox.actor). An actor is a root entity (self.entity,\n"
+        "self.transform) whose components are child entities. Actors get every fox.Script\n"
+        "callback; on_destroy runs when the actor is destroyed or its scene unloads.",
+        "fox.Script", true);
+    actor.functions = {
+        { "destroy", "() -> nil", "Destroys the actor at the end of this frame (fox.world.destroy).", true },
+        { "is_a", "(class: fox.Actor) -> boolean", "True if the actor's class is class or derives from it.", true },
+    };
+
+    ApiDocs::Block& actorDefinition = api.DocClass("fox.ActorDefinition", "Argument of fox.actor.");
+    actorDefinition.fields = {
+        { "base", "fox.Actor?", "Base class: its components and properties come first; same-named entries override them." },
+        { "components", "fox.ComponentSpec[]?", "The actor's parts." },
+        { "properties", "fox.PropertySpec[]?", "Editable properties in editor order." },
+    };
+
+    ApiDocs::Block& component = api.DocClass("fox.ComponentSpec",
+        "One actor component. Levels override any key except name and type per\n"
+        "placement. Transforms are relative to the actor.");
+    component.fields = {
+        { "name", "string", "Becomes self.<name> (an identifier; not a property name)." },
+        { "type", "\"mesh\"|\"point_light\"|\"particle_emitter\"|\"box\"|\"sphere\"", "" },
+        { "position", "fox.Vec3?", "" },
+        { "rotation", "fox.Vec3?", "Euler degrees." },
+        { "scale", "fox.Vec3?", "" },
+        { "mesh", "string?", "mesh: model path (FBX, glTF, OBJ)." },
+        { "cast_shadows", "boolean?", "mesh (default true)." },
+        { "receive_shadows", "boolean?", "mesh (default true)." },
+        { "alpha_cutoff", "number?", "mesh: alpha-test threshold for textures with alpha (0 = off)." },
+        { "collision", "boolean?", "mesh: kinematic triangle collider that follows the component." },
+        { "color", "fox.Vec3?", "point_light: linear RGB (default white)." },
+        { "intensity", "number?", "point_light (default 1)." },
+        { "radius", "number?", "point_light range (default 10); sphere radius (default 0.5)." },
+        { "preset", "string?", "particle_emitter: Assets/Particles/Presets/*.json." },
+        { "size", "fox.Vec3?", "box: full extents (default 1, 1, 1)." },
+        { "body", "\"kinematic\"|\"dynamic\"?",
+          "box/sphere: kinematic follows the actor (default); dynamic is simulated and moves\n"
+          "the actor (one per actor; it is then the actor's only collision)." },
+        { "mass", "number?", "Dynamic body mass in kg (default 1)." },
+        { "friction", "number?", "Default 0.5." },
+        { "restitution", "number?", "Bounciness 0..1 (default 0.2)." },
     };
 
     ApiDocs::Block& definition = api.DocClass("fox.ScriptDefinition", "Argument of fox.script.");

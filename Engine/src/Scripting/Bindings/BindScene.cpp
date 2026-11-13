@@ -83,8 +83,9 @@ void TransformChanged(ScriptContext& ctx, const ScriptEntity& handle)
     ctx.host.scene->ApplyEntityTransform(entity);
 }
 
-const char* EntityKind(const Entity& entity)
+const char* EntityKind(ScriptContext& ctx, const Entity& entity)
 {
+    if (entity.GetComponent<ActorComponent>())             return "actor";
     if (entity.GetComponent<MeshRendererComponent>())      return "mesh";
     if (entity.GetComponent<PrimitiveRendererComponent>()) return "primitive";
     if (entity.GetComponent<PointLightComponent>())        return "point_light";
@@ -92,7 +93,76 @@ const char* EntityKind(const Entity& entity)
     if (entity.GetComponent<CameraComponent>())            return "camera";
     if (entity.GetComponent<DirectionalLightComponent>())  return "sun";
     if (entity.GetComponent<RigidBodyComponent>())         return "rigid_body";
+    if (ctx.host.scene->FindActorPart(entity.GetID()))     return "actor_component";
     return "empty";
+}
+
+// --- Actors ----------------------------------------------------------------------
+
+SceneRuntime::ActorPart& ResolvePart(ScriptContext& ctx, const ScriptActorPart& handle,
+                                     SceneRuntime::LoadedActor** actor = nullptr)
+{
+    const Entity& entity = ResolveEntity(ctx, handle.entity);
+    SceneRuntime::ActorPart* part = ctx.host.scene->FindActorPart(entity.GetID(), actor);
+    if (!part)
+        Raise("actor component '%s' no longer exists", entity.GetName().c_str());
+    return *part;
+}
+
+SceneRuntime::ActorPart& ResolvePart(ScriptContext& ctx, const ScriptActorPart& handle, ActorComponentType type,
+                                     const char* field)
+{
+    SceneRuntime::ActorPart& part = ResolvePart(ctx, handle);
+    if (part.def.type != type)
+        Raise("fox.ActorComponent.%s: '%s' is a %s component, not a %s", field, part.def.name.c_str(),
+              ActorComponentTypeName(part.def.type), ActorComponentTypeName(type));
+    return part;
+}
+
+void UpdatePartLight(SceneRuntime::ActorPart& part)
+{
+    const auto& def = part.def;
+    part.light.color = { def.color[0] * def.intensity, def.color[1] * def.intensity, def.color[2] * def.intensity };
+    part.light.radius = def.radius;
+}
+
+// The root entity id of the actor an actor instance, actor entity or part entity belongs to.
+uint32_t ActorRoot(ScriptContext& ctx, const sol::object& target, const char* api)
+{
+    sol::object entityObject = target;
+    if (target.get_type() == sol::type::table)
+        entityObject = target.as<sol::table>().raw_get<sol::object>("entity");
+    if (!entityObject.is<ScriptEntity>())
+        Raise("%s expects an actor (or one of its entities)", api);
+    const Entity& entity = ResolveEntity(ctx, entityObject.as<ScriptEntity>());
+    if (entity.GetComponent<ActorComponent>())
+        return entity.GetID();
+    SceneRuntime::LoadedActor* owner = nullptr;
+    if (ctx.host.scene->FindActorPart(entity.GetID(), &owner))
+        return owner->entity->GetID();
+    Raise("%s: entity '%s' is not an actor", api, entity.GetName().c_str());
+}
+
+// Whether an actor instance's class is cls (a class table or its script path) or derives from it.
+bool IsInstanceOf(sol::table self, const sol::object& cls)
+{
+    std::string path;
+    if (cls.get_type() == sol::type::string)
+    {
+        path = cls.as<std::string>();
+        std::replace(path.begin(), path.end(), '\\', '/');
+    }
+    sol::object current = self[sol::metatable_key];
+    while (current.get_type() == sol::type::table)
+    {
+        const sol::table table = current.as<sol::table>();
+        if (path.empty() ? table.pointer() == cls.pointer()
+                         : table.raw_get<sol::object>("__path").is<std::string>() &&
+                               table.raw_get<std::string>("__path") == path)
+            return true;
+        current = table.raw_get<sol::object>("__base");
+    }
+    return false;
 }
 
 std::string EntityLabel(const ScriptContext& ctx, const ScriptEntity& handle)
@@ -285,8 +355,20 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
         .ReadOnly("name", "string", "",
             [&ctx](const ScriptEntity& self) { return ResolveEntity(ctx, self).GetName(); })
         .ReadOnly("kind", "string",
-            "mesh, primitive, point_light, particle_emitter, camera, sun, rigid_body or empty.",
-            [&ctx](const ScriptEntity& self) { return std::string(EntityKind(ResolveEntity(ctx, self))); })
+            "actor, actor_component, mesh, primitive, point_light, particle_emitter, camera, sun,\n"
+            "rigid_body or empty.",
+            [&ctx](const ScriptEntity& self) { return std::string(EntityKind(ctx, ResolveEntity(ctx, self))); })
+        .ReadOnly("actor", "fox.Actor?",
+            "The actor this entity is the root or a component of (its class instance), if any.",
+            [&ctx](const ScriptEntity& self, sol::this_state s) -> sol::object {
+                const Entity& entity = ResolveEntity(ctx, self);
+                SceneRuntime::LoadedActor* owner = nullptr;
+                if (entity.GetComponent<ActorComponent>())
+                    return ctx.instances->ActorInstance(s, entity.GetID());
+                if (ctx.host.scene->FindActorPart(entity.GetID(), &owner))
+                    return ctx.instances->ActorInstance(s, owner->entity->GetID());
+                return sol::make_object(s, sol::lua_nil);
+            })
         .Property("active", "boolean",
             "Inactive entities are hidden and their scripts receive no updates\n"
             "(on_disable/on_enable run on the transitions). Not inherited by children.",
@@ -333,6 +415,104 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
             [](const ScriptEntity& a, const ScriptEntity& b) { return a.id == b.id && a.generation == b.generation; })
         .Operator(sol::meta_function::to_string, "",
             [&ctx](const ScriptEntity& self) { return EntityLabel(ctx, self); });
+
+    // --- fox.ActorComponent -------------------------------------------------------
+
+    api.Class<ScriptActorPart>("ActorComponent",
+        "One component of an actor (self.<name> on the actor), declared in its\n"
+        "fox.actor class. Each is a child entity of the actor: its transform is\n"
+        "relative to the actor, and moving it moves what it renders and its\n"
+        "kinematic collider. Type-specific fields raise on other types.",
+        sol::no_constructor)
+        .ReadOnly("name", "string", "Component name from the class.",
+            [&ctx](const ScriptActorPart& self) { return ResolvePart(ctx, self).def.name; })
+        .ReadOnly("type", "string", "mesh, point_light, particle_emitter, box or sphere.",
+            [&ctx](const ScriptActorPart& self) { return std::string(ActorComponentTypeName(ResolvePart(ctx, self).def.type)); })
+        .ReadOnly("entity", "fox.Entity", "The component's child entity.",
+            [&ctx](const ScriptActorPart& self) {
+                ResolvePart(ctx, self);
+                return self.entity;
+            })
+        .ReadOnly("transform", "fox.Transform", "Transform relative to the actor.",
+            [&ctx](const ScriptActorPart& self) {
+                ResolvePart(ctx, self);
+                return ScriptTransform{ self.entity };
+            })
+        .ReadOnly("actor", "fox.Actor", "The owning actor.",
+            [&ctx](const ScriptActorPart& self, sol::this_state s) {
+                SceneRuntime::LoadedActor* actor = nullptr;
+                ResolvePart(ctx, self, &actor);
+                return ctx.instances->ActorInstance(s, actor->entity->GetID());
+            })
+        .Property("enabled", "boolean",
+            "Disabled components render nothing, emit nothing and have no collision.",
+            [&ctx](const ScriptActorPart& self) {
+                ResolvePart(ctx, self);
+                return ResolveEntity(ctx, self.entity).active;
+            },
+            [&ctx](const ScriptActorPart& self, bool value) {
+                ResolvePart(ctx, self);
+                ctx.host.scene->SetEntityActive(ResolveEntity(ctx, self.entity), value);
+            })
+        .Property("color", "fox.Vec3", "point_light: linear RGB.",
+            [&ctx](const ScriptActorPart& self) {
+                const auto& c = ResolvePart(ctx, self, ActorComponentType::PointLight, "color").def.color;
+                return ScriptVec3{ c[0], c[1], c[2] };
+            },
+            [&ctx](const ScriptActorPart& self, const ScriptVec3& value) {
+                auto& part = ResolvePart(ctx, self, ActorComponentType::PointLight, "color");
+                part.def.color = { Clamped(value.x, 0.0, 1e4, "color.x"), Clamped(value.y, 0.0, 1e4, "color.y"),
+                                   Clamped(value.z, 0.0, 1e4, "color.z") };
+                UpdatePartLight(part);
+            })
+        .Property("intensity", "number", "point_light: multiplier on color.",
+            [&ctx](const ScriptActorPart& self) {
+                return static_cast<double>(ResolvePart(ctx, self, ActorComponentType::PointLight, "intensity").def.intensity);
+            },
+            [&ctx](const ScriptActorPart& self, double value) {
+                auto& part = ResolvePart(ctx, self, ActorComponentType::PointLight, "intensity");
+                part.def.intensity = Clamped(value, 0.0, 1e4, "intensity");
+                UpdatePartLight(part);
+            })
+        .Property("radius", "number", "point_light: range in m.",
+            [&ctx](const ScriptActorPart& self) {
+                return static_cast<double>(ResolvePart(ctx, self, ActorComponentType::PointLight, "radius").def.radius);
+            },
+            [&ctx](const ScriptActorPart& self, double value) {
+                auto& part = ResolvePart(ctx, self, ActorComponentType::PointLight, "radius");
+                part.def.radius = Clamped(value, 0.01, 1e4, "radius");
+                UpdatePartLight(part);
+            })
+        .Property("velocity", "fox.Vec3",
+            "box/sphere with body = \"dynamic\": linear velocity of the actor in m/s.",
+            [&ctx](const ScriptActorPart& self) {
+                SceneRuntime::LoadedActor* actor = nullptr;
+                const auto& part = ResolvePart(ctx, self, &actor);
+                if (&part - actor->parts.data() != actor->dynamicPart)
+                    Raise("fox.ActorComponent.velocity: '%s' is not the actor's dynamic body", part.def.name.c_str());
+                return FromFloat3(actor->entity->GetComponent<RigidBodyComponent>()->velocity);
+            },
+            [&ctx](const ScriptActorPart& self, const ScriptVec3& value) {
+                SceneRuntime::LoadedActor* actor = nullptr;
+                const auto& part = ResolvePart(ctx, self, &actor);
+                if (&part - actor->parts.data() != actor->dynamicPart)
+                    Raise("fox.ActorComponent.velocity: '%s' is not the actor's dynamic body", part.def.name.c_str());
+                actor->entity->GetComponent<RigidBodyComponent>()->velocity = ToFloat3(value);
+            })
+        .Method("emit", "(count: integer) -> nil", "particle_emitter: emits a burst of particles next frame.",
+            [&ctx](const ScriptActorPart& self, lua_Integer count) {
+                auto& part = ResolvePart(ctx, self, ActorComponentType::ParticleEmitter, "emit");
+                if (count < 0 || count > 100000)
+                    Raise("fox.ActorComponent.emit: count must be in 0..100000");
+                if (part.particles)
+                    part.particles->Burst(static_cast<int>(count));
+            })
+        .Operator(sol::meta_function::equal_to, "",
+            [](const ScriptActorPart& a, const ScriptActorPart& b) {
+                return a.entity.id == b.entity.id && a.entity.generation == b.entity.generation;
+            })
+        .Operator(sol::meta_function::to_string, "",
+            [&ctx](const ScriptActorPart& self) { return "fox.ActorComponent of " + EntityLabel(ctx, self.entity); });
 
     // --- fox.Transform ----------------------------------------------------------
 
@@ -478,6 +658,71 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
                 SceneRuntime& scene = RequireScene(ctx, "fox.scene.get");
                 return EntityOrNil(s, ctx, sourceId > 0 ? scene.world.FindBySourceID(static_cast<LevelEntityID>(sourceId))
                                                         : nullptr);
+            });
+
+    // --- fox.world ----------------------------------------------------------------
+
+    ApiDocs::Block& spawnOptions = api.DocClass("fox.SpawnOptions", "Options of fox.world.spawn.");
+    spawnOptions.fields = {
+        { "position", "fox.Vec3?", "World position (default origin)." },
+        { "rotation", "fox.Vec3?", "Euler degrees." },
+        { "scale", "fox.Vec3?", "" },
+        { "name", "string?", "Entity name (default: the class file name)." },
+        { "properties", "table?", "Property overrides, like a level placement's." },
+        { "components", "table<string, table>?",
+          "Component overrides keyed by component name: { mesh = { mesh = \"Assets/Props/Crate2.fbx\" } }." },
+    };
+
+    api.Module("world",
+        "Actors of the loaded scene: instances of fox.actor classes, placed in the\n"
+        "level or spawned at runtime. Spawned actors are not saved and end with the scene.")
+        .Function("spawn", "(class: fox.Actor|string, options?: fox.SpawnOptions) -> fox.Actor",
+            "Creates an actor from its class (or script path) and returns its instance;\n"
+            "on_start runs next frame. Meshes the level did not load are imported now\n"
+            "(a hitch): place one instance in the level to preload a class's assets.",
+            [&ctx](const sol::object& actorClass, const sol::object& options, sol::this_state s) {
+                RequireScene(ctx, "fox.world.spawn");
+                return ctx.instances->SpawnActor(s, actorClass, options);
+            })
+        .Function("destroy", "(actor: fox.Actor|fox.Entity) -> nil",
+            "Destroys an actor at the end of this frame's update (its scripts get\n"
+            "on_disable/on_destroy then). Same as actor:destroy().",
+            [&ctx](const sol::object& target) {
+                RequireScene(ctx, "fox.world.destroy");
+                ctx.instances->DestroyActor(ActorRoot(ctx, target, "fox.world.destroy"));
+            })
+        .Function("actors", "(class?: fox.Actor|string) -> fox.Actor[]",
+            "Every actor in creation order, or those of a class (or its script path) and its subclasses.",
+            [&ctx](const sol::object& actorClass, sol::this_state s) {
+                RequireScene(ctx, "fox.world.actors");
+                sol::table all = ctx.instances->ActorInstances(s);
+                const sol::type type = actorClass.get_type();
+                if (type == sol::type::lua_nil || type == sol::type::none)
+                    return all;
+                if (type != sol::type::table && type != sol::type::string)
+                    Raise("fox.world.actors: class must be an actor class or its script path");
+                sol::state_view lua(s);
+                sol::table result = lua.create_table();
+                int index = 1;
+                for (size_t i = 1; i <= all.size(); ++i)
+                {
+                    const sol::table self = all.raw_get<sol::table>(i);
+                    if (IsInstanceOf(self, actorClass))
+                        result[index++] = self;
+                }
+                return result;
+            })
+        .Function("find", "(name: string) -> fox.Actor?", "The first actor whose entity has this name.",
+            [&ctx](const std::string& name, sol::this_state s) -> sol::object {
+                SceneRuntime& scene = RequireScene(ctx, "fox.world.find");
+                for (const SceneRuntime::LoadedActor& actor : scene.actors)
+                    if (actor.entity->GetName() == name)
+                    {
+                        sol::object self = ctx.instances->ActorInstance(s, actor.entity->GetID());
+                        if (self.get_type() == sol::type::table)
+                            return self;
+                    }
+                return sol::make_object(s, sol::lua_nil);
             });
 
     // --- fox.camera ---------------------------------------------------------------

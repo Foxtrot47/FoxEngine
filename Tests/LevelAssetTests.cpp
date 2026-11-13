@@ -739,13 +739,15 @@ static bool HasErrorAt(const SE::LevelAssetLoadResult& result, const char* path)
     return false;
 }
 
-static json ScriptedEntityLevel(json scripts)
+static json ScriptedEntityLevel(json scripts, bool actor = true)
 {
     json entity = json::object({
         { "id", "0000000000000001" },
         { "name", "Spawner" },
         { "components", json::object() }
     });
+    if (actor)
+        entity["actor"] = "Assets/Scripts/Actors/Spawner.lua";
     entity["scripts"] = std::move(scripts);
     json level = json::object({
         { "format", "FoxLevel" },
@@ -803,6 +805,18 @@ static void TestScriptParsing()
             "scripts");
         Require(HasErrorAt(result, "/entities/0/scripts"), "non-array scripts were not rejected");
     }
+    {
+        // Static entities have no behaviour: scripts and properties belong to actors.
+        const auto result = LevelAssetLoader::Parse(ScriptedEntityLevel(json::array({
+            json::object({ { "script", "Assets/Scripts/Spinner.lua" } })
+        }), false), "scripts");
+        Require(HasErrorAt(result, "/entities/0/scripts"), "scripts on a static entity were accepted");
+        json level = ScriptedEntityLevel(json::array(), false);
+        level["entities"][0].erase("scripts");
+        level["entities"][0]["properties"] = json::object({ { "speed", 1 } });
+        Require(HasErrorAt(LevelAssetLoader::Parse(level, "scripts"), "/entities/0/properties"),
+                "properties on a static entity were accepted");
+    }
 }
 
 static json ScriptArray(const char* path)
@@ -812,89 +826,86 @@ static json ScriptArray(const char* path)
 
 static void TestDescriptorStamping()
 {
-    auto entity = [](const char* id, const char* name, json components, const char* script) {
-        json out = json::object({
+    auto entity = [](const char* id, const char* name, json components) {
+        return json::object({
             { "id", id }, { "name", name }, { "components", std::move(components) }
         });
-        if (script)
-            out["scripts"] = ScriptArray(script);
-        return out;
     };
     json level = json::object({ { "format", "FoxLevel" }, { "version", 2 }, { "name", "Stamp" } });
     level["entities"] = json::array({
         entity("0000000000000011", "Statue", json::object({
             { "transform", json::object({ { "position", { 1.0f, 0.0f, 0.0f } } }) },
             { "meshRenderer", json::object({ { "mesh", "Assets/Test/statue.obj" } }) }
-        }), "Assets/Scripts/Mesh.lua"),
+        })),
         entity("0000000000000012", "Main Camera",
-               json::object({ { "camera", json::object({ { "primary", true } }) } }),
-               "Assets/Scripts/Camera.lua"),
+               json::object({ { "camera", json::object({ { "primary", true } }) } })),
         entity("0000000000000013", "Key Light",
-               json::object({ { "directionalLight", json::object() } }),
-               "Assets/Scripts/Sun.lua"),
-        entity("0000000000000014", "Lamp",
-               json::object({ { "pointLight", json::object() } }),
-               "Assets/Scripts/Lamp.lua"),
+               json::object({ { "directionalLight", json::object() } })),
+        entity("0000000000000014", "Lamp", json::object({ { "pointLight", json::object() } })),
         entity("0000000000000015", "Sparks",
-               json::object({ { "particleEmitter", json::object() } }),
-               "Assets/Scripts/Sparks.lua"),
-        entity("0000000000000016", "Ball",
-               json::object({ { "sphereRenderer", json::object() } }),
-               "Assets/Scripts/Ball.lua"),
+               json::object({ { "particleEmitter", json::object() } })),
+        entity("0000000000000016", "Ball", json::object({ { "sphereRenderer", json::object() } })),
         entity("0000000000000017", "Spawn", json::object({
             { "transform", json::object({
                 { "position", { 1.0f, 2.0f, 3.0f } },
                 { "rotationDegrees", { 0.0f, 90.0f, 0.0f } },
                 { "scale", { 2.0f, 2.0f, 2.0f } }
             }) }
-        }), "Assets/Scripts/Spawn.lua"),
-        entity("0000000000000018", "Bare", json::object(), nullptr)
+        })),
+        entity("0000000000000018", "Bare", json::object())
     });
-    json inactive = entity("0000000000000019", "Hidden", json::object(), nullptr);
+    json inactive = entity("0000000000000019", "Hidden", json::object());
     inactive["active"] = false;
     level["entities"].push_back(std::move(inactive));
+    json door = entity("000000000000001A", "Door", json::object({
+        { "transform", json::object({ { "position", { 4.0f, 0.0f, 1.0f } } }) },
+        { "body", json::object({ { "mass", 5.0f } }) }
+    }));
+    door["actor"] = "Assets/Scripts/Actors/Door.lua";
+    door["properties"] = json::object({ { "openAngle", 90 } });
+    door["scripts"] = ScriptArray("Assets/Scripts/Creak.lua");
+    level["entities"].push_back(std::move(door));
 
     const auto result = LevelAssetLoader::Parse(level, "stamping");
     Require(result.Succeeded(), "stamping level should parse");
     SE::SceneDescriptor desc;
     Require(SE::SceneLoader::BuildDescriptor(result.asset, desc), "stamping descriptor failed");
 
-    auto hasScript = [](const std::vector<SE::LevelScriptDefinition>& scripts, const char* path) {
-        return scripts.size() == 1 && scripts[0].script == path;
-    };
-    Require(desc.meshes.size() == 1 && desc.meshes[0].sourceEntityID == 0x11 &&
-            hasScript(desc.meshes[0].scripts, "Assets/Scripts/Mesh.lua"),
+    Require(desc.meshes.size() == 1 && desc.meshes[0].sourceEntityID == 0x11,
             "mesh entry was not stamped");
-    Require(desc.camera.sourceEntityID == 0x12 && desc.camera.name == "Main Camera" &&
-            hasScript(desc.camera.scripts, "Assets/Scripts/Camera.lua"),
+    Require(desc.camera.sourceEntityID == 0x12 && desc.camera.name == "Main Camera",
             "camera entry was not stamped");
-    Require(desc.sun.sourceEntityID == 0x13 && desc.sun.name == "Key Light" &&
-            hasScript(desc.sun.scripts, "Assets/Scripts/Sun.lua"),
+    Require(desc.sun.sourceEntityID == 0x13 && desc.sun.name == "Key Light",
             "sun entry was not stamped");
     Require(desc.pointLights.size() == 1 && desc.pointLights[0].sourceEntityID == 0x14 &&
-            desc.pointLights[0].name == "Lamp" &&
-            hasScript(desc.pointLights[0].scripts, "Assets/Scripts/Lamp.lua"),
-            "point light entry was not stamped");
+            desc.pointLights[0].name == "Lamp", "point light entry was not stamped");
     Require(desc.particles.size() == 1 && desc.particles[0].sourceEntityID == 0x15 &&
-            desc.particles[0].name == "Sparks" &&
-            hasScript(desc.particles[0].scripts, "Assets/Scripts/Sparks.lua"),
-            "particle emitter entry was not stamped");
+            desc.particles[0].name == "Sparks", "particle emitter entry was not stamped");
     Require(desc.objects.size() == 1 && desc.objects[0].sourceEntityID == 0x16 &&
-            desc.objects[0].name == "Ball" &&
-            hasScript(desc.objects[0].scripts, "Assets/Scripts/Ball.lua"),
-            "primitive entry was not stamped");
+            desc.objects[0].name == "Ball", "primitive entry was not stamped");
 
     Require(desc.empties.size() == 2, "active component-less entities should become empties");
     const auto& spawn = desc.empties[0];
-    Require(spawn.sourceEntityID == 0x17 && spawn.name == "Spawn" &&
-            hasScript(spawn.scripts, "Assets/Scripts/Spawn.lua"),
-            "empty entry was not stamped");
+    Require(spawn.sourceEntityID == 0x17 && spawn.name == "Spawn", "empty entry was not stamped");
     Require(spawn.position == std::array<float, 3>{ 1.0f, 2.0f, 3.0f } &&
             spawn.rotation == std::array<float, 3>{ 0.0f, 90.0f, 0.0f } &&
             spawn.scale == std::array<float, 3>{ 2.0f, 2.0f, 2.0f },
             "empty transform was not copied");
-    Require(desc.empties[1].sourceEntityID == 0x18 && desc.empties[1].scripts.empty(),
-            "bare empty entity mismatch");
+    Require(desc.empties[1].sourceEntityID == 0x18, "bare empty entity mismatch");
+
+    Require(desc.actors.size() == 1, "actor entity should become one actor entry");
+    const auto& actor = desc.actors[0];
+    Require(actor.sourceEntityID == 0x1A && actor.name == "Door" &&
+            actor.actorClass == "Assets/Scripts/Actors/Door.lua",
+            "actor entry was not stamped");
+    Require(actor.position == std::array<float, 3>{ 4.0f, 0.0f, 1.0f },
+            "actor root transform was not copied");
+    Require(actor.components.contains("body") && !actor.components.contains("transform") &&
+            actor.components["body"].value("mass", 0.0f) == 5.0f,
+            "actor component overrides were not kept");
+    Require(actor.properties.value("openAngle", 0) == 90, "actor properties were not kept");
+    Require(actor.scripts.size() == 1 && actor.scripts[0].script == "Assets/Scripts/Creak.lua",
+            "actor scripts were not kept");
 }
 
 static void TestSaverPreservesIdentity()
@@ -912,20 +923,17 @@ static void TestSaverPreservesIdentity()
     mesh.sourceEntityID = 0x10;
     mesh.name = "Statue";
     mesh.path = "Assets/Test/statue.obj";
-    mesh.scripts = { spinner };
     desc.meshes.push_back(mesh);
     mesh.sourceEntityID = 0;
     mesh.name = "Statue Copy";
     desc.meshes.push_back(mesh);
 
     desc.camera.sourceEntityID = 0x20;
-    desc.camera.scripts = { plain };
     desc.sun.name = "Key Light";
 
     SE::SceneDescriptor::PointLightDesc light;
     light.sourceEntityID = 0x30;
     light.name = "Lamp";
-    light.scripts = { spinner };
     desc.pointLights.push_back(light);
     light.name.clear(); // same id again: must not be written twice
     desc.pointLights.push_back(light);
@@ -945,13 +953,24 @@ static void TestSaverPreservesIdentity()
     empty.position = { 1.0f, 2.0f, 3.0f };
     empty.rotation = { 0.0f, 45.0f, 0.0f };
     empty.scale = { 1.0f, 2.0f, 1.0f };
-    empty.scripts = { plain };
     desc.empties.push_back(empty);
     SE::SceneDescriptor::EmptyEntity nameless = empty;
     nameless.sourceEntityID = 0;
     nameless.name.clear();
-    nameless.scripts.clear();
     desc.empties.push_back(nameless);
+
+    SE::SceneDescriptor::ActorEntry actor;
+    actor.sourceEntityID = 0x45;
+    actor.name = "Door";
+    actor.actorClass = "Assets/Scripts/Actors/Door.lua";
+    actor.position = { 4.0f, 0.0f, 1.0f };
+    actor.components = json::object({ { "body", json::object({ { "mass", 5.0f } }) } });
+    actor.properties = json::object({ { "openAngle", 90 } });
+    actor.scripts = { spinner, plain };
+    desc.actors.push_back(actor);
+    SE::SceneDescriptor::ActorEntry bareActor;
+    bareActor.actorClass = "Assets/Scripts/Actors/Door.lua";
+    desc.actors.push_back(bareActor);
 
     const std::string text = SE::SceneSaver::ToJson(desc);
     const json saved = json::parse(text);
@@ -965,8 +984,12 @@ static void TestSaverPreservesIdentity()
 
     for (const auto& entity : saved["entities"])
     {
-        if (entity["name"] == "Ball" || entity["name"] == "Sparks")
-            Require(!entity.contains("scripts"), "empty scripts arrays should be omitted");
+        if (!entity.contains("actor"))
+            Require(!entity.contains("scripts") && !entity.contains("properties"),
+                    "static entities must not save behaviour");
+        if (entity["name"] == "Actor")
+            Require(!entity.contains("scripts") && !entity.contains("properties"),
+                    "empty actor scripts/properties should be omitted");
         if (!entity.contains("scripts"))
             continue;
         for (const auto& script : entity["scripts"])
@@ -977,19 +1000,15 @@ static void TestSaverPreservesIdentity()
 
     SE::SceneDescriptor loaded;
     Require(SE::SceneLoader::BuildDescriptor(reparsed.asset, loaded), "identity rebuild failed");
-    Require(loaded.meshes.size() == 2 && loaded.meshes[0].sourceEntityID == 0x10 &&
-            loaded.meshes[0].scripts.size() == 1 &&
-            loaded.meshes[0].scripts[0].script == "Assets/Scripts/Spinner.lua" &&
-            loaded.meshes[0].scripts[0].properties.value("speed", 0) == 45,
-            "mesh id/scripts not preserved");
+    Require(loaded.meshes.size() == 2 && loaded.meshes[0].sourceEntityID == 0x10,
+            "mesh id not preserved");
     Require(loaded.meshes[1].sourceEntityID > 0x50, "zero mesh id should get a fresh id");
-    Require(loaded.camera.sourceEntityID == 0x20 && loaded.camera.name == "Camera" &&
-            loaded.camera.scripts.size() == 1, "camera id/name/scripts not preserved");
+    Require(loaded.camera.sourceEntityID == 0x20 && loaded.camera.name == "Camera",
+            "camera id/name not preserved");
     Require(loaded.sun.sourceEntityID > 0x50 && loaded.sun.name == "Key Light",
             "sun name not preserved");
     Require(loaded.pointLights.size() == 2 && loaded.pointLights[0].sourceEntityID == 0x30 &&
-            loaded.pointLights[0].name == "Lamp" && loaded.pointLights[0].scripts.size() == 1,
-            "point light id/name/scripts not preserved");
+            loaded.pointLights[0].name == "Lamp", "point light id/name not preserved");
     Require(loaded.pointLights[1].sourceEntityID > 0x50 &&
             loaded.pointLights[1].name == "Point Light 2",
             "repeated point light id should get a fresh id");
@@ -1001,17 +1020,28 @@ static void TestSaverPreservesIdentity()
     Require(loaded.empties[0].sourceEntityID == 0x50 && loaded.empties[0].name == "Spawn" &&
             loaded.empties[0].position == empty.position &&
             loaded.empties[0].rotation == empty.rotation &&
-            loaded.empties[0].scale == empty.scale &&
-            loaded.empties[0].scripts.size() == 1 &&
-            loaded.empties[0].scripts[0].script == "Assets/Scripts/Plain.lua",
+            loaded.empties[0].scale == empty.scale,
             "empty entity not preserved");
     Require(loaded.empties[1].sourceEntityID > 0x50 && loaded.empties[1].name == "Empty",
             "nameless empty should save as 'Empty' with a fresh id");
+    Require(loaded.actors.size() == 2, "actors were not saved");
+    const auto& door = loaded.actors[0];
+    Require(door.sourceEntityID == 0x45 && door.name == "Door" &&
+            door.actorClass == actor.actorClass && door.position == actor.position &&
+            door.components == actor.components && door.properties == actor.properties,
+            "actor placement not preserved");
+    Require(door.scripts.size() == 2 &&
+            door.scripts[0].script == "Assets/Scripts/Spinner.lua" &&
+            door.scripts[0].properties.value("speed", 0) == 45 &&
+            door.scripts[1].script == "Assets/Scripts/Plain.lua",
+            "actor scripts not preserved");
+    Require(loaded.actors[1].sourceEntityID > 0x50 && loaded.actors[1].name == "Actor",
+            "zero actor id should get a fresh id");
 
     Require(SE::SceneSaver::ToJson(loaded) == text, "identity serialization is not stable");
 }
 
-static void TestLevelWorldScriptsAndComponentPositions()
+static void TestLevelWorldComponentPositions()
 {
     json level = json::object({ { "format", "FoxLevel" }, { "version", 2 }, { "name", "World" } });
     json root = json::object({
@@ -1027,7 +1057,6 @@ static void TestLevelWorldScriptsAndComponentPositions()
             { "position", { 12.0f, 4.0f, 0.0f } }
         }) } }) }
     });
-    child["scripts"] = ScriptArray("Assets/Scripts/Flicker.lua");
     json loose = json::object({
         { "id", "0000000000000003" }, { "name", "Loose" },
         { "components", json::object({ { "pointLight", json::object({
@@ -1045,12 +1074,6 @@ static void TestLevelWorldScriptsAndComponentPositions()
     SE::Entity* lampEntity = world.FindBySourceID(2);
     SE::Entity* looseEntity = world.FindBySourceID(3);
     Require(rootEntity && lampEntity && looseEntity, "world entities missing");
-    Require(!rootEntity->GetComponent<SE::ScriptComponent>(),
-            "script component attached to an entity without scripts");
-    const auto* scripts = lampEntity->GetComponent<SE::ScriptComponent>();
-    Require(scripts && scripts->scripts.size() == 1 &&
-            scripts->scripts[0].script == "Assets/Scripts/Flicker.lua",
-            "script component missing from scripted entity");
 
     auto nearly = [](float a, float b) { return std::fabs(a - b) < 0.0001f; };
     const auto* looseTransform = looseEntity->GetComponent<SE::TransformComponent>();
@@ -1105,7 +1128,7 @@ static void RunTests()
     TestScriptParsing();
     TestDescriptorStamping();
     TestSaverPreservesIdentity();
-    TestLevelWorldScriptsAndComponentPositions();
+    TestLevelWorldComponentPositions();
     TestDependencyPlan();
     TestMaterialTexturePath();
     TestCpuTextureDecode();

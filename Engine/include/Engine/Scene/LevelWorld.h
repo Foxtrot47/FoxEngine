@@ -16,6 +16,9 @@ public:
     Scene& GetScene() { return m_scene; }
     const Scene& GetScene() const { return m_scene; }
     Entity* FindBySourceID(LevelEntityID id) const;
+    // Destroys the entity: detaches it from its parent and its children (who
+    // keep their local transform as a top-level one) and forgets its source id.
+    void DestroyEntity(Entity& entity);
     CameraComponent* GetPrimaryCamera() const { return m_primaryCamera; }
 
 private:

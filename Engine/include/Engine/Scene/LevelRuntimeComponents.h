@@ -48,8 +48,19 @@ struct ParticleEmitterComponent : Component
     LevelParticleEmitterDefinition definition;
 };
 
-// Script components declared on the level entity. The ScriptSystem
-// instantiates them when the scene becomes ready.
+// Marks an actor's root entity. SceneRuntime adds it when it builds the actor
+// (level placement or fox.world.spawn); the ScriptSystem instantiates the
+// class with these property overrides.
+struct ActorComponent : Component
+{
+    ActorComponent(std::string actorClass, nlohmann::json properties)
+        : actorClass(std::move(actorClass)), properties(std::move(properties)) {}
+    std::string    actorClass;
+    nlohmann::json properties;
+};
+
+// Extra script components placed on an actor, instantiated after the actor's
+// own class instance.
 struct ScriptComponent : Component
 {
     explicit ScriptComponent(std::vector<LevelScriptDefinition> scripts)

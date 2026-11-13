@@ -3,6 +3,7 @@
 #include <vector>
 #include <array>
 #include <cstdint>
+#include "Engine/Scene/ActorTypes.h"
 #include "Engine/Scene/LevelTypes.h"
 
 namespace SE {
@@ -23,7 +24,6 @@ struct SceneDescriptor
         bool castShadows = true;
         bool receiveShadows = true;
         bool collision = false; // static triangle collision, built at level load
-        std::vector<LevelScriptDefinition> scripts;
     };
     std::vector<MeshEntry> meshes;
 
@@ -117,7 +117,6 @@ struct SceneDescriptor
         // Stamped from the owning entity, not the component JSON.
         uint64_t sourceEntityID = 0;
         std::string name;
-        std::vector<LevelScriptDefinition> scripts;
 
         std::array<float, 3> position = { 0.f, 0.f, 0.f };
         float radius    = 1.0f;   // sphere radius
@@ -142,8 +141,8 @@ struct SceneDescriptor
     };
     std::vector<SceneObject> objects;
 
-    // Entities with only a transform (and usually scripts): spawn points,
-    // triggers, game logic. Rendered as nothing.
+    // Entities with only a transform: named markers (spawn points, waypoints)
+    // scripts look up with fox.scene.find. Rendered as nothing.
     struct EmptyEntity
     {
         uint64_t sourceEntityID = 0;
@@ -151,13 +150,32 @@ struct SceneDescriptor
         std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
         std::array<float, 3> rotation = { 0.0f, 0.0f, 0.0f }; // euler degrees (pitch, yaw, roll)
         std::array<float, 3> scale = { 1.0f, 1.0f, 1.0f };
-        std::vector<LevelScriptDefinition> scripts;
     };
     std::vector<EmptyEntity> empties;
 
     // Particle emitters
     using ParticleEmitterDesc = LevelParticleEmitterDefinition;
     std::vector<ParticleEmitterDesc> particles;
+
+    // Actor placements. components/properties/scripts are the level's
+    // overrides (what is saved); resolved is the class's components with
+    // those overrides applied, filled by the level loader (not saved).
+    struct ActorEntry
+    {
+        uint64_t sourceEntityID = 0;
+        std::string name = "Actor";
+        std::string actorClass;
+        std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
+        std::array<float, 3> rotation = { 0.0f, 0.0f, 0.0f }; // euler degrees (pitch, yaw, roll)
+        std::array<float, 3> scale = { 1.0f, 1.0f, 1.0f };
+        nlohmann::json components = nlohmann::json::object();
+        nlohmann::json properties = nlohmann::json::object();
+        std::vector<LevelScriptDefinition> scripts;
+
+        std::vector<ActorComponentDefinition> resolved;
+        std::string resolveError; // the class could not be loaded; the actor has no components
+    };
+    std::vector<ActorEntry> actors;
 };
 
 } // namespace SE

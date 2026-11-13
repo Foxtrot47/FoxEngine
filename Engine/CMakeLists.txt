@@ -68,4 +68,5 @@ target_compile_options(FoxEngine PRIVATE
     /W4
     /WX
     /MP
+    /bigobj # sol2 binding units exceed the default COFF section limit
 )

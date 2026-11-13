@@ -25,6 +25,17 @@ public:
     virtual sol::object AddScript(sol::state_view lua, uint32_t owner, const std::string& path,
                                   const sol::object& properties) = 0;
 
+    // fox.world: creates an actor (class table or path; options table or nil)
+    // and returns its class instance. Raises when the class cannot be used.
+    virtual sol::object SpawnActor(sol::state_view lua, const sol::object& actorClass,
+                                   const sol::object& options) = 0;
+    // Destroys the actor at the end of the frame (on_destroy runs then).
+    virtual void DestroyActor(uint32_t root) = 0;
+    // The class instance of the actor whose root entity is root, or nil.
+    virtual sol::object ActorInstance(sol::state_view lua, uint32_t root) = 0;
+    // Every actor's class instance in creation order.
+    virtual sol::table ActorInstances(sol::state_view lua) = 0;
+
 protected:
     ~ScriptInstances() = default;
 };

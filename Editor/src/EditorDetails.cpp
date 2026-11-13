@@ -21,14 +21,15 @@ bool DetailsMatch(Selection::Kind kind)
     switch (kind)
     {
     case Kind::World: return true; // world categories filter individually
-    case Kind::Camera: return s_detailsFilter.PassFilter("Camera FOV Near Far Eye Projection Scripts");
-    case Kind::Sun: return s_detailsFilter.PassFilter("Sun Lighting Elevation Azimuth Intensity Color IBL Shadow Scripts");
+    case Kind::Camera: return s_detailsFilter.PassFilter("Camera FOV Near Far Eye Projection");
+    case Kind::Sun: return s_detailsFilter.PassFilter("Sun Lighting Elevation Azimuth Intensity Color IBL Shadow");
     case Kind::SpotLight: return s_detailsFilter.PassFilter("Spot Light Position Direction Color Range Angle Intensity Shadow");
-    case Kind::PointLight: return s_detailsFilter.PassFilter("Point Light Position Color Radius Flicker Shadow Scripts");
-    case Kind::Mesh: return s_detailsFilter.PassFilter("Mesh Transform Position Rotation Scale Rendering Shadows Scripts");
-    case Kind::Object: return s_detailsFilter.PassFilter("Object Transform Position Size Radius Material Tint Metallic Roughness Emissive Scripts");
-    case Kind::Emitter: return s_detailsFilter.PassFilter("Emitter Particles Preset Emission Transform Lifetime Size Color Velocity Physics Texture Scripts");
-    case Kind::Empty: return s_detailsFilter.PassFilter("Empty Transform Position Rotation Scale Scripts");
+    case Kind::PointLight: return s_detailsFilter.PassFilter("Point Light Position Color Radius Flicker Shadow");
+    case Kind::Mesh: return s_detailsFilter.PassFilter("Mesh Transform Position Rotation Scale Rendering Shadows");
+    case Kind::Object: return s_detailsFilter.PassFilter("Object Transform Position Size Radius Material Tint Metallic Roughness Emissive");
+    case Kind::Emitter: return s_detailsFilter.PassFilter("Emitter Particles Preset Emission Transform Lifetime Size Color Velocity Physics Texture");
+    case Kind::Empty: return s_detailsFilter.PassFilter("Empty Transform Position Rotation Scale");
+    case Kind::Actor: return s_detailsFilter.PassFilter("Actor Class Transform Position Rotation Scale Properties Components Scripts");
     default: return true;
     }
 }
@@ -118,6 +119,59 @@ void DrawObjectDetails(SE::SceneRuntime& scene, int index)
     ImGui::SliderFloat("Emissive Intensity", &def.emissiveIntensity, 0.0f, 20.0f);
 }
 
+// Component overrides only take effect when the actor is rebuilt, which
+// waits for the edit gesture to end (a drag or text entry rebuilds once).
+struct PendingActorRebuild
+{
+    bool pending = false;
+    int  index   = -1;
+};
+PendingActorRebuild s_actorRebuild;
+
+// Returns true when a non-widget edit (add/remove script, reset) happened.
+bool DrawActorDetails(SE::SceneRuntime& scene, int index, ScriptCatalog& catalog)
+{
+    if (index < 0 || index >= static_cast<int>(scene.actors.size())) return false;
+    auto& actor = scene.actors[index];
+    auto* t     = actor.transform;
+    if (!t)
+        return false;
+
+    ImGui::Text("%s", actor.def.name.c_str());
+    ImGui::TextDisabled("%s%s", actor.def.actorClass.c_str(), actor.spawned ? " (spawned)" : "");
+    if (!actor.def.resolveError.empty())
+    {
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", actor.def.resolveError.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::Separator();
+
+    ImGui::DragFloat3("Position", &t->position.x, 0.1f);
+    ImGui::DragFloat3("Rotation", &t->eulerDeg.x, 0.5f);
+    ImGui::DragFloat3("Scale", &t->scale.x, 0.01f);
+
+    bool changed = DrawActorClassProperties(actor.def, catalog, scene);
+
+    ComponentTransformEdit transformEdit;
+    if (DrawActorComponents(actor.def, catalog, scene, transformEdit))
+    {
+        s_actorRebuild = { true, index };
+        changed = true;
+    }
+    if (transformEdit.part >= 0 && transformEdit.part < static_cast<int>(actor.parts.size()))
+    {
+        // Preview while dragging; the rebuild re-creates bodies at the new pose.
+        auto* part = actor.parts[transformEdit.part].transform;
+        part->position = { transformEdit.position[0], transformEdit.position[1], transformEdit.position[2] };
+        part->eulerDeg = { transformEdit.rotation[0], transformEdit.rotation[1], transformEdit.rotation[2] };
+        part->scale    = { transformEdit.scale[0], transformEdit.scale[1], transformEdit.scale[2] };
+    }
+
+    changed |= DrawScriptComponents(actor.def.scripts, catalog, scene);
+    return changed;
+}
+
 void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel,
                           SE::AssetManager& assets, ID3D11Device* device,
                           SE::ShaderLibrary& shaders, uint32_t outWidth, uint32_t outHeight)
@@ -135,40 +189,19 @@ void DrawSelectionDetails(SE::SceneRuntime& scene, Selection& sel,
         DrawEmitterProps(scene, sel.index, assets, device, shaders);
         break;
     case Selection::Kind::Empty: DrawEmptyDetails(scene, sel.index); break;
+    case Selection::Kind::Actor: break; // DrawActorDetails: it needs the script catalog
     default:
         ImGui::TextDisabled("Nothing selected");
         break;
     }
 }
 
-// Script components of the selected entity, or nullptr for kinds without
-// scripts (world, spot light) and stale indices.
-std::vector<SE::LevelScriptDefinition>* SelectionScripts(SE::SceneRuntime& scene,
-                                                         const Selection& sel)
+void ApplyPendingActorRebuild(SE::SceneRuntime& scene)
 {
-    using Kind = Selection::Kind;
-    const int i = sel.index;
-    if (i < 0)
-        return nullptr;
-    switch (sel.kind)
-    {
-    case Kind::Camera: return &scene.currentDesc.camera.scripts;
-    case Kind::Sun:    return &scene.currentDesc.sun.scripts;
-    case Kind::Mesh:
-        return i < (int)scene.loadedMeshes.size() ? &scene.loadedMeshes[i].def.scripts : nullptr;
-    case Kind::Object:
-        return i < (int)scene.sceneObjects.size() ? &scene.sceneObjects[i].def.scripts : nullptr;
-    case Kind::PointLight:
-        return i < scene.lights.numLights && i < (int)scene.pointLightDescs.size()
-            ? &scene.pointLightDescs[i].scripts : nullptr;
-    case Kind::Emitter:
-        return i < (int)scene.particleEmitterDescs.size()
-            ? &scene.particleEmitterDescs[i].scripts : nullptr;
-    case Kind::Empty:
-        return i < (int)scene.emptyEntities.size() ? &scene.emptyEntities[i].def.scripts : nullptr;
-    default:
-        return nullptr;
-    }
+    if (!s_actorRebuild.pending || ImGui::IsAnyItemActive())
+        return;
+    scene.RebuildActor(s_actorRebuild.index);
+    s_actorRebuild = {};
 }
 
 } // namespace
@@ -199,9 +232,10 @@ void DrawDetailsPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
         }
         s_propertyUndo.Begin(scene, sel);
         DrawSelectionDetails(scene, sel, assets, device, shaders, outWidth, outHeight);
-        if (auto* list = SelectionScripts(scene, sel))
-            if (DrawScriptComponents(*list, scripts, scene))
-                s_propertyUndo.MarkEdited();
+        if (sel.kind == Selection::Kind::Actor && DrawActorDetails(scene, sel.index, scripts))
+            s_propertyUndo.MarkEdited();
+        // Before End, so the undo entry's "after" state is the rebuilt actor.
+        ApplyPendingActorRebuild(scene);
         s_propertyUndo.End(scene, undo, device, shaders);
         if (playing)
             ImGui::EndDisabled();
