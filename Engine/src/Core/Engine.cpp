@@ -75,18 +75,36 @@ void Engine::Run()
         fpsTimer += m_clock.GetDeltaTime();
         if (fpsTimer >= 1.0f)
         {
-            wchar_t title[256];
-            swprintf_s(title, L"%s  |  %.1f fps  |  %.2f ms",
-                       m_titleBase.c_str(),
-                       m_clock.GetFPS(),
-                       m_clock.GetDeltaTime() * 1000.0f);
-            SetWindowTextW(m_window.GetHandle(), title);
+            if (m_titleStats)
+            {
+                wchar_t title[256];
+                swprintf_s(title, L"%s  |  %.1f fps  |  %.2f ms",
+                           m_titleBase.c_str(),
+                           m_clock.GetFPS(),
+                           m_clock.GetDeltaTime() * 1000.0f);
+                SetWindowTextW(m_window.GetHandle(), title);
+            }
             fpsTimer = 0.0f;
         }
     }
 
     SE_LOG_INFO("Exiting main loop — %llu frames, %.2fs total",
                 m_clock.GetFrameCount(), m_clock.GetTotalTime());
+}
+
+void Engine::SetTitleBase(const std::wstring& base)
+{
+    m_titleBase = base;
+    // With stats on, the run loop shows the new base within a second.
+    if (!m_titleStats && m_window.IsOpen())
+        SetWindowTextW(m_window.GetHandle(), m_titleBase.c_str());
+}
+
+void Engine::SetTitleStats(bool enabled)
+{
+    m_titleStats = enabled;
+    if (m_window.IsOpen())
+        SetWindowTextW(m_window.GetHandle(), m_titleBase.c_str());
 }
 
 void Engine::Shutdown()
