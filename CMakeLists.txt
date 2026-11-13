@@ -8,6 +8,7 @@ add_subdirectory(Engine)
 add_subdirectory(Player)
 add_subdirectory(Editor)
 add_subdirectory(Tools/FoxCook)
+add_subdirectory(Tools/FoxProject)
 
 include(CTest)
 if(BUILD_TESTING)
