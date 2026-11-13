@@ -11,6 +11,7 @@ static InputManager* s_instance = nullptr;
 bool InputManager::Init(HWND hwnd)
 {
     s_instance = this;
+    m_hwnd = hwnd;
 
     // Raw input for keyboard only — avoids conflict with ImGui's mouse raw input registration.
     RAWINPUTDEVICE rid;
@@ -86,6 +87,76 @@ void InputManager::NewFrame()
     m_mouseDY    = 0;
     m_mouseWheel = 0;
     PollGamepads();
+
+    if (m_cursorCaptured)
+    {
+        // While captured the delta comes from the cursor itself: queued
+        // WM_MOUSEMOVEs straddle the re-centre warp and can't be trusted.
+        const RECT r = CaptureClientRect();
+        POINT cursor;
+        GetCursorPos(&cursor);
+        ScreenToClient(m_hwnd, &cursor);
+        m_mouseDX = cursor.x - (r.left + r.right) / 2;
+        m_mouseDY = cursor.y - (r.top + r.bottom) / 2;
+        RecentreCapturedCursor();
+    }
+}
+
+RECT InputManager::CaptureClientRect() const
+{
+    if (m_captureRect.right > m_captureRect.left && m_captureRect.bottom > m_captureRect.top)
+        return m_captureRect;
+    RECT client = {};
+    GetClientRect(m_hwnd, &client);
+    return client;
+}
+
+void InputManager::RecentreCapturedCursor()
+{
+    const RECT r = CaptureClientRect();
+    POINT centre = { (r.left + r.right) / 2, (r.top + r.bottom) / 2 };
+    IgnoreMouseMoveAt(centre.x, centre.y);
+    ClientToScreen(m_hwnd, &centre);
+    SetCursorPos(centre.x, centre.y);
+
+    POINT topLeft = { r.left, r.top };
+    POINT bottomRight = { r.right, r.bottom };
+    ClientToScreen(m_hwnd, &topLeft);
+    ClientToScreen(m_hwnd, &bottomRight);
+    const RECT clip = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
+    ClipCursor(&clip);
+}
+
+void InputManager::SetCursorCaptured(bool captured)
+{
+    if (captured == m_cursorCaptured || !m_hwnd)
+        return;
+    m_cursorCaptured = captured;
+    if (captured)
+    {
+        // ShowCursor keeps a display counter; one call per transition keeps it balanced.
+        ShowCursor(FALSE);
+        RecentreCapturedCursor();
+    }
+    else
+    {
+        ClipCursor(nullptr);
+        ShowCursor(TRUE);
+    }
+}
+
+void InputManager::ReleaseAllKeys()
+{
+    // Key-up messages never arrive while unfocused, so report the release now
+    // instead of leaving keys stuck down.
+    for (int vk = 0; vk < 256; ++vk)
+    {
+        if (m_keyDown[vk])
+        {
+            m_keyDown[vk] = false;
+            m_keyReleased[vk] = true;
+        }
+    }
 }
 
 bool InputManager::IsKeyDown    (int vk) const { return vk >= 0 && vk < 256 && m_keyDown[vk];     }
@@ -163,10 +234,12 @@ LRESULT InputManager::WndProcHandler(HWND /*hwnd*/, UINT msg, WPARAM wp, LPARAM 
     {
         int32_t x = static_cast<int32_t>(LOWORD(lp));
         int32_t y = static_cast<int32_t>(HIWORD(lp));
-        // Discard the synthetic WM_MOUSEMOVE produced by SetCursorPos re-centering.
-        if (im.m_ignorePending && x == im.m_ignoreX && y == im.m_ignoreY)
+        // Captured deltas are sampled in NewFrame, and the synthetic move
+        // produced by SetCursorPos re-centering is discarded: only track the position.
+        const bool synthetic = im.m_ignorePending && x == im.m_ignoreX && y == im.m_ignoreY;
+        if (im.m_cursorCaptured || synthetic)
         {
-            im.m_ignorePending = false;
+            if (synthetic) im.m_ignorePending = false;
             im.m_mouseAbsX     = x;
             im.m_mouseAbsY     = y;
             im.m_mouseHasPos   = true;
@@ -185,6 +258,14 @@ LRESULT InputManager::WndProcHandler(HWND /*hwnd*/, UINT msg, WPARAM wp, LPARAM 
 
     case WM_MOUSEWHEEL:
         im.m_mouseWheel += GET_WHEEL_DELTA_WPARAM(wp) / WHEEL_DELTA;
+        break;
+
+    case WM_ACTIVATEAPP:
+        if (wp) break;
+        [[fallthrough]];
+    case WM_KILLFOCUS:
+        im.SetCursorCaptured(false);
+        im.ReleaseAllKeys();
         break;
     }
 
