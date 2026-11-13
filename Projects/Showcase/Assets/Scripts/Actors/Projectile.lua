@@ -4,7 +4,7 @@
 
 local Projectile = fox.actor {
     components = {
-        { name = "ball", type = "sphere", radius = 0.12, body = "dynamic", mass = 1.5,
+        { name = "ball", type = "sphere", radius = 0.12, body = "dynamic", mass = 0.5,
           friction = 0.4, restitution = 0.45, color = vec3(0.9, 0.45, 0.1),
           emissive = vec3(6, 2.2, 0.5), cast_shadows = false },
     },
