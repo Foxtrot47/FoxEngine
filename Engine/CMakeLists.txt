@@ -16,6 +16,8 @@ find_package(directxtex CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 find_package(Jolt CONFIG REQUIRED)
+find_package(Lua REQUIRED)
+find_package(sol2 CONFIG REQUIRED)
 
 target_link_libraries(FoxEngine PUBLIC
     d3d11.lib
@@ -35,6 +37,10 @@ target_link_libraries(FoxEngine PUBLIC
 target_link_libraries(FoxEngine PRIVATE zstd::libzstd)
 # Jolt stays private: only Engine/src/Physics includes its headers.
 target_link_libraries(FoxEngine PRIVATE Jolt::Jolt)
+# Lua and sol2 stay private as well: only Engine/src/Scripting includes them.
+target_include_directories(FoxEngine PRIVATE ${LUA_INCLUDE_DIR})
+target_link_libraries(FoxEngine PRIVATE ${LUA_LIBRARIES} sol2::sol2)
+target_compile_definitions(FoxEngine PRIVATE SOL_ALL_SAFETIES_ON=1)
 # vcpkg's Jolt is built with floating-point-exception support, but its
 # exported config only defines that flag for Debug/Release; RegisterTypes()
 # rejects feature-define mismatches, so define it for the other configs.

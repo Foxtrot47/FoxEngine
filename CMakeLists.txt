@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(Engine)
-add_subdirectory(Game)
+add_subdirectory(Player)
 add_subdirectory(Editor)
 add_subdirectory(Tools/FoxCook)
 

@@ -19,11 +19,13 @@ void Scene::DestroyEntity(EntityID id)
         m_entities.end());
 }
 
+// Ids are handed out in increasing order and entities are appended, so
+// m_entities stays sorted by id (scripts resolve entity handles every access).
 Entity* Scene::FindEntity(EntityID id) const
 {
-    for (const auto& e : m_entities)
-        if (e->GetID() == id) return e.get();
-    return nullptr;
+    const auto found = std::lower_bound(m_entities.begin(), m_entities.end(), id,
+        [](const std::unique_ptr<Entity>& e, EntityID value) { return e->GetID() < value; });
+    return found != m_entities.end() && (*found)->GetID() == id ? found->get() : nullptr;
 }
 
 Entity* Scene::FindEntity(const std::string& name) const

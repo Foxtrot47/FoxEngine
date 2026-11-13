@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
+#include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
@@ -210,52 +211,99 @@ ojson WriteParticleEmitter(const SceneDescriptor::ParticleEmitterDesc& e)
     return out;
 }
 
-// Builds the entities array. Mesh entities keep their source IDs; everything
-// else gets fresh sequential IDs above the highest mesh ID.
+ojson WriteScripts(const std::vector<LevelScriptDefinition>& scripts)
+{
+    ojson out = ojson::array();
+    for (const auto& script : scripts)
+    {
+        ojson item = { { "script", script.script } };
+        if (script.properties.is_object() && !script.properties.empty())
+            item["properties"] = ojson(script.properties);
+        out.push_back(std::move(item));
+    }
+    return out;
+}
+
+// Builds the entities array. Non-zero source IDs are preserved; zero IDs (and
+// any repeat of an ID already written, e.g. an entity split into several
+// descriptor entries) get fresh sequential IDs above the highest ID in use.
 ojson WriteEntities(const SceneDescriptor& desc)
 {
-    uint64_t nextID = 0;
-    for (const auto& mesh : desc.meshes)
-        nextID = (std::max)(nextID, mesh.sourceEntityID);
+    uint64_t nextID = (std::max)(desc.camera.sourceEntityID, desc.sun.sourceEntityID);
+    auto observe = [&nextID](const auto& entries) {
+        for (const auto& entry : entries)
+            nextID = (std::max)(nextID, entry.sourceEntityID);
+    };
+    observe(desc.meshes);
+    observe(desc.pointLights);
+    observe(desc.objects);
+    observe(desc.particles);
+    observe(desc.empties);
 
+    std::unordered_set<uint64_t> usedIDs;
     ojson entities = ojson::array();
-    auto addEntity = [&](uint64_t id, const std::string& name, ojson components) {
-        entities.push_back({
-            { "id", FormatEntityID(id != 0 ? id : ++nextID) },
+    auto addEntity = [&](uint64_t id, const std::string& name, ojson components,
+                         const std::vector<LevelScriptDefinition>& scripts) {
+        if (id == 0 || !usedIDs.insert(id).second)
+        {
+            id = ++nextID;
+            usedIDs.insert(id);
+        }
+        ojson entity = {
+            { "id", FormatEntityID(id) },
             { "name", name },
             { "active", true },
             { "components", std::move(components) }
-        });
+        };
+        if (!scripts.empty())
+            entity["scripts"] = WriteScripts(scripts);
+        entities.push_back(std::move(entity));
     };
 
     for (const auto& mesh : desc.meshes)
-        addEntity(mesh.sourceEntityID, mesh.name, WriteMeshComponents(mesh));
-    addEntity(0, "Camera", { { "camera", WriteCamera(desc.camera) } });
-    addEntity(0, "Sun", { { "directionalLight", {
-        { "elevation", desc.sun.elevation },
-        { "azimuth", desc.sun.azimuth },
-        { "intensity", desc.sun.intensity },
-        { "color", desc.sun.color }
-    } } });
+        addEntity(mesh.sourceEntityID, mesh.name, WriteMeshComponents(mesh), mesh.scripts);
+    addEntity(desc.camera.sourceEntityID, desc.camera.name.empty() ? "Camera" : desc.camera.name,
+              { { "camera", WriteCamera(desc.camera) } }, desc.camera.scripts);
+    addEntity(desc.sun.sourceEntityID, desc.sun.name.empty() ? "Sun" : desc.sun.name,
+              { { "directionalLight", {
+                  { "elevation", desc.sun.elevation },
+                  { "azimuth", desc.sun.azimuth },
+                  { "intensity", desc.sun.intensity },
+                  { "color", desc.sun.color }
+              } } }, desc.sun.scripts);
     for (size_t i = 0; i < desc.pointLights.size(); ++i)
     {
-        const std::string& name = desc.pointLights[i].name;
-        addEntity(0, name.empty() ? "Point Light " + std::to_string(i + 1) : name,
-                  { { "pointLight", WritePointLight(desc.pointLights[i]) } });
+        const auto& light = desc.pointLights[i];
+        addEntity(light.sourceEntityID,
+                  light.name.empty() ? "Point Light " + std::to_string(i + 1) : light.name,
+                  { { "pointLight", WritePointLight(light) } }, light.scripts);
     }
     for (size_t i = 0; i < desc.objects.size(); ++i)
     {
-        const bool plane = desc.objects[i].type == SceneDescriptor::SceneObject::Type::Plane;
-        const std::string& name = desc.objects[i].name;
-        addEntity(0, name.empty() ? "Object " + std::to_string(i + 1) : name,
-                  { { plane ? "planeRenderer" : "sphereRenderer",
-                      WriteObject(desc.objects[i]) } });
+        const auto& object = desc.objects[i];
+        const bool plane = object.type == SceneDescriptor::SceneObject::Type::Plane;
+        addEntity(object.sourceEntityID,
+                  object.name.empty() ? "Object " + std::to_string(i + 1) : object.name,
+                  { { plane ? "planeRenderer" : "sphereRenderer", WriteObject(object) } },
+                  object.scripts);
     }
     for (size_t i = 0; i < desc.particles.size(); ++i)
     {
-        const std::string& name = desc.particles[i].name;
-        addEntity(0, name.empty() ? "Particle Emitter " + std::to_string(i + 1) : name,
-                  { { "particleEmitter", WriteParticleEmitter(desc.particles[i]) } });
+        const auto& emitter = desc.particles[i];
+        addEntity(emitter.sourceEntityID,
+                  emitter.name.empty() ? "Particle Emitter " + std::to_string(i + 1) : emitter.name,
+                  { { "particleEmitter", WriteParticleEmitter(emitter) } }, emitter.scripts);
+    }
+    for (const auto& empty : desc.empties)
+    {
+        ojson components = ojson::object();
+        components["transform"] = {
+            { "position", empty.position },
+            { "rotationDegrees", empty.rotation },
+            { "scale", empty.scale }
+        };
+        addEntity(empty.sourceEntityID, empty.name.empty() ? "Empty" : empty.name,
+                  std::move(components), empty.scripts);
     }
     return entities;
 }

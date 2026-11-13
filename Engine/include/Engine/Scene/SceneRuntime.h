@@ -29,7 +29,6 @@
 #include "Engine/Renderer/ToneMap.h"
 #include "Engine/Renderer/VolumetricFog.h"
 #include "Engine/Scene/Camera/CameraComponent.h"
-#include "Engine/Scene/Camera/CameraController.h"
 #include "Engine/Scene/Entity.h"
 #include "Engine/Scene/LevelLoadOperation.h"
 #include "Engine/Scene/LevelWorld.h"
@@ -75,6 +74,13 @@ public:
         bool                         prevWorldValid = false;
     };
 
+    // An empty entity: its world entity's transform is the source of truth.
+    struct LoadedEmpty
+    {
+        SceneDescriptor::EmptyEntity def;
+        TransformComponent*          transform = nullptr;
+    };
+
     ~SceneRuntime();
 
     bool Init(Renderer& renderer, ShaderLibrary& shaders, AssetManager& assets,
@@ -84,7 +90,10 @@ public:
     void Shutdown();
 
     // --- Async scene loading ---
-    void RequestSceneLoad(const std::string& scenePath);
+    // levelJson, when non-empty, is FoxLevel JSON text loaded instead of
+    // reading scenePath from disk; scenePath stays the scene's identity
+    // (editor Play mode loads the unsaved editor state this way).
+    void RequestSceneLoad(const std::string& scenePath, std::string levelJson = {});
     // Advances the load state machine; call once per frame before Update().
     // pumpMessages keeps the window responsive while the scene is applied;
     // return false from it to abort the apply. Returns true on the frame the
@@ -94,6 +103,10 @@ public:
     bool HasScene() const { return camera != nullptr; }
     LevelLoadStatus GetLoadStatus() const { return m_levelLoad.GetStatus(); }
     const std::string& GetLoadingScenePath() const { return m_loadingScenePath; }
+    // Called on the main thread when a newly loaded scene is about to replace
+    // the current one: every fallible load step has passed and the outgoing
+    // scene is still intact (the ScriptSystem runs on_destroy here).
+    std::function<void()> onSceneUnloading;
 
     // --- Per-frame (only when HasScene() and not loading) ---
     void Update(float dt, float totalTime);
@@ -163,6 +176,22 @@ public:
     int AddLoadedMesh(const std::string& path, AssetHandle<Mesh> mesh,
                       std::vector<ForwardPipeline::SubMat> materials,
                       const DirectX::XMFLOAT3& position);
+    // Empty entities. Remove keeps the world entity alive (like meshes), so
+    // the returned transform stays valid for a later InsertEmpty.
+    bool AddEmpty(const DirectX::XMFLOAT3& position);
+    LoadedEmpty RemoveEmpty(int index);
+    void InsertEmpty(int index, LoadedEmpty empty);
+    int DuplicateEmpty(int index);
+
+    // --- Scripted entity state (fox.Entity / fox.Transform) ---
+    // Pushes the entity's world position into the runtime state it drives:
+    // point light, particle emitter and primitive positions (meshes and
+    // empties render from their TransformComponent directly), then recurses
+    // into its children. The camera is driven through fox.camera instead.
+    void ApplyEntityTransform(const Entity& entity);
+    // Sets entity.active and shows/hides what the entity renders (mesh,
+    // primitive, point light, particle emitter).
+    void SetEntityActive(Entity& entity, bool active);
 
     // --- Physics balls (spawned on demand, e.g. by scripts; not saved) ---
     struct PhysicsBall
@@ -213,10 +242,10 @@ public:
     // --- Scene state ---
     LevelWorld       world;
     CameraComponent* camera = nullptr;
-    CameraController camCtrl;
 
     std::vector<LoadedMesh>                        loadedMeshes;
     std::vector<LoadedObject>                      sceneObjects;
+    std::vector<LoadedEmpty>                       emptyEntities;
     std::vector<std::unique_ptr<ParticleSystem>>   particleSystems;
     std::vector<SceneDescriptor::ParticleEmitterDesc> particleEmitterDescs;
     std::vector<std::string>                       particlePresetFiles;
@@ -228,6 +257,7 @@ public:
     SceneDescriptor                                currentDesc;
     std::string                                    currentScenePath;
     std::string                                    lastRequestedScenePath; // for retry after a failed load
+    std::string                                    lastRequestedSceneJson; // in-memory level text of that request (empty = file)
     std::string                                    sceneLoadError;
 
     // --- Physics ---
