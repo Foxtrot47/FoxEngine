@@ -1,334 +1,906 @@
 {
+  "format": "FoxLevel",
+  "version": 2,
   "name": "PBR Showcase",
-  "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
-  "camera": {
-    "eye": [0, 4.8, -20],
-    "yaw": 0,
-    "pitch": -8,
-    "nearZ": 0.1,
-    "farZ": 500
-  },
-  "sun": {
-    "elevation": 45.0,
-    "azimuth": -30.0,
-    "intensity": 2.0,
-    "color": [1.0, 0.93, 0.82]
-  },
-  "iblIntensity": 1.05,
-  "pointLights": [
-    {
-      "position": [-6.0, 4.5, -1.0],
-      "color": [1.2, 1.7, 2.6],
-      "radius": 12.0,
-      "castShadow": true
+  "settings": {
+    "environment": {
+      "skybox": "Assets/Bistro/san_giuseppe_bridge_4k.dds",
+      "iblIntensity": 1.0499999523162842,
+      "diffuseIBLSaturation": 1.0
     },
-    {
-      "position": [5.5, 4.0, 5.0],
-      "color": [2.8, 1.25, 0.55],
-      "radius": 13.0,
-      "castShadow": true
+    "physics": {
+      "floor": {
+        "min": [
+          -30.0,
+          -0.5,
+          -30.0
+        ],
+        "max": [
+          30.0,
+          0.0,
+          30.0
+        ],
+        "friction": 0.6000000238418579,
+        "restitution": 0.30000001192092896
+      },
+      "characterSpawn": [
+        0.0,
+        2.0,
+        -18.0
+      ],
+      "gravity": true
+    },
+    "toneMapping": {
+      "operator": "ACES",
+      "exposure": 0.9200000166893005
+    },
+    "colorGrading": {
+      "temperature": 0.0,
+      "tint": 0.0,
+      "saturation": 1.0,
+      "contrast": 1.0,
+      "vignette": 0.0,
+      "vignetteFeather": 0.5
+    },
+    "bloom": {
+      "enabled": true,
+      "threshold": 1.100000023841858,
+      "intensity": 0.10000000149011612,
+      "scatter": 0.5799999833106995
+    },
+    "fog": {
+      "enabled": true,
+      "density": 0.017999999225139618,
+      "anisotropy": 0.41999998688697815,
+      "scatterIntensity": 0.20000000298023224,
+      "steps": 48,
+      "maxDistance": 140.0,
+      "ambientColor": [
+        0.6600000262260437,
+        0.6800000071525574,
+        0.699999988079071
+      ],
+      "ambientIntensity": 0.41999998688697815,
+      "heightFalloff": 0.019999999552965164,
+      "heightBase": 0.0,
+      "noiseStrength": 0.1599999964237213,
+      "noiseScale": 0.019999999552965164,
+      "noiseSpeed": 0.3499999940395355,
+      "nearClearDistance": 4.0,
+      "distanceDensity": 2.5
     }
-  ],
-  "physics": {
-    "floor": {
-      "min": [-30, -0.5, -30],
-      "max": [30, 0, 30],
-      "friction": 0.6,
-      "restitution": 0.3
-    },
-    "characterSpawn": [0, 2, -18],
-    "gravity": true
   },
-  "toneMapping": {
-    "op": 1,
-    "exposure": 0.92
-  },
-  "bloom": {
-    "enabled": true,
-    "threshold": 1.1,
-    "intensity": 0.10,
-    "scatter": 0.58
-  },
-  "fog": {
-    "enabled": true,
-    "density": 0.018,
-    "anisotropy": 0.42,
-    "scatterIntensity": 0.20,
-    "steps": 48,
-    "maxDistance": 140.0,
-    "ambientColor": [0.66, 0.68, 0.70],
-    "ambientIntensity": 0.42,
-    "heightFalloff": 0.02,
-    "heightBase": 0.0,
-    "noiseStrength": 0.16,
-    "noiseScale": 0.02,
-    "noiseSpeed": 0.35,
-    "nearClearDistance": 4.0,
-    "distanceDensity": 2.5
-  },
-  "objects": [
+  "entities": [
     {
-      "comment": "--- Restrained polished marble floor ---",
-      "type": "plane",
-      "position": [0, 0, 0],
-      "halfSizeX": 18.0,
-      "halfSizeZ": 18.0,
-      "material": {
-        "albedo":       "Assets/Showcase/marble_albedo.dds",
-        "normal":       "Assets/Showcase/marble_normal.dds",
-        "roughness":    "Assets/Showcase/marble_roughness.dds",
-        "roughnessScale": 0.72,
-        "reflectionMode": "planar",
-        "reflectionStrength": 0.58,
-        "reflectionResolutionScale": 0.5
+      "id": "0000000000000001",
+      "name": "Camera",
+      "active": true,
+      "components": {
+        "camera": {
+          "eye": [
+            0.0,
+            4.800000190734863,
+            -20.0
+          ],
+          "yaw": 0.0,
+          "pitch": -8.0,
+          "nearZ": 0.10000000149011612,
+          "farZ": 500.0,
+          "primary": true
+        }
       }
     },
     {
-      "comment": "--- Polished aluminium ---",
-      "type": "sphere",
-      "position": [-6.0, 1.25, -2.0],
-      "radius": 1.2,
-      "material": {
-        "albedo":       "Assets/Showcase/aluminium_albedo.dds",
-        "normal":       "Assets/Showcase/aluminium_normal.dds",
-        "roughness":    "Assets/Showcase/aluminium_roughness.dds",
-        "metallic_map": "Assets/Showcase/aluminium_metallic.dds"
+      "id": "0000000000000002",
+      "name": "Sun",
+      "active": true,
+      "components": {
+        "directionalLight": {
+          "elevation": 45.0,
+          "azimuth": -30.0,
+          "intensity": 2.0,
+          "color": [
+            1.0,
+            0.9300000071525574,
+            0.8199999928474426
+          ]
+        }
       }
     },
     {
-      "comment": "--- Copper ---",
-      "type": "sphere",
-      "position": [-2.0, 1.25, -2.0],
-      "radius": 1.2,
-      "material": {
-        "albedo":       "Assets/Showcase/copper_albedo.dds",
-        "normal":       "Assets/Showcase/copper_normal.dds",
-        "roughness":    "Assets/Showcase/copper_roughness.dds",
-        "metallic_map": "Assets/Showcase/copper_metallic.dds"
+      "id": "0000000000000003",
+      "name": "Point Light 1",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            -6.0,
+            4.5,
+            -1.0
+          ],
+          "color": [
+            1.2000000476837158,
+            1.7000000476837158,
+            2.5999999046325684
+          ],
+          "radius": 12.0,
+          "castShadow": true,
+          "flicker": false
+        }
       }
     },
     {
-      "comment": "--- Marble sphere ---",
-      "type": "sphere",
-      "position": [2.0, 1.25, -2.0],
-      "radius": 1.2,
-      "material": {
-        "albedo":    "Assets/Showcase/marble_albedo.dds",
-        "normal":    "Assets/Showcase/marble_normal.dds",
-        "roughness": "Assets/Showcase/marble_roughness.dds"
+      "id": "0000000000000004",
+      "name": "Point Light 2",
+      "active": true,
+      "components": {
+        "pointLight": {
+          "position": [
+            5.5,
+            4.0,
+            5.0
+          ],
+          "color": [
+            2.799999952316284,
+            1.25,
+            0.550000011920929
+          ],
+          "radius": 13.0,
+          "castShadow": true,
+          "flicker": false
+        }
       }
     },
     {
-      "type": "sphere",
-      "position": [6.0, 1.25, -2.0],
-      "radius": 1.2,
-      "material": {
-        "albedo":    "Assets/Showcase/leather_albedo.dds",
-        "normal":    "Assets/Showcase/leather_normal.dds",
-        "roughness": "Assets/Showcase/leather_arm.dds"
+      "id": "0000000000000005",
+      "name": "Object 1",
+      "active": true,
+      "components": {
+        "planeRenderer": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "halfSizeX": 18.0,
+          "halfSizeZ": 18.0,
+          "material": {
+            "albedo": "Assets/Showcase/marble_albedo.dds",
+            "normal": "Assets/Showcase/marble_normal.dds",
+            "roughness": "Assets/Showcase/marble_roughness.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "planar",
+            "reflectionStrength": 0.5799999833106995,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 0.7200000286102295,
+            "metallicScale": 1.0
+          }
+        }
       }
     },
     {
-      "comment": "--- Polished aluminium roughness study ---",
-      "type": "sphere",
-      "position": [-5.0, 1.05, 3.0],
-      "radius": 1.0,
-      "material": {
-        "albedo": "Assets/Showcase/aluminium_albedo.dds",
-        "normal": "Assets/Showcase/aluminium_normal.dds",
-        "roughness": "Assets/Showcase/aluminium_roughness.dds",
-        "metallic_map": "Assets/Showcase/aluminium_metallic.dds",
-        "roughnessScale": 0.22
+      "id": "0000000000000006",
+      "name": "Object 2",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            -6.0,
+            1.25,
+            -2.0
+          ],
+          "radius": 1.2000000476837158,
+          "material": {
+            "albedo": "Assets/Showcase/aluminium_albedo.dds",
+            "normal": "Assets/Showcase/aluminium_normal.dds",
+            "roughness": "Assets/Showcase/aluminium_roughness.dds",
+            "metallic": "Assets/Showcase/aluminium_metallic.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
       }
     },
     {
-      "comment": "--- Satin aluminium roughness study ---",
-      "type": "sphere",
-      "position": [0.0, 1.05, 3.0],
-      "radius": 1.0,
-      "material": {
-        "albedo": "Assets/Showcase/aluminium_albedo.dds",
-        "normal": "Assets/Showcase/aluminium_normal.dds",
-        "roughness": "Assets/Showcase/aluminium_roughness.dds",
-        "metallic_map": "Assets/Showcase/aluminium_metallic.dds",
-        "roughnessScale": 0.72
+      "id": "0000000000000007",
+      "name": "Object 3",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            -2.0,
+            1.25,
+            -2.0
+          ],
+          "radius": 1.2000000476837158,
+          "material": {
+            "albedo": "Assets/Showcase/copper_albedo.dds",
+            "normal": "Assets/Showcase/copper_normal.dds",
+            "roughness": "Assets/Showcase/copper_roughness.dds",
+            "metallic": "Assets/Showcase/copper_metallic.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
       }
     },
     {
-      "comment": "--- Brushed aluminium roughness study ---",
-      "type": "sphere",
-      "position": [5.0, 1.05, 3.0],
-      "radius": 1.0,
-      "material": {
-        "albedo": "Assets/Showcase/aluminium_albedo.dds",
-        "normal": "Assets/Showcase/aluminium_normal.dds",
-        "roughness": "Assets/Showcase/aluminium_roughness.dds",
-        "metallic_map": "Assets/Showcase/aluminium_metallic.dds",
-        "roughnessScale": 1.35
+      "id": "0000000000000008",
+      "name": "Object 4",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            2.0,
+            1.25,
+            -2.0
+          ],
+          "radius": 1.2000000476837158,
+          "material": {
+            "albedo": "Assets/Showcase/marble_albedo.dds",
+            "normal": "Assets/Showcase/marble_normal.dds",
+            "roughness": "Assets/Showcase/marble_roughness.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
       }
     },
     {
-      "comment": "--- Emissive red glow ---",
-      "type": "sphere",
-      "position": [-4, 3.2, 7],
-      "radius": 0.7,
-      "material": {
-        "albedo":    "Assets/Showcase/marble_albedo.dds",
-        "roughness": "Assets/Showcase/marble_roughness.dds",
-        "emissive":  "Assets/Showcase/marble_roughness.dds",
-        "emissive_intensity": 3.0,
-        "emissive_color": [1.0, 0.1, 0.1]
+      "id": "0000000000000009",
+      "name": "Object 5",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            6.0,
+            1.25,
+            -2.0
+          ],
+          "radius": 1.2000000476837158,
+          "material": {
+            "albedo": "Assets/Showcase/leather_albedo.dds",
+            "normal": "Assets/Showcase/leather_normal.dds",
+            "roughness": "Assets/Showcase/leather_arm.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
       }
     },
     {
-      "comment": "--- Emissive green glow ---",
-      "type": "sphere",
-      "position": [0, 3.2, 7],
-      "radius": 0.7,
-      "material": {
-        "albedo":    "Assets/Showcase/marble_albedo.dds",
-        "roughness": "Assets/Showcase/marble_roughness.dds",
-        "emissive":  "Assets/Showcase/marble_roughness.dds",
-        "emissive_intensity": 3.0,
-        "emissive_color": [0.1, 1.0, 0.2]
+      "id": "000000000000000a",
+      "name": "Object 6",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            -5.0,
+            1.0499999523162842,
+            3.0
+          ],
+          "radius": 1.0,
+          "material": {
+            "albedo": "Assets/Showcase/aluminium_albedo.dds",
+            "normal": "Assets/Showcase/aluminium_normal.dds",
+            "roughness": "Assets/Showcase/aluminium_roughness.dds",
+            "metallic": "Assets/Showcase/aluminium_metallic.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 0.2199999988079071,
+            "metallicScale": 1.0
+          }
+        }
       }
     },
     {
-      "comment": "--- Emissive blue glow ---",
-      "type": "sphere",
-      "position": [4, 3.2, 7],
-      "radius": 0.7,
-      "material": {
-        "albedo":    "Assets/Showcase/marble_albedo.dds",
-        "roughness": "Assets/Showcase/marble_roughness.dds",
-        "emissive":  "Assets/Showcase/marble_roughness.dds",
-        "emissive_intensity": 3.0,
-        "emissive_color": [0.1, 0.2, 1.0]
+      "id": "000000000000000b",
+      "name": "Object 7",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            0.0,
+            1.0499999523162842,
+            3.0
+          ],
+          "radius": 1.0,
+          "material": {
+            "albedo": "Assets/Showcase/aluminium_albedo.dds",
+            "normal": "Assets/Showcase/aluminium_normal.dds",
+            "roughness": "Assets/Showcase/aluminium_roughness.dds",
+            "metallic": "Assets/Showcase/aluminium_metallic.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 0.7200000286102295,
+            "metallicScale": 1.0
+          }
+        }
       }
-    }
-  ],
-  "particles": [
-    {
-      "comment": "Muzzle flash — bright starburst",
-      "position": [6.0, 1.4, 9.0],
-      "emit_rate": 2,
-      "max_particles": 10,
-      "lifetime_min": 0.03,
-      "lifetime_max": 0.07,
-      "velocity_min": [0, 0, 0],
-      "velocity_max": [0, 0, 0],
-      "size_start": 0.6,
-      "size_end": 0.8,
-      "color_start": [8.0, 6.0, 3.0, 1.0],
-      "color_end": [5.0, 2.0, 0.5, 0.0],
-      "gravity": [0, 0, 0],
-      "spawn_radius": 0.0,
-      "texture": "Assets/Particles/muzzle_flash.dds",
-      "atlasColumns": 1,
-      "atlasRows": 2,
-      "aspectRatio": 2.0,
-      "softDistance": 0.0,
-      "drag": 0.0,
-      "shaderMode": 0,
-      "emitMode": 0,
-      "rotationDegrees": 0.0,
-      "randomRotation": false
     },
     {
-      "comment": "Tracer",
-      "position": [6.0, 1.4, 9.0],
-      "emit_rate": 4,
-      "emitMode": 0,
-      "max_particles": 32,
-      "lifetime_min": 0.18,
-      "lifetime_max": 0.3,
-      "velocity_min": [-8.0, 0.0, 0.0],
-      "velocity_max": [-12.0, 0.0, 0.0],
-      "size_start": 0.04,
-      "size_end": 0.02,
-      "color_start": [6.0, 5.0, 2.0, 0.9],
-      "color_end": [2.0, 1.0, 0.2, 0.0],
-      "gravity": [0, 0, 0],
-      "spawn_radius": 0.0,
-      "texture": "Assets/Particles/ptfx_bullet_tacer_heat.dds",
-      "atlasColumns": 1,
-      "atlasRows": 1,
-      "atlasFrameCount": 1,
-      "textureRotationDegrees": -90.0,
-      "aspectRatio": 1.0,
-      "softDistance": 0.0,
-      "blendMode": 0,
-      "drag": 0.0,
-      "shaderMode": 0,
-      "rotationDegrees": 0.0,
-      "randomRotation": false,
-      "tracerStretch": 0.08
+      "id": "000000000000000c",
+      "name": "Object 8",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            5.0,
+            1.0499999523162842,
+            3.0
+          ],
+          "radius": 1.0,
+          "material": {
+            "albedo": "Assets/Showcase/aluminium_albedo.dds",
+            "normal": "Assets/Showcase/aluminium_normal.dds",
+            "roughness": "Assets/Showcase/aluminium_roughness.dds",
+            "metallic": "Assets/Showcase/aluminium_metallic.dds",
+            "emissive_intensity": 1.0,
+            "emissive_color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.350000023841858,
+            "metallicScale": 1.0
+          }
+        }
+      }
     },
     {
-      "comment": "Fire flipbook — animated flame sprites",
-      "position": [-4.0, 0.5, 10.0],
-      "emit_rate": 15,
-      "max_particles": 60,
-      "lifetime_min": 0.5,
-      "lifetime_max": 1.2,
-      "velocity_min": [-0.1, 0.5, -0.1],
-      "velocity_max": [0.1, 1.5, 0.1],
-      "size_start": 1.0,
-      "size_end": 0.3,
-      "color_start": [3.0, 2.5, 1.5, 1.0],
-      "color_end": [2.0, 0.5, 0.0, 0.0],
-      "gravity": [0, 0.5, 0],
-      "spawn_radius": 0.15,
-      "texture": "Assets/Particles/flipbook_fire.dds",
-      "atlasColumns": 5,
-      "atlasRows": 5,
-      "softDistance": 0.3,
-      "drag": 0.5,
-      "shaderMode": 0
+      "id": "000000000000000d",
+      "name": "Object 9",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            -4.0,
+            3.200000047683716,
+            7.0
+          ],
+          "radius": 0.699999988079071,
+          "material": {
+            "albedo": "Assets/Showcase/marble_albedo.dds",
+            "roughness": "Assets/Showcase/marble_roughness.dds",
+            "emissive": "Assets/Showcase/marble_roughness.dds",
+            "emissive_intensity": 3.0,
+            "emissive_color": [
+              1.0,
+              0.10000000149011612,
+              0.10000000149011612
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
+      }
     },
     {
-      "comment": "Sparks and embers",
-      "position": [-1.0, 0.65, 10.0],
-      "emit_rate": 18,
-      "max_particles": 96,
-      "lifetime_min": 0.65,
-      "lifetime_max": 1.8,
-      "velocity_min": [-1.6, 1.2, -0.7],
-      "velocity_max": [1.6, 4.8, 0.7],
-      "size_start": 0.08,
-      "size_end": 0.015,
-      "color_start": [8.0, 3.8, 0.8, 1.0],
-      "color_end": [1.2, 0.12, 0.01, 0.0],
-      "gravity": [0, -2.8, 0],
-      "spawn_radius": 0.25,
-      "blendMode": 0,
-      "drag": 0.15,
-      "shaderMode": 1
+      "id": "000000000000000e",
+      "name": "Object 10",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            0.0,
+            3.200000047683716,
+            7.0
+          ],
+          "radius": 0.699999988079071,
+          "material": {
+            "albedo": "Assets/Showcase/marble_albedo.dds",
+            "roughness": "Assets/Showcase/marble_roughness.dds",
+            "emissive": "Assets/Showcase/marble_roughness.dds",
+            "emissive_intensity": 3.0,
+            "emissive_color": [
+              0.10000000149011612,
+              1.0,
+              0.20000000298023224
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
+      }
     },
     {
-      "comment": "Smoke",
-      "position": [-7.0, 0.5, 10.0],
-      "emit_rate": 6,
-      "max_particles": 40,
-      "lifetime_min": 3.0,
-      "lifetime_max": 5.0,
-      "velocity_min": [-0.1, 0.3, -0.1],
-      "velocity_max": [0.1, 0.8, 0.1],
-      "size_start": 0.4,
-      "size_end": 2.0,
-      "color_start": [0.2, 0.2, 0.2, 0.4],
-      "color_end": [0.1, 0.1, 0.1, 0.0],
-      "gravity": [0, 0.1, 0],
-      "spawn_radius": 0.2,
-      "texture": "Assets/Particles/smoke_puff.dds",
-      "blendMode": 1,
-      "softDistance": 0.5,
-      "drag": 0.3,
-      "shaderMode": 0,
-      "atlasColumns": 3,
-      "atlasRows": 3,
-      "atlasSpeed": 0.6,
-      "lightingInfluence": 0.55
+      "id": "000000000000000f",
+      "name": "Object 11",
+      "active": true,
+      "components": {
+        "sphereRenderer": {
+          "position": [
+            4.0,
+            3.200000047683716,
+            7.0
+          ],
+          "radius": 0.699999988079071,
+          "material": {
+            "albedo": "Assets/Showcase/marble_albedo.dds",
+            "roughness": "Assets/Showcase/marble_roughness.dds",
+            "emissive": "Assets/Showcase/marble_roughness.dds",
+            "emissive_intensity": 3.0,
+            "emissive_color": [
+              0.10000000149011612,
+              0.20000000298023224,
+              1.0
+            ],
+            "tint": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "reflectionMode": "environment",
+            "reflectionStrength": 1.0,
+            "reflectionResolutionScale": 0.5,
+            "roughnessScale": 1.0,
+            "metallicScale": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "0000000000000010",
+      "name": "Particle Emitter 1",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            6.0,
+            1.399999976158142,
+            9.0
+          ],
+          "emit_rate": 2.0,
+          "max_particles": 10,
+          "lifetime_min": 0.029999999329447746,
+          "lifetime_max": 0.07000000029802322,
+          "velocity_min": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "velocity_max": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "size_start": 0.6000000238418579,
+          "size_end": 0.800000011920929,
+          "color_start": [
+            8.0,
+            6.0,
+            3.0,
+            1.0
+          ],
+          "color_end": [
+            5.0,
+            2.0,
+            0.5,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.0,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 1,
+          "atlasRows": 2,
+          "atlasFrameCount": 0,
+          "atlasSpeed": 1.0,
+          "textureRotationDegrees": 0.0,
+          "softDistance": 0.0,
+          "aspectRatio": 2.0,
+          "blendMode": 0,
+          "drag": 0.0,
+          "shaderMode": 0,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": false,
+          "tracerStretch": 0.0,
+          "lightingInfluence": 0.0,
+          "texture": "Assets/Particles/muzzle_flash.dds"
+        }
+      }
+    },
+    {
+      "id": "0000000000000011",
+      "name": "Particle Emitter 2",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            6.0,
+            1.399999976158142,
+            9.0
+          ],
+          "emit_rate": 4.0,
+          "max_particles": 32,
+          "lifetime_min": 0.18000000715255737,
+          "lifetime_max": 0.30000001192092896,
+          "velocity_min": [
+            -8.0,
+            0.0,
+            0.0
+          ],
+          "velocity_max": [
+            -12.0,
+            0.0,
+            0.0
+          ],
+          "size_start": 0.03999999910593033,
+          "size_end": 0.019999999552965164,
+          "color_start": [
+            6.0,
+            5.0,
+            2.0,
+            0.8999999761581421
+          ],
+          "color_end": [
+            2.0,
+            1.0,
+            0.20000000298023224,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.0,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 1,
+          "atlasRows": 1,
+          "atlasFrameCount": 1,
+          "atlasSpeed": 1.0,
+          "textureRotationDegrees": -90.0,
+          "softDistance": 0.0,
+          "aspectRatio": 1.0,
+          "blendMode": 0,
+          "drag": 0.0,
+          "shaderMode": 0,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": false,
+          "tracerStretch": 0.07999999821186066,
+          "lightingInfluence": 0.0,
+          "texture": "Assets/Particles/ptfx_bullet_tacer_heat.dds"
+        }
+      }
+    },
+    {
+      "id": "0000000000000012",
+      "name": "Particle Emitter 3",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            -4.0,
+            0.5,
+            10.0
+          ],
+          "emit_rate": 15.0,
+          "max_particles": 60,
+          "lifetime_min": 0.5,
+          "lifetime_max": 1.2000000476837158,
+          "velocity_min": [
+            -0.10000000149011612,
+            0.5,
+            -0.10000000149011612
+          ],
+          "velocity_max": [
+            0.10000000149011612,
+            1.5,
+            0.10000000149011612
+          ],
+          "size_start": 1.0,
+          "size_end": 0.30000001192092896,
+          "color_start": [
+            3.0,
+            2.5,
+            1.5,
+            1.0
+          ],
+          "color_end": [
+            2.0,
+            0.5,
+            0.0,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            0.5,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.15000000596046448,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 5,
+          "atlasRows": 5,
+          "atlasFrameCount": 0,
+          "atlasSpeed": 1.0,
+          "textureRotationDegrees": 0.0,
+          "softDistance": 0.30000001192092896,
+          "aspectRatio": 1.0,
+          "blendMode": 0,
+          "drag": 0.5,
+          "shaderMode": 0,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": true,
+          "tracerStretch": 0.0,
+          "lightingInfluence": 0.0,
+          "texture": "Assets/Particles/flipbook_fire.dds"
+        }
+      }
+    },
+    {
+      "id": "0000000000000013",
+      "name": "Particle Emitter 4",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            -1.0,
+            0.6499999761581421,
+            10.0
+          ],
+          "emit_rate": 18.0,
+          "max_particles": 96,
+          "lifetime_min": 0.6499999761581421,
+          "lifetime_max": 1.7999999523162842,
+          "velocity_min": [
+            -1.600000023841858,
+            1.2000000476837158,
+            -0.699999988079071
+          ],
+          "velocity_max": [
+            1.600000023841858,
+            4.800000190734863,
+            0.699999988079071
+          ],
+          "size_start": 0.07999999821186066,
+          "size_end": 0.014999999664723873,
+          "color_start": [
+            8.0,
+            3.799999952316284,
+            0.800000011920929,
+            1.0
+          ],
+          "color_end": [
+            1.2000000476837158,
+            0.11999999731779099,
+            0.009999999776482582,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            -2.799999952316284,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.25,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 1,
+          "atlasRows": 1,
+          "atlasFrameCount": 0,
+          "atlasSpeed": 1.0,
+          "textureRotationDegrees": 0.0,
+          "softDistance": 0.5,
+          "aspectRatio": 1.0,
+          "blendMode": 0,
+          "drag": 0.15000000596046448,
+          "shaderMode": 1,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": true,
+          "tracerStretch": 0.0,
+          "lightingInfluence": 0.0
+        }
+      }
+    },
+    {
+      "id": "0000000000000014",
+      "name": "Particle Emitter 5",
+      "active": true,
+      "components": {
+        "particleEmitter": {
+          "position": [
+            -7.0,
+            0.5,
+            10.0
+          ],
+          "emit_rate": 6.0,
+          "max_particles": 40,
+          "lifetime_min": 3.0,
+          "lifetime_max": 5.0,
+          "velocity_min": [
+            -0.10000000149011612,
+            0.30000001192092896,
+            -0.10000000149011612
+          ],
+          "velocity_max": [
+            0.10000000149011612,
+            0.800000011920929,
+            0.10000000149011612
+          ],
+          "size_start": 0.4000000059604645,
+          "size_end": 2.0,
+          "color_start": [
+            0.20000000298023224,
+            0.20000000298023224,
+            0.20000000298023224,
+            0.4000000059604645
+          ],
+          "color_end": [
+            0.10000000149011612,
+            0.10000000149011612,
+            0.10000000149011612,
+            0.0
+          ],
+          "gravity": [
+            0.0,
+            0.10000000149011612,
+            0.0
+          ],
+          "spawnShape": "sphere",
+          "spawn_radius": 0.20000000298023224,
+          "spawnBoxExtents": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "atlasColumns": 3,
+          "atlasRows": 3,
+          "atlasFrameCount": 0,
+          "atlasSpeed": 0.6000000238418579,
+          "textureRotationDegrees": 0.0,
+          "softDistance": 0.5,
+          "aspectRatio": 1.0,
+          "blendMode": 1,
+          "drag": 0.30000001192092896,
+          "shaderMode": 0,
+          "emitMode": 0,
+          "rotationDegrees": 0.0,
+          "randomRotation": true,
+          "tracerStretch": 0.0,
+          "lightingInfluence": 0.550000011920929,
+          "texture": "Assets/Particles/smoke_puff.dds"
+        }
+      }
     }
   ]
 }
