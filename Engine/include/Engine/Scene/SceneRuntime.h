@@ -274,6 +274,11 @@ public:
     void InsertActor(int index, SceneDescriptor::ActorEntry def);
     int DuplicateActor(int index);
     void RebuildActor(int index);
+    // Rebuilds the actor's parts from its class after a class edit (hot
+    // reload), keeping the root entity, its transform and its scripts. Part
+    // entities are replaced. On a class or override error the current parts
+    // stay and false is returned (logged).
+    bool ReloadActorParts(LoadedActor& actor);
 
     // Off: Update animates (particles, flicker) but does not step physics,
     // so dynamic actors keep their placement (editor edit mode).
@@ -372,6 +377,8 @@ private:
     bool BuildActor(LoadedActor& actor, Scene& scene, Entity& root, PhysicsWorld& physics,
                     bool loadMissing);
     void CreatePartBody(LoadedActor& actor, ActorPart& part, PhysicsWorld& physics);
+    // The parts of BuildActor: from actor.def.resolved under actor.entity.
+    void BuildActorParts(LoadedActor& actor, Scene& scene, PhysicsWorld& physics, bool loadMissing);
     // Resolves def through actorClassResolver (logging why it has no parts)
     // and builds it as a placed actor in the current world.
     LoadedActor CreatePlacedActor(SceneDescriptor::ActorEntry def);

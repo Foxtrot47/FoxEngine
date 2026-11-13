@@ -178,7 +178,6 @@ void SceneRuntime::LoadActorPrimitive(ActorPart& part)
 bool SceneRuntime::BuildActor(LoadedActor& actor, Scene& scene, Entity& root, PhysicsWorld& physics,
                               bool loadMissing)
 {
-    const char* name = actor.def.name.c_str();
     actor.entity = &root;
     actor.transform = root.GetComponent<TransformComponent>();
     if (!actor.transform)
@@ -186,6 +185,13 @@ bool SceneRuntime::BuildActor(LoadedActor& actor, Scene& scene, Entity& root, Ph
     root.AddComponent<ActorComponent>(actor.def.actorClass, actor.def.properties);
     if (!actor.def.scripts.empty())
         root.AddComponent<ScriptComponent>(actor.def.scripts);
+    BuildActorParts(actor, scene, physics, loadMissing);
+    return true;
+}
+
+void SceneRuntime::BuildActorParts(LoadedActor& actor, Scene& scene, PhysicsWorld& physics, bool loadMissing)
+{
+    const char* name = actor.def.name.c_str();
     actor.parts.clear();
     actor.dynamicPart = -1;
 
@@ -267,7 +273,7 @@ bool SceneRuntime::BuildActor(LoadedActor& actor, Scene& scene, Entity& root, Ph
             actor.transform->Unparent();
             actor.transform->position = position;
         }
-        auto* rigidBody = root.AddComponent<RigidBodyComponent>();
+        auto* rigidBody = actor.entity->AddComponent<RigidBodyComponent>();
         rigidBody->mass = body.def.mass;
         rigidBody->friction = body.def.friction;
         rigidBody->restitution = body.def.restitution;
@@ -278,6 +284,39 @@ bool SceneRuntime::BuildActor(LoadedActor& actor, Scene& scene, Entity& root, Ph
         for (ActorPart& part : actor.parts)
             if (IsActive(part.transform))
                 CreatePartBody(actor, part, physics);
+}
+
+bool SceneRuntime::ReloadActorParts(LoadedActor& actor)
+{
+    const char* name = actor.def.name.c_str();
+    const char* cls = actor.def.actorClass.c_str();
+    const ResolvedActorClass resolvedClass = actorClassResolver
+        ? actorClassResolver(actor.def.actorClass)
+        : ResolvedActorClass{ nlohmann::json::array(), "the actor class was not resolved (no script session)" };
+    if (!resolvedClass.error.empty())
+    {
+        SE_LOG_WARN("Actor '%s' (%s): %s; keeping its current components", name, cls, resolvedClass.error.c_str());
+        return false;
+    }
+    ActorResolveResult resolved = ResolveActorComponents(resolvedClass.components, actor.def.components);
+    for (const std::string& warning : resolved.warnings)
+        SE_LOG_WARN("Actor '%s' (%s): %s", name, cls, warning.c_str());
+    if (!resolved.Succeeded())
+    {
+        SE_LOG_WARN("Actor '%s' (%s): %s; keeping its current components", name, cls, resolved.error.c_str());
+        return false;
+    }
+
+    for (ActorPart& part : actor.parts)
+    {
+        physicsWorld.RemoveBody(part.body);
+        if (Entity* entity = part.transform ? part.transform->GetOwner() : nullptr)
+            world.DestroyEntity(*entity);
+    }
+    actor.entity->RemoveComponent<RigidBodyComponent>();
+    actor.def.resolved = std::move(resolved.components);
+    actor.def.resolveError.clear();
+    BuildActorParts(actor, world.GetScene(), physicsWorld, true);
     return true;
 }
 
