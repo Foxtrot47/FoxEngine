@@ -55,11 +55,13 @@ cmake --build build --config Debug
 
 The build produces:
 
-- `build/Player/Debug/FoxPlayer.exe`: runs the game described by `project.json` (`--scene bistro.json` overrides the startup scene)
+- `build/Player/Debug/FoxPlayer.exe`: runs `Projects/Showcase/project.json` by default (`--scene bistro.json` overrides the startup scene)
 - `build/Editor/Debug/FoxEditor.exe`: level editor; F5 plays the open level
 - `build/Tools/FoxProject/Debug/FoxProject.exe`: project command line (scripts, tests, validation, publishing)
 
-The executables auto-detect the project root, so you can double-click them or run from any directory. Shaders, scripts and assets are loaded directly from source (`Engine/Shaders/`, `Assets/`).
+Select another game with `--project <directory-or-project.json>` in FoxPlayer, FoxEditor, FoxProject, or FoxCook. Paths containing spaces must be quoted. Without it, selection prefers a project beside the executable, then the nearest `project.json` above the current directory, then the sample project (`Projects/Showcase`, configurable with CMake `-DFOX_DEFAULT_PROJECT=<path>`). An invalid explicit project is an error, not a fallback.
+
+The selected project owns `Assets/`, `Cache/`, logs, and editor layout files. Asset paths inside scenes/scripts remain `Assets/...`; the process working directory is the project root. Shaders, the Lua runtime, API stubs, and editor fonts resolve from the engine root independently. Published games carry their own `Engine/` resources beside the executable and need no source checkout.
 
 **Shader/asset iteration**: Edit any `.hlsl` or asset file and re-run the exe; no rebuild needed. Lua scripts hot reload while the game runs. Only C++ changes require a build.
 
@@ -94,7 +96,7 @@ FoxProject api                            # regenerate the API reference after c
 FoxProject publish                        # standalone game in out/Publish/<ProjectName>/
 ```
 
-The API reference, `Engine/Scripts/types/fox.lua`, is generated from the C++ bindings; open the folder with the Lua language server (e.g. the VS Code "Lua" extension) for completion and type checks. `publish` copies the player as `<ProjectName>.exe` with its DLLs, shaders, scripts, and the published scenes with their cooked meshes and textures. Publish from a Release build to distribute; target machines need the Microsoft Visual C++ x64 redistributable. See `AGENTS.md` (Scripting) for the full model.
+The API reference, `Engine/Scripts/types/fox.lua`, is engine-owned and generated from the C++ bindings. Open the repository with the Lua language server (e.g. the VS Code "Lua" extension) for completion and type checks; when opening an external project alone, add `<engine-root>/Engine/Scripts/types` to LuaLS `workspace.library`. `publish` copies the player as `<ProjectName>.exe` with its DLLs, shaders, scripts, and the published scenes with their cooked meshes and textures. Its default output is inside the selected project; `--out` is relative to the invocation directory. Publish from a Release build to distribute; target machines need the Microsoft Visual C++ x64 redistributable. See `AGENTS.md` (Scripting) for the full model.
 
 ## Dependencies (via vcpkg)
 
@@ -125,12 +127,12 @@ FoxEngine/
 │   └── src/             # Implementation (mirrors include/; Lua bindings in Scripting/Bindings/)
 ├── Player/              # Generic game executable (FoxPlayer.exe)
 ├── Editor/              # Level editor (FoxEditor.exe)
-├── Assets/              # Runtime assets (textures, models, scenes)
-│   ├── Scenes/          # JSON scene descriptors
-│   ├── Scripts/         # Lua game scripts and their tests
-│   └── Particles/       # Particle textures (flipbooks, smoke, etc.)
-├── Tools/               # FoxProject (project CLI), FoxCook (mesh cooker), texture converter
-└── project.json         # Game settings: startup scene, scenes, autoloads, input, window
+├── Projects/Showcase/    # Canonical sample game
+│   ├── project.json     # Startup scene, scenes, autoloads, input, window
+│   ├── Assets/          # Models, textures, Scenes/, Scripts/, Particles/
+│   └── Cache/           # Project-local cooked meshes (ignored)
+├── Tests/Fixtures/      # Test scenes and Assets/TestFixtures/ importer data
+└── Tools/               # FoxProject (project CLI), FoxCook (mesh cooker), texture converter
 ```
 
 ## Scene Format

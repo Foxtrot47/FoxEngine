@@ -9,16 +9,18 @@ A from-scratch DirectX 11 engine on Windows. Forward PBR renderer with HDR pipel
 ```powershell
 cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Debug
-# Game:    build/Player/Debug/FoxPlayer.exe [--scene bistro.json]   (runs project.json)
-# Editor:  build/Editor/Debug/FoxEditor.exe                         (F5 plays the open level)
-# Project: build/Tools/FoxProject/Debug/FoxProject.exe help          (scripts, tests, publish)
+# Game:    build/Player/Debug/FoxPlayer.exe [--project <dir>] [--scene bistro.json]
+# Editor:  build/Editor/Debug/FoxEditor.exe [--project <dir>]        (F5 plays the open level)
+# Project: build/Tools/FoxProject/Debug/FoxProject.exe [--project <dir>] help
 ```
 
-The executables auto-detect the project root by walking up from their location until they find `Engine/` + `Assets/`. No need to set the working directory manually.
+Source-tree default: `Projects/Showcase/project.json`; CMake `FOX_DEFAULT_PROJECT` can select another default. FoxPlayer, FoxEditor, FoxProject and FoxCook accept `--project <directory-or-project.json>` (or `--project=<path>`). Selection order: explicit path, project beside the executable, nearest `project.json` above cwd, configured default. Invalid explicit paths fail. The selected project becomes cwd; `Assets/...` and `Cache/Meshes` stay project-relative.
+
+Engine resources are separate: `SE::EnginePath("Engine/...")` / `EnginePath("ThirdParty/...")` resolve from `GetEngineRoot()`, discovered above the executable then from the configured source root. ShaderLibrary resolves relative shader paths centrally, only on cache misses. API stubs always remain engine-owned. Published games include their own `Engine/` resources and select their adjacent `project.json` without relying on the checkout.
 
 New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no need to edit CMakeLists, but you must re-run CMake configure for them to be picked up.
 
-**Shader/asset/script iteration**: Edit shaders in `Engine/Shaders/` or assets in `Assets/` and re-run the exe; no rebuild needed. Lua scripts hot reload while FoxPlayer or editor Play mode runs. Only C++ changes require a build.
+**Shader/asset/script iteration**: Edit shaders in `Engine/Shaders/` or assets/scripts in the selected project's `Assets/` and re-run the exe; no rebuild needed. Lua scripts hot reload while FoxPlayer or editor Play mode runs. Only C++ changes require a build.
 
 ## Architecture
 
@@ -28,7 +30,8 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 - **Tools/FoxProject/**: Headless project CLI: API stubs, Lua tests, validation, REPL, scaffolding, publish (see Scripting).
 - **Engine/Shaders/** — HLSL files loaded directly from source at runtime via `D3DCompileFromFile`.
 - **Engine/Scripts/**: Lua runtime prelude (`fox/runtime.lua`) and the generated LuaLS API reference (`types/fox.lua`).
-- **Assets/Scripts/**: Game scripts and their `*_test.lua` tests; the `require` root.
+- **Projects/Showcase/**: Canonical sample game: `project.json`, `Assets/` (including game scripts/tests), and ignored `Cache/`.
+- **Tests/Fixtures/**: Test-only scenes and importer assets, isolated from game content. LevelAssetTests runs sample-content checks in `FOX_DEFAULT_PROJECT`, then importer/async checks in the fixture directory.
 
 ### Renderer Pipeline (forward-only)
 
@@ -119,7 +122,7 @@ Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, 
 - The Lua-side API (`fox.script`, `fox.Script` methods, `fox.wait`, `fox.test`, `fox.inspect`) lives in `Engine/Scripts/fox/runtime.lua`.
 
 ### FoxProject CLI
-`build/Tools/FoxProject/<Config>/FoxProject.exe` works from any directory. Diagnostics print as `path(line): error: message`; exit codes: 0 success, 1 failures, 2 usage error.
+`build/Tools/FoxProject/<Config>/FoxProject.exe` accepts `--project` before or after the command; without it, the nearest project above cwd or configured sample is used. Diagnostics print as `path(line): error: message`; exit codes: 0 success, 1 failures, 2 usage error. `api` reads/writes the engine's stubs, never a project's copy. Explicit `publish --out` paths are invocation-relative.
 
 | Command | Purpose |
 |---------|---------|
@@ -134,7 +137,7 @@ Gameplay loop: edit the script → `FoxProject check` → `FoxProject test` → 
 
 ### project.json and Publishing
 - Keys: `name`, `startupScene`, `scenes` (published scenes; empty = every scene in `Assets/Scenes`), `autoload` (script paths, instantiated in order), `input` (action → key names), `window` (`title`, `width`, `height`, `fullscreen`). Comments are allowed. Unknown keys, bad key names and missing files are errors; FoxPlayer refuses to start on them.
-- `FoxProject publish` writes `out/Publish/<ProjectName>/`, incrementally unless `--clean`: FoxPlayer from FoxProject's own build configuration as `<ProjectName>.exe` with its DLLs, `Engine/Shaders`, `Engine/Scripts` without `types/`, non-test scripts, the listed scenes plus scenes named by `scene` script properties or script literals, their cooked meshes (`Cache/Meshes`), textures and particle presets, and `project.json` marked `"published": true` (no hot reload, no frame stats in the title).
+- `FoxProject publish` writes the selected project's `out/Publish/<ProjectName>/`, incrementally unless `--clean`: FoxPlayer from FoxProject's own build configuration as `<ProjectName>.exe` with its DLLs, engine-owned `Engine/Shaders` and `Engine/Scripts` without `types/`, non-test game scripts, the listed scenes plus scenes named by `scene` script properties or script literals, their cooked meshes (`Cache/Meshes`), textures and particle presets, and `project.json` marked `"published": true` (no hot reload, no frame stats in the title). Output cannot overlap project assets/cache or engine sources.
 - Every published scene must load: a scene mesh with neither a source nor a cooked entry aborts the publish. `scenes` lists the scenes whose assets are in the repository (`Assets/Sponza/` is not).
 - Distribute a Release publish: a Debug player opens a log console and needs the Visual Studio debug runtimes (publish warns). Target machines need the Microsoft Visual C++ x64 redistributable.
 
@@ -153,7 +156,7 @@ Gameplay loop: edit the script → `FoxProject check` → `FoxProject test` → 
 ## Working Rules
 
 1. **One milestone at a time.** Compile, run in test scene, commit before starting next.
-2. **Test project is canonical.** `project.json` + `Assets/Scenes/showcase.json`, run by FoxPlayer and editor Play mode, are the live integration target. Wire everything into it; gameplay belongs in Lua scripts, not in `Player/`.
+2. **Test project is canonical.** `Projects/Showcase/project.json` + its `Assets/Scenes/showcase.json`, run by FoxPlayer and editor Play mode, are the live integration target. Wire everything into it; gameplay belongs in Lua scripts, not in `Player/`.
 3. **No premature abstraction.** Refactor only when duplication actually hurts (3+ occurrences).
 4. **Commit format**: Follow Conventional Commits v1.0.0 (e.g., `feat(renderer): add SSAO pass`).
 5. **Dependencies are additive.** Add via vcpkg or `ThirdParty/`. Never inline library source.

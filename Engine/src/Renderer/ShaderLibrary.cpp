@@ -1,5 +1,6 @@
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Core/ProjectRoot.h"
 #include <windows.h>
 #include <algorithm>
 
@@ -40,6 +41,8 @@ const ShaderPermutation* ShaderLibrary::Get(const std::wstring& hlslFile,
     if (it != m_cache.end())
         return &it->second;
 
+    const auto sourcePath = EnginePath(hlslFile);
+
     // Build D3D_SHADER_MACRO array (null-terminated).
     std::vector<D3D_SHADER_MACRO> macros;
     for (auto& d : defines)
@@ -53,7 +56,7 @@ const ShaderPermutation* ShaderLibrary::Get(const std::wstring& hlslFile,
 
     Microsoft::WRL::ComPtr<ID3DBlob> vsBlob, psBlob, errBlob;
 
-    HRESULT hr = D3DCompileFromFile(hlslFile.c_str(),
+    HRESULT hr = D3DCompileFromFile(sourcePath.c_str(),
         macros.data(), D3D_COMPILE_STANDARD_FILE_INCLUDE,
         "VS_Main", "vs_5_0", flags, 0, &vsBlob, &errBlob);
     if (FAILED(hr))
@@ -65,7 +68,7 @@ const ShaderPermutation* ShaderLibrary::Get(const std::wstring& hlslFile,
     }
 
     errBlob.Reset();
-    hr = D3DCompileFromFile(hlslFile.c_str(),
+    hr = D3DCompileFromFile(sourcePath.c_str(),
         macros.data(), D3D_COMPILE_STANDARD_FILE_INCLUDE,
         "PS_Main", "ps_5_0", flags, 0, &psBlob, &errBlob);
     if (FAILED(hr))
@@ -103,6 +106,8 @@ ID3D11ComputeShader* ShaderLibrary::GetCS(const std::wstring& hlslFile,
     if (it != m_csCache.end())
         return it->second.Get();
 
+    const auto sourcePath = EnginePath(hlslFile);
+
     std::vector<D3D_SHADER_MACRO> macros;
     for (auto& d : defines)
         macros.push_back({ d.name.c_str(), d.value.c_str() });
@@ -114,7 +119,7 @@ ID3D11ComputeShader* ShaderLibrary::GetCS(const std::wstring& hlslFile,
 #endif
 
     Microsoft::WRL::ComPtr<ID3DBlob> csBlob, errBlob;
-    HRESULT hr = D3DCompileFromFile(hlslFile.c_str(),
+    HRESULT hr = D3DCompileFromFile(sourcePath.c_str(),
         macros.data(), D3D_COMPILE_STANDARD_FILE_INCLUDE,
         entryPoint, "cs_5_0", flags, 0, &csBlob, &errBlob);
     if (FAILED(hr))

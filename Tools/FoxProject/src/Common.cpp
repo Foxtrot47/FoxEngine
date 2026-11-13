@@ -6,6 +6,7 @@
 #include <sstream>
 #include <system_error>
 #include "Engine/Core/Project.h"
+#include "Engine/Core/ProjectRoot.h"
 #include "Engine/Scene/LevelDependencyPlan.h"
 #include "Engine/Scripting/ScriptSystem.h"
 
@@ -338,7 +339,7 @@ ApiStubState CheckApiStubs(std::string* generated)
 {
     std::string stubs = SE::ScriptSystem::GenerateApiStubs();
     std::string existing;
-    const ApiStubState state = !ReadTextFile(SE::ScriptSystem::k_apiStubPath, existing) ? ApiStubState::Missing
+    const ApiStubState state = !ReadTextFile(SE::EnginePath(SE::ScriptSystem::k_apiStubPath).generic_string(), existing) ? ApiStubState::Missing
                              : existing == stubs ? ApiStubState::UpToDate
                                                  : ApiStubState::Stale;
     if (generated)

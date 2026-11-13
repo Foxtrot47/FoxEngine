@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 #include "Common.h"
 #include "Engine/Core/Project.h"
+#include "Engine/Core/ProjectRoot.h"
 #include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scripting/ScriptSystem.h"
@@ -351,7 +352,7 @@ CheckReport RunCheck(ToolContext& context)
     const ApiStubState stubs = CheckApiStubs();
     if (stubs != ApiStubState::UpToDate)
     {
-        PrintDiagnostic(Severity::Warning, SE::ScriptSystem::k_apiStubPath,
+        PrintDiagnostic(Severity::Warning, SE::EnginePath(SE::ScriptSystem::k_apiStubPath).generic_string(),
                         stubs == ApiStubState::Missing ? "API stubs are missing; run 'FoxProject api'"
                                                        : "API stubs are stale; run 'FoxProject api'");
         ++report.warnings;

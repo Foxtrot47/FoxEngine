@@ -53,7 +53,7 @@ std::string ScriptTemplate(const std::string& name)
     std::string text = R"(--- $NAME: describe what this script does.
 --- Attach it to an entity in the editor (Inspector > Add Script), or list it
 --- under "autoload" in project.json to run it for the whole game.
---- API reference: Engine/Scripts/types/fox.lua (regenerate with `FoxProject api`).
+--- API reference: the engine's Engine/Scripts/types/fox.lua (regenerate with `FoxProject api`).
 
 local DEFAULT_SPEED = 1.0
 

@@ -23,12 +23,13 @@ namespace {
 void PrintUsage()
 {
     std::printf(
-        "Usage: FoxCook [--force] [scene.json | mesh-path]...\n"
+        "Usage: FoxCook [--project <dir-or-project.json>] [--force] [scene.json | mesh-path]...\n"
         "\n"
         "Cooks imported meshes into the derived-data cache (%s/*.fxmesh).\n"
         "Paths are relative to the project root. With no inputs, every scene in\n"
         "Assets/Scenes is cooked.\n"
         "\n"
+        "  --project <path>  select a project directory or project.json\n"
         "  --force     re-cook entries that are already up to date\n"
         "  -h, --help  show this help\n",
         SE::MeshCache::k_defaultDirectory);
@@ -60,6 +61,7 @@ struct CookJob
 int main(int argc, char** argv)
 {
     bool force = false;
+    fs::path project;
     std::vector<std::string> inputs;
     for (int i = 1; i < argc; ++i)
     {
@@ -69,7 +71,21 @@ int main(int argc, char** argv)
             PrintUsage();
             return 0;
         }
-        if (arg == "--force")
+        if (arg == "--project" || arg.rfind("--project=", 0) == 0)
+        {
+            if ((arg == "--project" && i + 1 >= argc) || arg == "--project=")
+            {
+                std::fprintf(stderr, "FoxCook: --project expects a directory or project.json\n");
+                return 1;
+            }
+            project = arg == "--project" ? argv[++i] : arg.substr(10);
+            if (project.empty())
+            {
+                std::fprintf(stderr, "FoxCook: --project expects a directory or project.json\n");
+                return 1;
+            }
+        }
+        else if (arg == "--force")
             force = true;
         else if (!arg.empty() && arg[0] == '-')
         {
@@ -81,9 +97,10 @@ int main(int argc, char** argv)
             inputs.push_back(arg);
     }
 
-    if (!SE::SetProjectRootCwd())
+    if (!SE::SetProjectRootCwd(project))
     {
-        std::fprintf(stderr, "FoxCook: project root (Engine/ + Assets/) not found\n");
+        std::fprintf(stderr, "FoxCook: cannot select %s\n",
+                     project.empty() ? "a project (project.json not found)" : project.generic_string().c_str());
         return 1;
     }
     if (inputs.empty())

@@ -4,6 +4,12 @@ The viewport follows Unreal-style navigation and toolbar grouping. It is not a
 complete Unreal Editor clone. Engine coordinates remain **Y-up**; snap distances
 are engine world units, not Unreal centimetres.
 
+Launch with `FoxEditor.exe --project <directory-or-project.json>` to edit another
+game; quote paths containing spaces. The default game is `Projects/Showcase`.
+`--scene <file-or-path>` overrides its startup scene. Content, saves, logs and
+`editor.ini` belong to the selected project; shaders, Lua runtime and fonts remain
+engine-owned.
+
 ## Navigation
 
 | Input | Perspective | Orthographic |
@@ -123,6 +129,9 @@ existing enabled settings. Shadow cascades fit parallel orthographic slices.
 Unlit and Wireframe omit lighting post-effects; tone mapping/grading still apply.
 Realtime-off holds simulation time (including fog drift) but continues rendering
 so camera navigation and editing remain responsive.
+
+During tiny viewport/layout transitions, FSR waits for at least 2x2 render pixels
+before creating its half-resolution resources; the selected AA mode is preserved.
 
 Multi-selection, marquee selection, hierarchy, multiple viewports, asset
 placement by drag-and-drop and customizable/persistent key bindings are not

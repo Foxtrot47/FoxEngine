@@ -1,8 +1,10 @@
 #include "EditorTheme.h"
 #include "EditorIcons.h"
+#include "Engine/Core/ProjectRoot.h"
 #include <imgui.h>
 #include <cstdint>
 #include <filesystem>
+#include <string>
 
 namespace Editor {
 namespace {
@@ -103,7 +105,7 @@ void LoadFonts()
     const char* font = "C:/Windows/Fonts/segoeui.ttf";
     if (std::filesystem::exists(font)) io.Fonts->AddFontFromFileTTF(font, 16.0f);
     else io.Fonts->AddFontDefault();
-    const char* icons = "ThirdParty/fonts/MaterialIcons-Regular.ttf";
+    const std::string icons = SE::EnginePath("ThirdParty/fonts/MaterialIcons-Regular.ttf").string();
     if (!std::filesystem::exists(icons)) return;
     static const ImWchar ranges[] = { k_iconRangeMin, k_iconRangeMax, 0 };
     ImFontConfig cfg;
@@ -111,10 +113,10 @@ void LoadFonts()
     cfg.PixelSnapH = true;
     cfg.GlyphMinAdvanceX = 16.0f;
     cfg.GlyphOffset = { 0, 3 };
-    io.Fonts->AddFontFromFileTTF(icons, 16.0f, &cfg, ranges);
+    io.Fonts->AddFontFromFileTTF(icons.c_str(), 16.0f, &cfg, ranges);
     ImFontConfig big;
     big.PixelSnapH = true;
-    s_largeIcons = io.Fonts->AddFontFromFileTTF(icons, 44.0f, &big, ranges);
+    s_largeIcons = io.Fonts->AddFontFromFileTTF(icons.c_str(), 44.0f, &big, ranges);
 }
 }
 ImFont* LargeIconFont() { return s_largeIcons; }

@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <shellapi.h>
 #include <DirectXMath.h>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -1203,36 +1204,113 @@ private:
     bool                 m_playSimulated = false; // on_gui waits for the first Simulate
 };
 
-static std::string ParseSceneArg(LPSTR lpCmdLine)
+namespace {
+
+std::string NarrowPath(const wchar_t* text)
 {
-    if (!lpCmdLine || strlen(lpCmdLine) == 0)
-        return "";
-    std::string args(lpCmdLine);
-    auto pos = args.find("--scene");
-    if (pos == std::string::npos)
-        return "";
-    pos += 7; // skip "--scene"
-    while (pos < args.size() && (args[pos] == ' ' || args[pos] == '=')) ++pos;
-    auto end = args.find(' ', pos);
-    std::string scenePath = args.substr(pos, end - pos);
-    if (scenePath.find('/') == std::string::npos && scenePath.find('\\') == std::string::npos)
-        scenePath = "Assets/Scenes/" + scenePath;
-    return scenePath;
+    const int length = WideCharToMultiByte(CP_ACP, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    if (length <= 1) return {};
+    std::string narrow(static_cast<size_t>(length), '\0');
+    WideCharToMultiByte(CP_ACP, 0, text, -1, narrow.data(), length, nullptr, nullptr);
+    narrow.pop_back();
+    return narrow;
 }
 
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR lpCmdLine, int)
+void ShowFatalError(const std::string& message)
 {
-    SE::SetProjectRootCwd();
+    MessageBoxA(nullptr, message.c_str(), "FoxEditor", MB_OK | MB_ICONERROR);
+}
+
+struct LaunchOptions
+{
+    std::filesystem::path project;
+    std::string scene;
+    std::string error;
+    std::vector<std::string> warnings;
+};
+
+LaunchOptions ParseCommandLine()
+{
+    LaunchOptions options;
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv)
+    {
+        options.error = "Could not parse the command line.";
+        return options;
+    }
+    for (int i = 1; i < argc; ++i)
+    {
+        const std::wstring arg = argv[i];
+        if (arg == L"--project" || arg == L"--scene")
+        {
+            if (i + 1 >= argc || argv[i + 1][0] == L'\0' ||
+                std::wstring(argv[i + 1]).rfind(L"--", 0) == 0)
+            {
+                options.error = "Expected a path after " + NarrowPath(arg.c_str()) + ".";
+                break;
+            }
+            if (arg == L"--project") options.project = argv[++i];
+            else options.scene = NarrowPath(argv[++i]);
+        }
+        else if (arg.rfind(L"--project=", 0) == 0)
+        {
+            options.project = arg.substr(10);
+            if (options.project.empty()) options.error = "Expected a path after --project=.";
+        }
+        else if (arg.rfind(L"--scene=", 0) == 0)
+        {
+            options.scene = NarrowPath(arg.c_str() + 8);
+            if (options.scene.empty()) options.error = "Expected a path after --scene=.";
+        }
+        else
+            options.warnings.push_back("ignoring command-line argument '" + NarrowPath(arg.c_str()) +
+                                       "' (usage: --project <dir-or-project.json> --scene <path>)");
+    }
+    LocalFree(argv);
+    if (!options.scene.empty() && options.scene.find_first_of("\\/") == std::string::npos)
+        options.scene = "Assets/Scenes/" + options.scene;
+    return options;
+}
+
+} // namespace
+
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+{
+    const LaunchOptions options = ParseCommandLine();
+    if (!options.error.empty())
+    {
+        ShowFatalError(options.error + "\nUsage: --project <dir-or-project.json> --scene <path>");
+        return 1;
+    }
+    if (!SE::SetProjectRootCwd(options.project))
+    {
+        ShowFatalError("Could not select a project. Use --project <dir-or-project.json> to select a valid project.");
+        return 1;
+    }
+
+    const SE::ProjectLoadResult loaded = SE::Project::Load();
+    if (!loaded.Succeeded())
+    {
+        std::string message = "project.json has errors (run `FoxProject check` for details):\n";
+        for (size_t i = 0; i < loaded.errors.size() && i < 10; ++i)
+            message += "\n" + loaded.errors[i];
+        if (loaded.errors.size() > 10) message += "\n...";
+        ShowFatalError(message);
+        return 1;
+    }
 
     SE::WindowDesc desc;
     desc.title  = L"FoxEditor";
     desc.width  = 1600;
     desc.height = 900;
 
-    std::string scenePath = ParseSceneArg(lpCmdLine);
+    const std::string scenePath = options.scene.empty() ? loaded.project.startupScene : options.scene;
 
     EditorApp app;
     if (!app.Initialize(desc)) return 1;
+    for (const std::string& warning : options.warnings)
+        SE_LOG_WARN("%s", warning.c_str());
     if (!app.Setup(scenePath)) return 1;
     app.Run();
     app.Shutdown();

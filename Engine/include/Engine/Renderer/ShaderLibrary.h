@@ -27,6 +27,7 @@ public:
     void Init(ID3D11Device* device);
 
     // Compile and cache a VS+PS permutation keyed by (file + defines).
+    // Relative files resolve from the engine root, not the project cwd.
     // Returns nullptr on compilation failure.
     const ShaderPermutation* Get(const std::wstring& hlslFile,
                                   const std::vector<ShaderDefine>& defines = {});
