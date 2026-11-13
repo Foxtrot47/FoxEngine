@@ -795,7 +795,7 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
     result.asset.convertedFromLegacy = true;
     result.diagnostics.insert(result.diagnostics.begin(), {
         Severity::Warning, "/",
-        "legacy unversioned scene converted in memory; save it as FoxLevel version 2"
+        "legacy unversioned scene converted in memory; save it in the editor or run 'FoxProject upgrade'"
     });
 }
 

@@ -138,6 +138,7 @@ Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, 
 | `eval <lua...>` | Evaluate Lua in a headless session (no window or scene) |
 | `api [--check]` | Regenerate or verify `Engine/Scripts/types/fox.lua` |
 | `publish [--out <dir>] [--clean]` | `check`, then write the standalone game |
+| `upgrade [scene...]` | Rewrite legacy unversioned scenes (default: all in `Assets/Scenes`) as FoxLevel version 2 |
 
 Gameplay loop: edit the script → `FoxProject check` → `FoxProject test` → run FoxPlayer or editor Play mode, whose Console evaluates Lua in the running game.
 
