@@ -45,6 +45,10 @@ target_compile_definitions(FoxEngine PRIVATE SOL_ALL_SAFETIES_ON=1)
 # exported config only defines that flag for Debug/Release; RegisterTypes()
 # rejects feature-define mismatches, so define it for the other configs.
 target_compile_definitions(FoxEngine PRIVATE
+    FOX_ENGINE_ROOT="${CMAKE_SOURCE_DIR}"
+    FOX_DEFAULT_PROJECT="${FOX_DEFAULT_PROJECT}"
+)
+target_compile_definitions(FoxEngine PRIVATE
     $<$<CONFIG:RelWithDebInfo,MinSizeRel>:JPH_FLOATING_POINT_EXCEPTIONS_ENABLED>
 )
 # The library is also built with AVX2; compile the files that include Jolt

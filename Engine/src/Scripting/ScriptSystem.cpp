@@ -16,6 +16,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include "Engine/Core/Logger.h"
+#include "Engine/Core/ProjectRoot.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Input/KeyNames.h"
 #include "Engine/Physics/PhysicsWorld.h"
@@ -1074,7 +1075,7 @@ struct ScriptSystem::Impl final : ScriptInstances, PhysicsStepListener
     bool LoadRuntime(std::string& error)
     {
         sol::object chunk;
-        if (!CompileFile(k_runtimePath, chunk, error))
+        if (!CompileFile(EnginePath(k_runtimePath).string(), chunk, error))
             return false;
 
         sol::table hostApi = m_lua->create_table();

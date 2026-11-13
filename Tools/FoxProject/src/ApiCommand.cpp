@@ -1,5 +1,6 @@
 #include <cstdio>
 #include "Common.h"
+#include "Engine/Core/ProjectRoot.h"
 #include "Engine/Scripting/ScriptSystem.h"
 
 namespace FoxProject {
@@ -15,12 +16,12 @@ int CommandApi(ToolContext& /*context*/, const std::vector<std::string>& args)
             return UsageError("api", "unexpected argument '" + arg + "'");
     }
 
-    const char* path = SE::ScriptSystem::k_apiStubPath;
+    const std::string path = SE::EnginePath(SE::ScriptSystem::k_apiStubPath).generic_string();
     std::string stubs;
     const ApiStubState state = CheckApiStubs(&stubs);
     if (state == ApiStubState::UpToDate)
     {
-        std::printf("api: %s is up to date\n", path);
+        std::printf("api: %s is up to date\n", path.c_str());
         return k_exitSuccess;
     }
     if (checkOnly)
@@ -37,7 +38,7 @@ int CommandApi(ToolContext& /*context*/, const std::vector<std::string>& args)
         PrintDiagnostic(Severity::Error, path, error);
         return k_exitFailure;
     }
-    std::printf("api: wrote %s (%zu bytes)\n", path, stubs.size());
+    std::printf("api: wrote %s (%zu bytes)\n", path.c_str(), stubs.size());
     return k_exitSuccess;
 }
 

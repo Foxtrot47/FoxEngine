@@ -3,7 +3,7 @@
 // the scenes and Lua scripts it references. `FoxProject publish` ships this
 // executable as <ProjectName>.exe next to the published content.
 //
-// Usage: FoxPlayer.exe [--scene <scene path, or a file name in Assets/Scenes>]
+// Usage: FoxPlayer.exe [--project <dir-or-project.json>] [--scene <path>]
 
 #include <windows.h>
 #include <shellapi.h>
@@ -57,6 +57,8 @@ void ShowFatalError(const std::string& message)
 
 struct LaunchOptions
 {
+    std::filesystem::path project;
+    std::string error;
     std::string scene;                 // overrides project.json startupScene
     std::vector<std::string> warnings; // logged once the log file is open
 };
@@ -68,17 +70,37 @@ LaunchOptions ParseCommandLine()
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv)
+    {
+        options.error = "Could not parse the command line.";
         return options;
+    }
     for (int i = 1; i < argc; ++i)
     {
         const std::wstring arg = argv[i];
-        if (arg == L"--scene" && i + 1 < argc)
-            options.scene = NarrowPath(argv[++i]);
+        if (arg == L"--project" || arg == L"--scene")
+        {
+            if (i + 1 >= argc || argv[i + 1][0] == L'\0' ||
+                std::wstring(argv[i + 1]).rfind(L"--", 0) == 0)
+            {
+                options.error = "Expected a path after " + NarrowPath(arg.c_str()) + ".";
+                break;
+            }
+            if (arg == L"--project") options.project = argv[++i];
+            else options.scene = NarrowPath(argv[++i]);
+        }
+        else if (arg.rfind(L"--project=", 0) == 0)
+        {
+            options.project = arg.substr(10);
+            if (options.project.empty()) options.error = "Expected a path after --project=.";
+        }
         else if (arg.rfind(L"--scene=", 0) == 0)
+        {
             options.scene = NarrowPath(arg.c_str() + 8);
+            if (options.scene.empty()) options.error = "Expected a path after --scene=.";
+        }
         else
             options.warnings.push_back("ignoring command-line argument '" + NarrowPath(arg.c_str()) +
-                                       "' (usage: --scene <path>)");
+                                       "' (usage: --project <dir-or-project.json> --scene <path>)");
     }
     LocalFree(argv);
     if (!options.scene.empty() && options.scene.find_first_of("\\/") == std::string::npos)
@@ -284,16 +306,23 @@ private:
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    // Development builds run from build/Player/<Config>/, published games sit
-    // next to their content; both find the root by its Engine/ and Assets/.
-    SE::SetProjectRootCwd();
     const LaunchOptions options = ParseCommandLine();
+    if (!options.error.empty())
+    {
+        ShowFatalError(options.error + "\nUsage: --project <dir-or-project.json> --scene <path>");
+        return 1;
+    }
+    if (!SE::SetProjectRootCwd(options.project))
+    {
+        ShowFatalError("Could not select a project. Use --project <dir-or-project.json> to select a valid project.");
+        return 1;
+    }
 
     std::error_code ec;
     if (!std::filesystem::is_regular_file(SE::Project::k_fileName, ec))
     {
         ShowFatalError("No project.json in " + std::filesystem::current_path(ec).string() +
-                       ".\nFoxPlayer runs the project in its folder or a parent folder.");
+                       ".\nUse --project <dir-or-project.json> to select a valid project.");
         return 1;
     }
     // A broken project would run without its scripts or input: refuse instead.

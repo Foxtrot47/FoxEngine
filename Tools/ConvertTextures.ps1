@@ -2,15 +2,35 @@
 # Converts source textures to a build output directory, preserving directory structure.
 # Skips files that already have an up-to-date .dds in the output directory.
 #
-# Usage: powershell -File Tools/ConvertTextures.ps1 -SourceDir <path> -OutputDir <path> [-ToolPath <path>]
+# Usage: powershell -File Tools/ConvertTextures.ps1 [-Project <dir-or-project.json>] [-SourceDir <path>] -OutputDir <path> [-ToolPath <path>]
 
 param(
-    [string]$SourceDir = "Assets",
+    [string]$SourceDir = "",
     [string]$OutputDir = "",  # required: build output directory for DDS files
-    [string]$ToolPath  = "Tools/texconv.exe"
+    [string]$ToolPath  = (Join-Path $PSScriptRoot "texconv.exe"),
+    [string]$Project = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Project -ne "") {
+    $projectPath = (Resolve-Path $Project).Path
+    if (Test-Path $projectPath -PathType Leaf) {
+        if ([System.IO.Path]::GetFileName($projectPath) -ne "project.json") {
+            throw "Project must be a directory or project.json: $Project"
+        }
+        $projectPath = Split-Path $projectPath -Parent
+    }
+    if (-not (Test-Path (Join-Path $projectPath "project.json") -PathType Leaf)) {
+        throw "Project manifest not found: $projectPath"
+    }
+    if ($SourceDir -eq "") {
+        $SourceDir = Join-Path $projectPath "Assets"
+    }
+}
+elseif ($SourceDir -eq "") {
+    $SourceDir = Join-Path (Split-Path $PSScriptRoot -Parent) "Projects/Showcase/Assets"
+}
 
 if ($OutputDir -eq "") {
     Write-Error "OutputDir is required (specify build output directory for DDS files)"

@@ -11,11 +11,13 @@ namespace {
 void PrintUsage()
 {
     std::printf(
-        "Usage: FoxProject <command> [options]\n"
+        "Usage: FoxProject [--project <dir-or-project.json>] <command> [options]\n"
         "\n"
         "Project tool for FoxEngine games (project.json at the project root).\n"
         "Diagnostics read 'path(line): error: message'; exit codes: 0 success,\n"
         "1 failures, 2 usage errors.\n"
+        "\n"
+        "  --project <path>       select a project (also accepted after the command)\n"
         "\n"
         "Commands:\n"
         "  api [--check]          write the LuaLS API reference %s;\n"
@@ -39,6 +41,28 @@ void PrintUsage()
 int main(int argc, char** argv)
 {
     std::vector<std::string> args(argv + (argc > 0 ? 1 : 0), argv + argc);
+    std::filesystem::path project;
+    for (size_t i = 0; i < args.size();)
+    {
+        if (args[i] == "--project" || args[i].rfind("--project=", 0) == 0)
+        {
+            const bool separate = args[i] == "--project";
+            if ((separate && i + 1 >= args.size()) || (!separate && args[i].size() == 10))
+            {
+                std::fprintf(stderr, "FoxProject: --project expects a directory or project.json\n");
+                return FoxProject::k_exitUsage;
+            }
+            project = separate ? args[i + 1] : args[i].substr(10);
+            if (project.empty())
+            {
+                std::fprintf(stderr, "FoxProject: --project expects a directory or project.json\n");
+                return FoxProject::k_exitUsage;
+            }
+            args.erase(args.begin() + i, args.begin() + i + (separate ? 2 : 1));
+        }
+        else
+            ++i;
+    }
     if (args.empty() || args[0] == "help" || args[0] == "--help" || args[0] == "-h")
     {
         PrintUsage();
@@ -75,9 +99,15 @@ int main(int argc, char** argv)
     FoxProject::ToolContext context;
     std::error_code ec;
     context.invocationDirectory = std::filesystem::current_path(ec);
-    if (!SE::SetProjectRootCwd())
+    if (ec)
     {
-        std::fprintf(stderr, "FoxProject: project root (Engine/ + Assets/) not found above the executable\n");
+        std::fprintf(stderr, "FoxProject: cannot read invocation directory: %s\n", ec.message().c_str());
+        return FoxProject::k_exitFailure;
+    }
+    if (!SE::SetProjectRootCwd(project))
+    {
+        std::fprintf(stderr, "FoxProject: cannot select %s\n",
+                     project.empty() ? "a project (project.json not found)" : project.generic_string().c_str());
         return FoxProject::k_exitFailure;
     }
 

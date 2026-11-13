@@ -10,6 +10,7 @@
 #include "Common.h"
 #include "Engine/Assets/MeshCache.h"
 #include "Engine/Core/Project.h"
+#include "Engine/Core/ProjectRoot.h"
 #include "Engine/Scene/LevelAssetLoader.h"
 #include "Engine/Scene/LevelDependencyPlan.h"
 #include "Engine/Scene/MeshMaterialUtil.h"
@@ -462,9 +463,16 @@ int CommandPublish(ToolContext& context, const std::vector<std::string>& args)
     // The output is deleted by --clean and must never contain the sources it copies.
     if (IsSameOrInside(root, output))
         return UsageError("publish", "output '" + output.generic_string() + "' contains the project");
-    for (const char* source : { "Assets", "Engine", "Cache" })
+    const fs::path engineRoot = fs::weakly_canonical(SE::GetEngineRoot(), ec);
+    if (ec)
+        return UsageError("publish", "cannot resolve engine root: " + ec.message());
+    if (IsSameOrInside(engineRoot, output))
+        return UsageError("publish", "output '" + output.generic_string() + "' contains the engine root");
+    for (const char* source : { "Assets", "Cache" })
         if (IsSameOrInside(output, root / source))
             return UsageError("publish", "output '" + output.generic_string() + "' is inside the project's " + source + "/");
+    if (IsSameOrInside(output, engineRoot / "Engine"))
+        return UsageError("publish", "output '" + output.generic_string() + "' is inside the engine sources");
 
     PublishSet set;
 
@@ -489,18 +497,22 @@ int CommandPublish(ToolContext& context, const std::vector<std::string>& args)
 #endif
     }
 
-    for (const std::string& path : ListFilesRecursive("Engine/Shaders"))
-        set.Add(path, path);
-    const std::string stubDirectory = fs::path(SE::ScriptSystem::k_apiStubPath).parent_path().generic_string() + "/";
+    for (const std::string& path : ListFilesRecursive(SE::EnginePath("Engine/Shaders").generic_string()))
+        set.Add(path, fs::path(path).lexically_relative(engineRoot).generic_string());
+    const std::string stubDirectory = SE::EnginePath(SE::ScriptSystem::k_apiStubPath).parent_path().generic_string() + "/";
     std::vector<std::string> scripts;
-    for (const std::string& path : ListFilesRecursive("Engine/Scripts"))
+    for (const std::string& path : ListFilesRecursive(SE::EnginePath("Engine/Scripts").generic_string()))
         if (!StartsWith(path, stubDirectory))
+        {
             scripts.push_back(path);
+            set.Add(path, fs::path(path).lexically_relative(engineRoot).generic_string());
+        }
     for (const std::string& path : ListFilesRecursive(k_scriptsDirectory))
         if (!IsTestScript(path))
+        {
             scripts.push_back(path);
-    for (const std::string& path : scripts)
-        set.Add(path, path);
+            set.Add(path, path);
+        }
 
     DependencyCollector collector(set);
     for (const std::string& scene : SE::Project::SceneList(project))
@@ -535,7 +547,7 @@ int CommandPublish(ToolContext& context, const std::vector<std::string>& args)
             return k_exitFailure;
         }
     }
-    // SE::SetProjectRootCwd finds the root by its Engine/ and Assets/ folders.
+    // Standalone builds keep engine resources beside the project manifest.
     fs::create_directories(output / "Engine", ec);
     fs::create_directories(output / "Assets", ec);
 

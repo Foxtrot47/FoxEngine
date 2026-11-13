@@ -4,7 +4,7 @@ add_executable(Editor WIN32 ${EDITOR_SOURCES})
 
 find_package(imguizmo CONFIG REQUIRED)
 
-target_link_libraries(Editor PRIVATE FoxEngine imguizmo::imguizmo)
+target_link_libraries(Editor PRIVATE FoxEngine imguizmo::imguizmo shell32)
 
 target_compile_definitions(Editor PRIVATE
     UNICODE
@@ -19,5 +19,5 @@ target_compile_options(Editor PRIVATE
 
 set_target_properties(Editor PROPERTIES
     OUTPUT_NAME "FoxEditor"
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VS_DEBUGGER_WORKING_DIRECTORY "${FOX_DEFAULT_PROJECT}"
 )

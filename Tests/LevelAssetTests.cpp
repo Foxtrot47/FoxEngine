@@ -665,7 +665,7 @@ static void TestOperationFailuresAndCancellation()
 {
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json", {});
+        operation.Start("async_level.json", {});
         const auto status = WaitForCpuPreparation(operation);
         Require(status.state == SE::LevelLoadState::Uploading,
                 "optional failures should not reject level preparation");
@@ -678,7 +678,7 @@ static void TestOperationFailuresAndCancellation()
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/missing_geometry.json", {});
+        operation.Start("missing_geometry.json", {});
         const auto status = WaitForCpuPreparation(operation);
         Require(status.state == SE::LevelLoadState::Failed,
                 "required geometry failure did not reject preparation");
@@ -686,14 +686,14 @@ static void TestOperationFailuresAndCancellation()
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json", {});
+        operation.Start("async_level.json", {});
         operation.Cancel();
         Require(operation.GetStatus().state == SE::LevelLoadState::Cancelled,
                 "active operation did not cancel cleanly");
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json", {});
+        operation.Start("async_level.json", {});
     }
 }
 
@@ -702,7 +702,7 @@ static void TestCachedMeshSkipsImport()
     SE::AssetCacheSnapshot cache;
     cache.meshes.emplace("Assets/TestFixtures/not_here.obj", std::make_shared<SE::Mesh>());
     SE::LevelLoadOperation operation;
-    operation.Start("Tests/Fixtures/missing_geometry.json", std::move(cache));
+    operation.Start("missing_geometry.json", std::move(cache));
     const auto status = WaitForCpuPreparation(operation);
     Require(status.state == SE::LevelLoadState::Uploading,
             "cached required mesh still entered the import path");
@@ -1070,12 +1070,12 @@ static void TestLevelWorldScriptsAndComponentPositions()
 
 static void TestInMemoryLevelLoad()
 {
-    std::ifstream file("Tests/Fixtures/async_level.json", std::ios::binary);
+    std::ifstream file("async_level.json", std::ios::binary);
     Require(file.is_open(), "async level fixture missing");
     const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/not_on_disk.json", {}, text);
+        operation.Start("not_on_disk.json", {}, text);
         const auto status = WaitForCpuPreparation(operation);
         Require(status.state == SE::LevelLoadState::Uploading,
                 "in-memory level text was not prepared");
@@ -1083,7 +1083,7 @@ static void TestInMemoryLevelLoad()
     }
     {
         SE::LevelLoadOperation operation;
-        operation.Start("Tests/Fixtures/async_level.json", {}, "{ not json");
+        operation.Start("async_level.json", {}, "{ not json");
         const auto status = WaitForCpuPreparation(operation);
         Require(status.state == SE::LevelLoadState::Failed,
                 "malformed in-memory level text should fail");
@@ -1092,8 +1092,6 @@ static void TestInMemoryLevelLoad()
 
 static void RunTests()
 {
-    TestOperationFailuresAndCancellation();
-    TestCachedMeshSkipsImport();
     TestAssetCacheRetainsReleasedHandles();
     TestValidV2();
     TestValidationFailures();
@@ -1108,14 +1106,17 @@ static void RunTests()
     TestDescriptorStamping();
     TestSaverPreservesIdentity();
     TestLevelWorldScriptsAndComponentPositions();
-    TestInMemoryLevelLoad();
     TestDependencyPlan();
+    TestMaterialTexturePath();
+    TestCpuTextureDecode();
+    std::filesystem::current_path(FOX_TEST_FIXTURE_ROOT);
+    TestOperationFailuresAndCancellation();
+    TestCachedMeshSkipsImport();
+    TestInMemoryLevelLoad();
     TestCpuMeshImport();
     TestGltfPackedMRDetection();
     TestGltfSpecGlossDetection();
     TestMeshCache();
-    TestMaterialTexturePath();
-    TestCpuTextureDecode();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 
