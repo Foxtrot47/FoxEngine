@@ -25,6 +25,9 @@ public:
     void Begin(SE::SceneRuntime& scene, const Selection& sel);
     void End(SE::SceneRuntime& scene, UndoStack& undo, ID3D11Device* device,
              SE::ShaderLibrary& shaders);
+    // Records an edit made outside an ImGui edit widget (buttons, popups);
+    // call between Begin and End.
+    void MarkEdited() { m_pending = m_before != nullptr; }
 
 private:
     std::shared_ptr<const EntityState> m_before;

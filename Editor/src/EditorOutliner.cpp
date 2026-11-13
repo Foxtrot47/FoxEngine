@@ -22,6 +22,8 @@ struct RenameState
 };
 RenameState s_rename;
 ImGuiTextFilter s_filter;
+// Play mode: rows stay selectable for inspection, but nothing is editable.
+bool s_readOnly = false;
 
 void BeginRename(Selection::Kind kind, int index, const std::string& current)
 {
@@ -50,6 +52,9 @@ std::string* EntityName(SE::SceneRuntime& scene, Selection::Kind kind, int index
     case Kind::Emitter:
         return index < (int)scene.particleEmitterDescs.size()
             ? &scene.particleEmitterDescs[index].name : nullptr;
+    case Kind::Empty:
+        return index < (int)scene.emptyEntities.size()
+            ? &scene.emptyEntities[index].def.name : nullptr;
     default:
         return nullptr;
     }
@@ -164,7 +169,7 @@ RowAction DrawRow(Selection& sel, Selection::Kind kind, int index, const char* l
                               ImGuiSelectableFlags_SpanAllColumns |
                               ImGuiSelectableFlags_AllowOverlap, { 0.0f, rowH }))
             sel.Set(kind, index);
-        if (name && ImGui::BeginPopupContextItem("##ctx"))
+        if (name && !s_readOnly && ImGui::BeginPopupContextItem("##ctx"))
         {
             sel.Set(kind, index);
             if (ImGui::MenuItem("Rename", "F2"))
@@ -188,7 +193,9 @@ RowAction DrawRow(Selection& sel, Selection::Kind kind, int index, const char* l
         ImGui::Unindent(14.0f);
 
     ImGui::TableSetColumnIndex(0);
+    ImGui::BeginDisabled(s_readOnly);
     DrawEyeToggle(visible);
+    ImGui::EndDisabled();
 
     ImGui::TableSetColumnIndex(2);
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
@@ -222,11 +229,18 @@ void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
 {
     using Kind = Selection::Kind;
     using ObjType = SE::SceneDescriptor::SceneObject::Type;
+    ImGui::BeginDisabled(s_readOnly);
     if (ImGui::Button(ICON_MD_ADD " Add"))
         ImGui::OpenPopup("##add_entity");
+    ImGui::EndDisabled();
     if (!ImGui::BeginPopup("##add_entity"))
         return;
     Selection spawned;
+    ImGui::SeparatorText("General");
+    if (IconMenuItem({ ICON_MD_CHECK_BOX_OUTLINE_BLANK, IM_COL32(200, 200, 200, 255) },
+                     "Empty Entity") &&
+        scene.AddEmpty(spawnPos))
+        spawned.Set(Kind::Empty, (int)scene.emptyEntities.size() - 1);
     ImGui::SeparatorText("Shapes");
     if (IconMenuItem({ ICON_MD_PANORAMA_FISH_EYE, IM_COL32(150, 210, 220, 255) },
                      "Sphere") &&
@@ -321,6 +335,15 @@ RowAction DrawEntityRows(SE::SceneRuntime& scene, Selection& sel)
                 { ICON_MD_GRAIN, IM_COL32(210, 150, 255, 255) },
                 &scene.particleSystems[i]->enabled, true, name));
     }
+    for (int i = 0; i < (int)scene.emptyEntities.size(); ++i)
+    {
+        std::string& name = scene.emptyEntities[i].def.name;
+        char label[32];
+        sprintf_s(label, "Empty %d", i + 1);
+        merge(DrawRow(sel, Kind::Empty, i, name.empty() ? label : name.c_str(), "Empty",
+                { ICON_MD_CHECK_BOX_OUTLINE_BLANK, IM_COL32(200, 200, 200, 255) },
+                nullptr, true, &name));
+    }
     return action;
 }
 
@@ -333,7 +356,7 @@ void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel)
 }
 
 void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
-                       const DirectX::XMFLOAT3& spawnPos)
+                       const DirectX::XMFLOAT3& spawnPos, bool playing)
 {
     ImGui::Begin("Outliner");
     if (!scene.HasScene())
@@ -343,6 +366,13 @@ void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
         return;
     }
 
+    s_readOnly = playing;
+    if (playing)
+    {
+        s_rename = {};
+        ImGui::TextColored(ImVec4(0.45f, 0.8f, 1.0f, 1.0f), "Playing");
+        ImGui::SameLine();
+    }
     DrawAddMenu(scene, sel, undo, spawnPos);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-FLT_MIN);
@@ -385,6 +415,8 @@ void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
     ImGui::EndTable();
     ImGui::End();
 
+    if (playing)
+        return;
     if (action.rename.pending)
         ApplyRename(scene, undo, action.rename);
     if (action.duplicate)

@@ -19,6 +19,9 @@ struct EntityState
     // Camera
     float fovDeg = 0.0f, nearZ = 0.0f, farZ = 0.0f;
 
+    // Camera / Sun script components (the other kinds keep them in their defs)
+    std::vector<SE::LevelScriptDefinition> scripts;
+
     // Sun
     float elevDeg = 0.0f, azimDeg = 0.0f, sunIntensity = 0.0f;
     float sunColor[3] = {};
@@ -46,6 +49,10 @@ struct EntityState
     SE::SceneDescriptor::ParticleEmitterDesc emitterDesc;
     SE::AssetHandle<SE::Texture2D>       emitterTexture;
     int                                  emitterPreset = -1;
+
+    // Empty
+    SE::SceneDescriptor::EmptyEntity emptyDef;
+    DirectX::XMFLOAT3 emptyPosition = {}, emptyEuler = {}, emptyScale = {};
 };
 
 namespace {
@@ -61,6 +68,7 @@ const char* EditLabel(Kind kind)
     case Kind::Mesh:       return "Edit Mesh";
     case Kind::Object:     return "Edit Object";
     case Kind::Emitter:    return "Edit Emitter";
+    case Kind::Empty:      return "Edit Empty";
     default:               return "Edit";
     }
 }
@@ -79,6 +87,7 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
         s->fovDeg = scene.camera->fovDeg;
         s->nearZ  = scene.camera->nearZ;
         s->farZ   = scene.camera->farZ;
+        s->scripts = scene.currentDesc.camera.scripts;
         return s;
     case Kind::Sun:
     {
@@ -90,6 +99,7 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
         s->iblIntensity         = l.iblIntensity;
         s->diffuseIBLSaturation = l.diffuseIBLSaturation;
         s->pointShadowBias      = scene.pointShadowBias;
+        s->scripts              = scene.currentDesc.sun.scripts;
         return s;
     }
     case Kind::SpotLight:
@@ -142,6 +152,17 @@ std::shared_ptr<const EntityState> Capture(SE::SceneRuntime& scene, const Select
             s->emitterPreset = scene.selectedParticlePreset[i];
         return s;
     }
+    case Kind::Empty:
+    {
+        if (i < 0 || i >= (int)scene.emptyEntities.size()) return nullptr;
+        const auto& e = scene.emptyEntities[i];
+        if (!e.transform) return nullptr;
+        s->emptyDef      = e.def;
+        s->emptyPosition = e.transform->position;
+        s->emptyEuler    = e.transform->eulerDeg;
+        s->emptyScale    = e.transform->scale;
+        return s;
+    }
     default:
         return nullptr;
     }
@@ -158,6 +179,7 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
         scene.camera->fovDeg = s.fovDeg;
         scene.camera->nearZ  = s.nearZ;
         scene.camera->farZ   = s.farZ;
+        scene.currentDesc.camera.scripts = s.scripts;
         return;
     case Kind::Sun:
     {
@@ -169,6 +191,7 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
         l.iblIntensity         = s.iblIntensity;
         l.diffuseIBLSaturation = s.diffuseIBLSaturation;
         scene.pointShadowBias  = s.pointShadowBias;
+        scene.currentDesc.sun.scripts = s.scripts;
         return;
     }
     case Kind::SpotLight:
@@ -223,6 +246,17 @@ void Apply(SE::SceneRuntime& scene, const EntityState& s, ID3D11Device* device,
             scene.particleEmitterDescs[i] = s.emitterDesc;
         if (i < (int)scene.selectedParticlePreset.size())
             scene.selectedParticlePreset[i] = s.emitterPreset;
+        return;
+    }
+    case Kind::Empty:
+    {
+        if (i < 0 || i >= (int)scene.emptyEntities.size()) return;
+        auto& e = scene.emptyEntities[i];
+        if (!e.transform) return;
+        e.def                 = s.emptyDef;
+        e.transform->position = s.emptyPosition;
+        e.transform->eulerDeg = s.emptyEuler;
+        e.transform->scale    = s.emptyScale;
         return;
     }
     default:

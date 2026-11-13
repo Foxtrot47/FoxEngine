@@ -7,7 +7,7 @@ namespace Editor {
 struct Selection
 {
     enum class Kind { None, World, Camera, Sun, SpotLight, PointLight, Mesh,
-                      Object, Emitter };
+                      Object, Emitter, Empty };
 
     Kind kind  = Kind::None;
     int  index = 0;

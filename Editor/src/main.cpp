@@ -9,11 +9,13 @@
 #include <vector>
 #include "Engine/Core/Engine.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Core/Project.h"
 #include "Engine/Core/ProjectRoot.h"
 #include "Engine/Assets/AssetManager.h"
 #include "Engine/Scene/SceneLoader.h"
 #include "Engine/Scene/SceneRuntime.h"
 #include "Engine/Scene/SceneSaver.h"
+#include "Engine/Scripting/ScriptSystem.h"
 #include "EditorTheme.h"
 #include "EditorCamera.h"
 #include "EditorViewportToolbar.h"
@@ -25,6 +27,8 @@
 #include "EditorOutliner.h"
 #include "EditorDetails.h"
 #include "EditorContentBrowser.h"
+#include "EditorConsole.h"
+#include "EditorScripts.h"
 #include <ImGuizmo.h>
 
 class EditorApp : public SE::Engine
@@ -38,15 +42,21 @@ public:
     void Shutdown()
     {
         m_editorCam.CancelDrag();
+        if (m_scripts.IsRunning())
+            m_scripts.Stop();
+        GetInput().SetCursorCaptured(false);
+        m_scriptCatalog.Stop();
         // The load worker may still be creating D3D resources. Join it before
         // the renderer and device are released by the base engine shutdown.
         m_scene.Shutdown();
         SE::Engine::Shutdown();
+        m_console.Detach();
     }
 
     bool Setup(const std::string& scenePath = "")
     {
-        // Keep editor dock layout separate from TestGame's imgui.ini.
+        m_console.Attach();
+        // Keep editor dock layout separate from the player's imgui.ini.
         ImGui::GetIO().IniFilename = "editor.ini";
         SetTitleBase(L"FoxEditor");
         Editor::ApplyTheme();
@@ -57,6 +67,8 @@ public:
                           GetWindow().GetHandle(),
                           GetWindow().GetWidth(), GetWindow().GetHeight()))
             return false;
+        // Script schemas for Details; a failure only disables property editing.
+        m_scriptCatalog.Start();
 
         const auto sceneFiles = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
         if (sceneFiles.empty() && scenePath.empty())
@@ -74,19 +86,25 @@ public:
 protected:
     void OnUpdate() override
     {
-        if (m_scene.TickSceneLoad([this]() { return GetWindow().PumpMessages(); }))
-            OnSceneReady();
+        // A ready signal while another load is already in flight belongs to a
+        // superseded request (e.g. Stop pressed while the play scene loaded).
+        if (m_scene.TickSceneLoad([this]() { return GetWindow().PumpMessages(); }) &&
+            !m_scene.IsLoading())
+            OnSceneLoadReady();
+        UpdatePlayTransitions();
 
         // Match the offscreen viewport RT to last frame's panel size before
         // this frame's ImGui::Image captures its SRV.
         UpdateViewportRT();
 
         const bool sceneActive = m_scene.HasScene() && !m_scene.IsLoading();
-        if (sceneActive)
+        if (sceneActive && m_playState == PlayState::Edit)
             UpdateDirtyFlag();
         // Resolve this frame's image, toolbar and gizmo ownership before
         // camera input. Using last frame's window hover let UI clicks navigate.
         DrawUI(sceneActive);
+        if (std::exchange(m_togglePlayRequested, false))
+            TogglePlay();
         if (m_scene.HasScene() && !m_scene.IsLoading() && m_viewportRT.GetRTV())
             UpdateSceneViewport();
 
@@ -94,15 +112,16 @@ protected:
         if (!openRequest.empty())
             RequestSceneAction(SceneAction::Open, openRequest);
         if (GetWindow().ConsumeCloseRequest())
-            RequestSceneAction(SceneAction::Exit);
+            RequestExit();
     }
 
     void OnPostProcess() override
     {
         if (m_scene.HasScene() && !m_scene.IsLoading() && m_viewportRT.GetRTV())
         {
+            const bool animate = m_viewOptions.realtime || m_playState != PlayState::Edit;
             m_scene.PostProcess(m_viewportRT.GetWidth(), m_viewportRT.GetHeight(),
-                                m_viewOptions.realtime ? GetClock().GetDeltaTime() : 0.0f,
+                                animate ? GetClock().GetDeltaTime() : 0.0f,
                                 [this]() { BindViewportRT(); });
         }
         // Bind the swap chain so ImGui draws over a known background.
@@ -110,9 +129,41 @@ protected:
     }
 
 private:
+    // Edit: the editor owns the scene. Starting/Stopping: the play or edit
+    // copy of the scene is loading. Playing: scripts drive the scene.
+    enum class PlayState { Edit, Starting, Playing, Stopping };
+
+    // Pose of the scene camera component the editor camera drives.
+    struct CameraPose
+    {
+        DirectX::XMFLOAT3 eye = {}, target = {}, up = {};
+        float fovDeg = 60.0f, nearZ = 0.1f, farZ = 1000.0f;
+        bool  orthographic = false;
+        float orthoHeight = 20.0f;
+    };
+
+    bool IsPlaySession() const { return m_playState != PlayState::Edit; }
+
     void UpdateSceneViewport()
     {
         const float dt = GetClock().GetDeltaTime();
+        const float aspect = static_cast<float>(m_viewportRT.GetWidth()) /
+                             static_cast<float>(m_viewportRT.GetHeight());
+        if (m_playState == PlayState::Playing)
+        {
+            m_scene.drawDebugHelpers = false;
+            UpdatePlayViewport(dt);
+            m_scene.Render(aspect);
+            return;
+        }
+        if (IsPlaySession())
+        {
+            // Between play transitions: keep the image valid, simulate nothing.
+            m_scene.drawDebugHelpers = false;
+            m_scene.Update(0.0f, m_previewTime);
+            m_scene.Render(aspect);
+            return;
+        }
         const bool blocked = ImGui::GetIO().WantTextInput || ImGui::IsAnyItemActive() ||
             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
         if (blocked && !ImGuizmo::IsUsing()) m_editorCam.CancelDrag();
@@ -123,8 +174,26 @@ private:
         m_previewTime += sceneDt;
         m_scene.drawDebugHelpers = !m_viewOptions.gameView && m_viewOptions.showLights;
         m_scene.Update(sceneDt, m_previewTime);
-        m_scene.Render(static_cast<float>(m_viewportRT.GetWidth()) /
-                       static_cast<float>(m_viewportRT.GetHeight()));
+        m_scene.Render(aspect);
+    }
+
+    // Scripts see the viewport image as their game view; Simulate drives
+    // the scene update.
+    void UpdatePlayViewport(float dt)
+    {
+        const float width  = m_imageMax.x - m_imageMin.x;
+        const float height = m_imageMax.y - m_imageMin.y;
+        m_scripts.SetViewRect({ m_imageMin.x, m_imageMin.y, width, height });
+        m_scripts.SetInputFocus(m_gameFocused);
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos; // ImGui -> client coords
+        RECT capture;
+        capture.left   = static_cast<LONG>(m_imageMin.x - origin.x);
+        capture.top    = static_cast<LONG>(m_imageMin.y - origin.y);
+        capture.right  = static_cast<LONG>(m_imageMax.x - origin.x);
+        capture.bottom = static_cast<LONG>(m_imageMax.y - origin.y);
+        GetInput().SetCaptureRect(capture);
+        m_scripts.Simulate(dt);
+        m_playSimulated = true;
     }
 
     void CheckViewportCameraCut()
@@ -137,6 +206,26 @@ private:
         m_previousShading = shading;
     }
 
+    void OnSceneLoadReady()
+    {
+        switch (m_playState)
+        {
+        case PlayState::Starting:
+            m_playState = PlayState::Playing;
+            m_playSimulated = false;
+            m_gameFocused = true;
+            m_scripts.OnSceneReady();
+            SE_LOG_INFO("Play mode: running %s", m_playScenePath.c_str());
+            break;
+        case PlayState::Stopping:
+            FinishStop();
+            break;
+        default:
+            OnSceneReady();
+            break;
+        }
+    }
+
     void OnSceneReady()
     {
         m_previewTime = 0.0f;
@@ -146,18 +235,225 @@ private:
         TakeSavedSnapshot();
     }
 
+    // --- Play mode ---------------------------------------------------------
+
+    bool CanTogglePlay() const
+    {
+        switch (m_playState)
+        {
+        case PlayState::Edit:
+            return m_scene.HasScene() && !m_scene.IsLoading() &&
+                   m_pendingAction == SceneAction::None;
+        case PlayState::Starting:
+        case PlayState::Playing:
+            return true;
+        case PlayState::Stopping: // only to retry a failed restore
+            return !m_scene.IsLoading() && !m_scene.sceneLoadError.empty();
+        }
+        return false;
+    }
+
+    void TogglePlay()
+    {
+        if (!CanTogglePlay())
+            return;
+        switch (m_playState)
+        {
+        case PlayState::Edit:     StartPlay(); break;
+        case PlayState::Starting:
+        case PlayState::Playing:  StopPlay(); break;
+        case PlayState::Stopping:
+            m_scene.sceneLoadError.clear();
+            m_scene.RequestSceneLoad(m_playScenePath, m_playEditJson);
+            break;
+        }
+    }
+
+    // The play session runs on a fresh copy of the unsaved edit state; the
+    // edit state itself is kept as JSON and reloaded on Stop.
+    void StartPlay()
+    {
+        m_editorCam.CancelDrag();
+        m_scene.SyncDescriptorFromRuntime();
+        m_playEditDesc       = m_scene.currentDesc;
+        m_playEditJson       = SE::SceneSaver::ToJson(m_playEditDesc);
+        m_playScenePath      = m_scene.currentScenePath;
+        m_playSavedEditorCam = m_editorCam;
+        m_playSavedCamera    = CapturePose(*m_scene.camera);
+        m_playSavedPreviewTime = m_previewTime;
+
+        SE::ProjectLoadResult loaded = SE::Project::Load();
+        for (const std::string& error : loaded.errors)
+            SE_LOG_ERROR("%s", error.c_str());
+        const SE::ProjectSettings& project = loaded.project;
+
+        SE::ScriptHost host;
+        host.input        = &GetInput();
+        host.window       = &GetWindow();
+        host.scene        = &m_scene;
+        host.projectName  = project.name;
+        host.editor       = true;
+        host.published    = false;
+        host.hotReload    = true;
+        host.inputActions = project.inputActions;
+        host.scenes       = SE::Project::SceneList(project);
+        // Never stop inside a script callback: the request is handled next frame.
+        host.requestQuit  = [this]() { m_quitRequested = true; };
+        host.setTitle     = [this](const std::string& title) { m_playTitle = title; };
+        if (!m_scripts.Start(host, project.autoloads))
+        {
+            SE_LOG_ERROR("Play mode: could not create the script session");
+            return;
+        }
+
+        m_undo.Clear(); // entries point into the edit scene, which is replaced
+        m_pendingPick   = false;
+        m_quitRequested = false;
+        m_playTitle.clear();
+        m_scene.sceneLoadError.clear();
+        m_playState = PlayState::Starting;
+        m_scene.RequestSceneLoad(m_playScenePath, m_playEditJson);
+        UpdateWindowTitle();
+        SE_LOG_INFO("Play mode: starting %s", m_playScenePath.c_str());
+    }
+
+    void StopPlay()
+    {
+        if (m_playState != PlayState::Starting && m_playState != PlayState::Playing)
+            return;
+        if (m_scripts.IsRunning())
+            m_scripts.Stop();
+        ReleaseGameFocus();
+        m_quitRequested = false;
+        m_playTitle.clear();
+        m_scene.sceneLoadError.clear();
+        m_playState = PlayState::Stopping;
+        m_scene.RequestSceneLoad(m_playScenePath, m_playEditJson);
+        UpdateWindowTitle();
+        SE_LOG_INFO("Play mode: stopped");
+    }
+
+    // The edit state is back: restore the editor view and compare against
+    // the last save (not the reload) for the dirty marker.
+    void FinishStop()
+    {
+        m_playState = PlayState::Edit;
+        m_editorCam = m_playSavedEditorCam;
+        ApplyPose(m_playSavedCamera, *m_scene.camera);
+        m_previewTime = m_playSavedPreviewTime;
+        m_scene.ResetTemporalHistory();
+        m_selection.Clear();
+        m_undo.Clear();
+        m_sceneDirty       = m_playEditJson != m_savedSceneJson;
+        m_dirtyCheckFrames = 0;
+        m_playEditJson.clear();
+        m_playEditDesc = {};
+        UpdateWindowTitle();
+    }
+
+    // Deferred work that must not run inside script callbacks.
+    void UpdatePlayTransitions()
+    {
+        if (std::exchange(m_quitRequested, false))
+            StopPlay();
+        // A failed play load leaves the edit scene in place: go straight back.
+        if (m_playState == PlayState::Starting && !m_scene.IsLoading() &&
+            !m_scene.sceneLoadError.empty())
+        {
+            SE_LOG_ERROR("Play mode: scene load failed: %s", m_scene.sceneLoadError.c_str());
+            m_scene.sceneLoadError.clear();
+            if (m_scripts.IsRunning())
+                m_scripts.Stop();
+            ReleaseGameFocus();
+            m_playState = PlayState::Edit;
+            m_playEditJson.clear();
+            m_playEditDesc = {};
+            UpdateWindowTitle();
+        }
+    }
+
+    void ReleaseGameFocus()
+    {
+        m_gameFocused = false;
+        GetInput().SetCursorCaptured(false);
+    }
+
+    // Clicking the viewport image focuses the game; clicking any other editor
+    // window (script windows excepted) or leaving the app releases it.
+    void UpdateGameFocus(bool imageHovered)
+    {
+        if (m_playState != PlayState::Playing)
+            return;
+        if (GetForegroundWindow() != GetWindow().GetHandle())
+        {
+            if (m_gameFocused || GetInput().IsCursorCaptured())
+                ReleaseGameFocus();
+            return;
+        }
+        const bool clicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+                             ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
+                             ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
+        if (!clicked)
+            return;
+        if (imageHovered)
+            m_gameFocused = true;
+        else if (m_gameFocused && !m_scripts.WantsMouse())
+            ReleaseGameFocus();
+    }
+
+    static CameraPose CapturePose(const SE::CameraComponent& cam)
+    {
+        CameraPose pose;
+        pose.eye = cam.eye;
+        pose.target = cam.target;
+        pose.up = cam.up;
+        pose.fovDeg = cam.fovDeg;
+        pose.nearZ = cam.nearZ;
+        pose.farZ = cam.farZ;
+        pose.orthographic = cam.orthographic;
+        pose.orthoHeight = cam.orthoHeight;
+        return pose;
+    }
+
+    static void ApplyPose(const CameraPose& pose, SE::CameraComponent& cam)
+    {
+        cam.eye = pose.eye;
+        cam.target = pose.target;
+        cam.up = pose.up;
+        cam.fovDeg = pose.fovDeg;
+        cam.nearZ = pose.nearZ;
+        cam.farZ = pose.farZ;
+        cam.orthographic = pose.orthographic;
+        cam.orthoHeight = pose.orthoHeight;
+    }
+
     // --- Scene save, open/exit guard + dirty tracking ---
 
     enum class SceneAction { None, Open, Exit };
 
     bool SaveScene()
     {
+        if (IsPlaySession())
+            return SavePlayEditState();
         return SaveSceneAs(m_scene.currentScenePath);
+    }
+
+    // While playing (or restoring) the runtime is not the edit state; the
+    // snapshot taken on Play is.
+    bool SavePlayEditState()
+    {
+        if (!SE::SceneSaver::SaveToFile(m_playScenePath, m_playEditDesc))
+            return false;
+        m_savedSceneJson   = m_playEditJson;
+        m_sceneDirty       = false;
+        m_dirtyCheckFrames = 0;
+        UpdateWindowTitle();
+        return true;
     }
 
     bool SaveSceneAs(const std::string& path)
     {
-        if (!m_scene.HasScene() || m_scene.IsLoading())
+        if (!m_scene.HasScene() || m_scene.IsLoading() || IsPlaySession())
             return false;
         m_scene.SyncDescriptorFromRuntime();
         if (!SE::SceneSaver::SaveToFile(path, m_scene.currentDesc))
@@ -175,6 +471,8 @@ private:
     // Unthrottled dirty check for decisions that discard the scene.
     bool IsSceneDirtyNow()
     {
+        if (IsPlaySession())
+            return m_playEditJson != m_savedSceneJson;
         if (!m_scene.HasScene() || m_scene.IsLoading())
             return false;
         m_scene.SyncDescriptorFromRuntime();
@@ -185,7 +483,7 @@ private:
     // unsaved edits; clean scenes proceed immediately.
     void RequestSceneAction(SceneAction action, const std::string& path = {})
     {
-        if (action == SceneAction::Open && m_scene.IsLoading())
+        if (action == SceneAction::Open && (m_scene.IsLoading() || IsPlaySession()))
             return;
         m_pendingAction = action;
         m_pendingScenePath = path;
@@ -195,10 +493,18 @@ private:
             PerformSceneAction();
     }
 
+    // Exit stops a running game first; the save prompt then works on the
+    // edit state kept from Play.
+    void RequestExit()
+    {
+        StopPlay();
+        RequestSceneAction(SceneAction::Exit);
+    }
+
     void PerformSceneAction()
     {
         const SceneAction action = std::exchange(m_pendingAction, SceneAction::None);
-        if (action == SceneAction::Open && !m_scene.IsLoading())
+        if (action == SceneAction::Open && !m_scene.IsLoading() && !IsPlaySession())
             m_scene.RequestSceneLoad(m_pendingScenePath);
         if (action == SceneAction::Exit)
         {
@@ -245,6 +551,8 @@ private:
         std::wstring title = L"FoxEditor \u2014 " + std::wstring(file.begin(), file.end());
         if (m_sceneDirty)
             title += L"*";
+        if (IsPlaySession())
+            title += L" [Playing]";
         SetTitleBase(title);
     }
 
@@ -289,15 +597,26 @@ private:
         }
 
         DrawViewportPanel(sceneActive);
+        // Script windows are submitted after the viewport image so they draw over it.
+        if (sceneActive && m_playState == PlayState::Playing && m_playSimulated)
+            m_scripts.DrawGui();
         HandleHotkeys();
         if (m_viewOptions.immersive) return;
-        Editor::DrawOutlinerPanel(m_scene, m_selection, m_undo, SpawnPosition());
+        const bool playing = IsPlaySession();
+        Editor::DrawOutlinerPanel(m_scene, m_selection, m_undo, SpawnPosition(), playing);
         Editor::DrawDetailsPanel(m_scene, m_selection, m_undo, GetAssets(),
                                  GetRenderer().GetDevice(), GetShaders(),
-                                 m_viewportRT.GetWidth(), m_viewportRT.GetHeight());
+                                 m_viewportRT.GetWidth(), m_viewportRT.GetHeight(),
+                                 m_scriptCatalog, playing);
         m_contentBrowser.Draw(m_scene, m_selection, m_undo, GetAssets(),
                               GetRenderer().GetDevice(), GetRenderer().GetContext(),
-                              SpawnPosition());
+                              SpawnPosition(), playing);
+        // A layout saved before the Console existed has no entry for it: dock
+        // it with the Content Browser, as the default layout does.
+        if (const ImGuiWindow* browser = ImGui::FindWindowByName("Content Browser");
+            browser && browser->DockId != 0)
+            ImGui::SetNextWindowDockID(browser->DockId, ImGuiCond_FirstUseEver);
+        m_console.Draw(m_scripts, m_playState == PlayState::Playing);
     }
 
     void DrawMainMenu()
@@ -306,7 +625,7 @@ private:
             return;
         if (ImGui::BeginMenu("File"))
         {
-            const bool canSave = m_scene.HasScene() && !m_scene.IsLoading();
+            const bool canSave = m_scene.HasScene() && !m_scene.IsLoading() && !IsPlaySession();
             DrawOpenSceneMenu();
             ImGui::Separator();
             if (ImGui::MenuItem("Save Scene", "Ctrl+S", false, canSave))
@@ -317,7 +636,7 @@ private:
                 RequestSceneAction(SceneAction::Open, m_scene.currentScenePath);
             ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4"))
-                RequestSceneAction(SceneAction::Exit);
+                RequestExit();
             ImGui::EndMenu();
         }
         DrawEditMenu();
@@ -333,7 +652,7 @@ private:
 
     void DrawOpenSceneMenu()
     {
-        if (!ImGui::BeginMenu("Open Scene", !m_scene.IsLoading()))
+        if (!ImGui::BeginMenu("Open Scene", !m_scene.IsLoading() && !IsPlaySession()))
             return;
         const auto scenes = SE::SceneLoader::ScanSceneDirectory("Assets/Scenes");
         if (scenes.empty())
@@ -351,22 +670,26 @@ private:
     {
         if (!ImGui::BeginMenu("Edit"))
             return;
+        const bool canEdit = m_scene.HasScene() && !m_scene.IsLoading() && !IsPlaySession();
         const std::string undoText = m_undo.CanUndo()
             ? std::string("Undo ") + m_undo.UndoLabel() : std::string("Undo");
         const std::string redoText = m_undo.CanRedo()
             ? std::string("Redo ") + m_undo.RedoLabel() : std::string("Redo");
-        if (ImGui::MenuItem(undoText.c_str(), "Ctrl+Z", false, m_undo.CanUndo()))
+        if (ImGui::MenuItem(undoText.c_str(), "Ctrl+Z", false, canEdit && m_undo.CanUndo()))
             m_undo.Undo();
-        if (ImGui::MenuItem(redoText.c_str(), "Ctrl+Y", false, m_undo.CanRedo()))
+        if (ImGui::MenuItem(redoText.c_str(), "Ctrl+Y", false, canEdit && m_undo.CanRedo()))
             m_undo.Redo();
         ImGui::Separator();
-        const bool canEdit = m_scene.HasScene() && !m_scene.IsLoading();
         if (ImGui::MenuItem("Rename", "F2", false, canEdit))
             Editor::RequestRenameSelection(m_scene, m_selection);
         if (ImGui::MenuItem("Duplicate", "Ctrl+D", false, canEdit))
             Editor::DuplicateSelection(m_scene, m_selection, m_undo);
         if (ImGui::MenuItem("Delete", "Del", false, canEdit))
             Editor::DeleteSelection(m_scene, m_selection, m_undo);
+        ImGui::Separator();
+        const char* playLabel = IsPlaySession() ? "Stop" : "Play";
+        if (ImGui::MenuItem(playLabel, "F5", false, CanTogglePlay()))
+            m_togglePlayRequested = true;
         ImGui::EndMenu();
     }
 
@@ -498,9 +821,20 @@ private:
 
     void HandleHotkeys()
     {
+        // F5 and Shift+F1 work even while the game has focus.
+        HandlePlayKeys();
+        if (m_gameFocused) return;
         if (!CanUseEditorShortcuts()) return;
         const ImGuiIO& io = ImGui::GetIO();
         auto& input = GetInput();
+        if (IsPlaySession())
+        {
+            // Editing is off while playing; only view toggles remain.
+            if (m_viewportHovered && !io.KeyCtrl && !io.KeyAlt &&
+                input.IsKeyPressed(VK_F11))
+                m_viewOptions.immersive = !m_viewOptions.immersive;
+            return;
+        }
         if (io.KeyCtrl)
         {
             HandleControlKeys(input);
@@ -513,6 +847,19 @@ private:
         }
         HandleEditKeys(input);
         if (m_viewportHovered) HandleViewportKeys(input);
+    }
+
+    void HandlePlayKeys()
+    {
+        const ImGuiIO& io = ImGui::GetIO();
+        auto& input = GetInput();
+        if (io.KeyShift && input.IsKeyPressed(VK_F1))
+            ReleaseGameFocus();
+        // Outside the game, F5 must not fire while typing or in a modal prompt.
+        const bool editorBusy = io.WantTextInput ||
+            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        if (input.IsKeyPressed(VK_F5) && (m_gameFocused || !editorBusy))
+            m_togglePlayRequested = true;
     }
 
     void HandleControlKeys(SE::InputManager& input)
@@ -616,6 +963,7 @@ private:
 
         ImGui::DockBuilderDockWindow("Details", dockRightBottom);
         ImGui::DockBuilderDockWindow("Content Browser", dockBottom);
+        ImGui::DockBuilderDockWindow("Console", dockBottom);
         ImGui::DockBuilderFinish(dockspaceId);
     }
 
@@ -640,13 +988,27 @@ private:
             return;
         }
         if (sceneActive)
+        {
+            Editor::PlayControls play;
+            play.playing    = IsPlaySession();
+            play.canToggle  = CanTogglePlay();
+            play.errorCount = m_scripts.IsRunning() ? m_scripts.ErrorCount() : 0;
+            play.title      = m_playTitle.empty() ? nullptr : m_playTitle.c_str();
             Editor::DrawViewportToolbar(m_editorCam, *m_scene.camera, m_gizmoOp,
-                                         m_gizmoSettings, m_viewOptions, m_scene.pipeline);
+                                         m_gizmoSettings, m_viewOptions, m_scene.pipeline,
+                                         play);
+            if (play.toggleRequested)
+                m_togglePlayRequested = true;
+        }
         m_viewportHovered = false;
         const ImVec2 avail = ImGui::GetContentRegionAvail();
         m_viewportSize = ImVec2((std::max)(avail.x, 1.0f), (std::max)(avail.y, 1.0f));
 
-        if (sceneActive && m_viewportRT.GetSRV()) DrawViewportImage(avail);
+        // A failed restore after Stop keeps the stopped play scene loaded;
+        // show the error and Retry instead of that image.
+        const bool restoreFailed = m_playState == PlayState::Stopping &&
+            !m_scene.sceneLoadError.empty();
+        if (sceneActive && m_viewportRT.GetSRV() && !restoreFailed) DrawViewportImage(avail);
         else DrawViewportLoadingOverlay();
 
         ImGui::End();
@@ -658,13 +1020,41 @@ private:
         ImGui::Image(reinterpret_cast<ImTextureID>(m_viewportRT.GetSRV()), size);
         const ImVec2 imageMin = ImGui::GetItemRectMin();
         const ImVec2 imageMax = ImGui::GetItemRectMax();
-        m_viewportHovered = ImGui::IsItemHovered();
+        m_imageMin = imageMin;
+        m_imageMax = imageMax;
+        const bool imageHovered = ImGui::IsItemHovered();
+        if (IsPlaySession())
+        {
+            // The game owns the view: no editor overlays, picking or navigation.
+            UpdateGameFocus(imageHovered);
+            DrawPlayOverlay(imageMin, imageMax);
+            if (m_viewOptions.showStats) DrawViewportStats(imageMin, imageMax);
+            return;
+        }
+        m_viewportHovered = imageHovered;
         if (!m_viewOptions.gameView && m_viewOptions.showGrid)
             Editor::DrawOrthographicGrid(*m_scene.camera, imageMin, imageMax);
         DrawViewportOverlays(imageMin, imageMax);
         if (!m_viewOptions.gameView && m_viewOptions.showAxes)
             Editor::DrawOrientationAxes(*m_scene.camera, imageMin, imageMax);
         if (m_viewOptions.showStats) DrawViewportStats(imageMin, imageMax);
+    }
+
+    // Focus frame and hint over the game view.
+    void DrawPlayOverlay(ImVec2 imageMin, ImVec2 imageMax)
+    {
+        if (m_playState != PlayState::Playing)
+            return;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        if (m_gameFocused)
+        {
+            dl->AddRect(imageMin, imageMax, IM_COL32(90, 170, 255, 200), 0.0f, 0, 2.0f);
+            return;
+        }
+        const char* hint = "Click to focus the game  |  Shift+F1 releases focus  |  F5 stops";
+        const ImVec2 pos = { imageMin.x + 8.0f, imageMin.y + 6.0f };
+        dl->AddText({ pos.x + 1.0f, pos.y + 1.0f }, IM_COL32(0, 0, 0, 200), hint);
+        dl->AddText(pos, IM_COL32(220, 220, 220, 230), hint);
     }
 
     // Gizmo, light indicators, and click picking on top of the viewport image.
@@ -755,13 +1145,19 @@ private:
             if (ImGui::Button("Retry"))
             {
                 m_scene.sceneLoadError.clear();
-                m_scene.RequestSceneLoad(m_scene.lastRequestedScenePath);
+                m_scene.RequestSceneLoad(m_scene.lastRequestedScenePath,
+                                         m_scene.lastRequestedSceneJson);
             }
         }
         ImGui::EndGroup();
     }
 
+    // Declared first so it is destroyed last: everything else may still log.
+    Editor::Console       m_console;
     SE::SceneRuntime      m_scene;
+    // The play session references m_scene, so it is declared (and destroyed) after it.
+    SE::ScriptSystem      m_scripts;
+    Editor::ScriptCatalog m_scriptCatalog;
     Editor::EditorCamera  m_editorCam;
     Editor::Selection     m_selection;
     Editor::UndoStack     m_undo;
@@ -775,6 +1171,8 @@ private:
     SE::ForwardPipeline::ViewShading m_previousShading = SE::ForwardPipeline::ViewShading::Lit;
     SE::RenderTarget      m_viewportRT;
     ImVec2           m_viewportSize    = ImVec2(1280.0f, 720.0f);
+    ImVec2           m_imageMin        = ImVec2(0.0f, 0.0f);
+    ImVec2           m_imageMax        = ImVec2(1280.0f, 720.0f);
     bool             m_viewportHovered = false;
     bool             m_firstFrame      = true;
     bool             m_resetLayout     = false;
@@ -789,6 +1187,20 @@ private:
     bool                     m_openSaveAs        = false;
     bool                     m_saveError         = false;
     char                     m_saveAsName[128]   = {};
+
+    // Play mode
+    PlayState            m_playState = PlayState::Edit;
+    std::string          m_playEditJson;      // the unsaved edit state, reloaded on Stop
+    SE::SceneDescriptor  m_playEditDesc;      // same state, for saving on exit while playing
+    std::string          m_playScenePath;
+    Editor::EditorCamera m_playSavedEditorCam;
+    CameraPose           m_playSavedCamera;
+    float                m_playSavedPreviewTime = 0.0f;
+    std::string          m_playTitle;         // fox.window.set_title, shown in the toolbar
+    bool                 m_togglePlayRequested = false;
+    bool                 m_quitRequested = false; // fox.app.quit, handled next frame
+    bool                 m_gameFocused = false;
+    bool                 m_playSimulated = false; // on_gui waits for the first Simulate
 };
 
 static std::string ParseSceneArg(LPSTR lpCmdLine)
