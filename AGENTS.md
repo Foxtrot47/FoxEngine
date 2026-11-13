@@ -107,6 +107,7 @@ Lua 5.4 bound with sol2. Each session (a FoxPlayer run, an editor Play session, 
     "scripts": [ { "script": "Assets/Scripts/Examples/Bobber.lua", "properties": { "amplitude": 0.6 } } ] }
   ```
 - Scripts create actors at runtime with `fox.world.spawn(class_or_path, { position = ..., properties = ..., components = ... })`; spawned actors are not saved. `fox.world.actors(class)` and `fox.world.destroy(actor)` complete the set. `Projects/Showcase/Assets/Scenes/actors.json` is the reference scene.
+- Level transforms use `rotationDegrees` (the Lua side spells it `rotation`); the loader warns about any other transform key.
 - Actor classes are Lua, so `SceneRuntime` resolves every placed class on the main thread (`actorClassResolver`) before the level load worker starts; the worker then preloads their meshes. Unresolved classes log a level warning and the actor has no components.
 - **Autoloads** (`project.json` `autoload`) have no entity, live for the whole session across scene loads and receive `on_scene_loaded(scene)`. Global game logic goes there (`Game/PlayerController.lua`, `Game/PauseMenu.lua`).
 - Callbacks are optional methods: `on_enable`, `on_start`, `on_update(dt)`, `on_fixed_update(dt)`, `on_late_update(dt)`, `on_gui`, `on_disable`, `on_destroy`, `on_reload`. Each frame runs coroutines → `on_update` → physics steps (`on_fixed_update`) → `on_late_update` → `on_gui`.

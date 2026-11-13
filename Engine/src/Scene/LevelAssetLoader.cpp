@@ -246,6 +246,14 @@ void ValidateTransform(LevelAssetLoadResult& result, const json& component,
             AddDiagnostic(result, Severity::Error, path + "/" + field,
                           "expected an array of three numbers");
     }
+    for (auto it = component.begin(); it != component.end(); ++it)
+    {
+        const std::string& key = it.key();
+        if (key != "position" && key != "rotationDegrees" && key != "scale")
+            AddDiagnostic(result, Severity::Warning, path + "/" + key,
+                          key == "rotation" ? "unknown field is ignored (use rotationDegrees)"
+                                            : "unknown field is ignored");
+    }
 }
 
 void ValidateNumber(LevelAssetLoadResult& result, const json& component,

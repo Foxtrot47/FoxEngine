@@ -242,6 +242,26 @@ static void TestValidationFailures()
     Require(!result.Succeeded(), "invalid level unexpectedly succeeded");
     Require(HasErrorContaining(result, "unknown component"), "unknown component not diagnosed");
     Require(HasErrorContaining(result, "parent cycle"), "parent cycle not diagnosed");
+
+    // A legacy "rotation" key in a v2 transform is silently a no-op without this.
+    const json legacyKey = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "LegacyKey" },
+        { "entities", json::array({
+            {
+                { "id", "0000000000000001" },
+                { "components", { { "transform", { { "rotation", { 0, 90, 0 } } } } } }
+            }
+        }) }
+    };
+    const auto legacy = LevelAssetLoader::Parse(legacyKey, "legacyKey");
+    bool warned = false;
+    for (const auto& d : legacy.diagnostics)
+        warned |= d.severity == LevelDiagnosticSeverity::Warning &&
+                  d.path.find("transform/rotation") != std::string::npos &&
+                  d.message.find("rotationDegrees") != std::string::npos;
+    Require(legacy.Succeeded() && warned, "an unknown transform key should warn and name rotationDegrees");
 }
 
 static void TestLegacyConversion()
