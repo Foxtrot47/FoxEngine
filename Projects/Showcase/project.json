@@ -6,7 +6,8 @@
     "Assets/Scenes/bistro.json",
     "Assets/Scenes/suntemple.json",
     "Assets/Scenes/specgloss.json",
-    "Assets/Scenes/actors.json"
+    "Assets/Scenes/actors.json",
+    "Assets/Scenes/shooting_range.json"
   ],
   "autoload": [
     "Assets/Scripts/Game/PlayerController.lua",
@@ -23,7 +24,9 @@
     "jump": ["Space", "Gamepad.A"],
     "look": ["MouseRight"],
     "toggle_walk": ["Tab", "Gamepad.Y"],
-    "pause": ["Escape", "Gamepad.Start"]
+    "pause": ["Escape", "Gamepad.Start"],
+    "fire": ["MouseLeft", "Gamepad.RightShoulder"],
+    "reset": ["R", "Gamepad.Back"]
   },
   "window": {
     "width": 1280,

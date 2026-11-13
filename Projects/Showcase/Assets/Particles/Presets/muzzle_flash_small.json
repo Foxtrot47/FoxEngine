@@ -1,0 +1,28 @@
+{
+  "type": "particle_preset",
+  "version": 1,
+  "emitter": {
+    "emit_rate": 0.0,
+    "max_particles": 8,
+    "lifetime_min": 0.04,
+    "lifetime_max": 0.06,
+    "velocity_min": [0.0, 0.0, 0.0],
+    "velocity_max": [0.0, 0.0, 0.0],
+    "size_start": 0.14,
+    "size_end": 0.2,
+    "color_start": [6.0, 4.5, 2.2, 1.0],
+    "color_end": [4.0, 1.6, 0.4, 0.0],
+    "gravity": [0.0, 0.0, 0.0],
+    "spawn_radius": 0.0,
+    "texture": "Assets/Particles/muzzle_flash.dds",
+    "atlasColumns": 1,
+    "atlasRows": 2,
+    "aspectRatio": 1.0,
+    "softDistance": 0.0,
+    "drag": 0.0,
+    "shaderMode": 0,
+    "emitMode": 1,
+    "rotationDegrees": 0.0,
+    "randomRotation": true
+  }
+}

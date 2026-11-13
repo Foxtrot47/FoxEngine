@@ -5,9 +5,21 @@
 -- switches to walking: the character is placed under the camera eye, walks
 -- with move_*, jumps with jump and the cursor stays captured for mouse look.
 -- Input is ignored while the game is paused (fox.time.scale == 0, set by
--- Game/PauseMenu.lua).
+-- Game/PauseMenu.lua). Levels with their own player (an actor whose class sets
+-- controls_camera = true, e.g. Actors/FirstPersonPlayer.lua) take over: this
+-- script stands down until that actor is gone.
 
 local CameraMath = require("Game.CameraMath")
+
+-- The first actor that drives the camera itself, if any.
+local function find_pawn()
+    for _, actor in ipairs(fox.world.actors()) do
+        if actor.controls_camera then
+            return actor
+        end
+    end
+    return nil
+end
 
 local PlayerController = fox.script {
     properties = {
@@ -43,6 +55,7 @@ function PlayerController:on_scene_loaded(scene)
     self.yaw = fox.camera.yaw
     self.pitch = CameraMath.clamp_pitch(fox.camera.pitch)
     self:set_mode("fly")
+    self.pawn = find_pawn()
 end
 
 function PlayerController:on_disable()
@@ -79,6 +92,15 @@ end
 function PlayerController:on_update(dt)
     if not self.scene_ready or fox.scene.is_loading() then
         return
+    end
+    if self.pawn ~= nil then
+        if self.pawn.entity:is_valid() then
+            return
+        end
+        self.pawn = nil
+        self.yaw = fox.camera.yaw
+        self.pitch = CameraMath.clamp_pitch(fox.camera.pitch)
+        self:set_mode("fly")
     end
     if fox.time.scale <= 0 then
         -- Paused: the menu owns the cursor; look capture restarts on resume.
