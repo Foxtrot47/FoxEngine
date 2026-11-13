@@ -109,12 +109,85 @@ std::string TestTemplate(const std::string& name, const std::string& scriptPath,
            "end)\n";
 }
 
+std::string ActorTemplate(const std::string& name, const std::string& scriptPath)
+{
+    std::string text = R"(--- $NAME: describe what this actor is.
+--- Place it in a level (editor: Outliner > Add > Actors) or spawn it from a script:
+---   fox.world.spawn("$PATH", { position = vec3(0, 0, 0) })
+--- Each component becomes self.<name>; a level placement can override any
+--- component field and property. Add fox.script components to placements in
+--- Details > Add Script. API reference: the engine's Engine/Scripts/types/fox.lua.
+
+local DEFAULT_PULSE_SPEED = 0.5
+
+---@class $NAME : fox.Actor
+---@field light fox.ActorComponent
+---@field body fox.ActorComponent
+---@field pulse_speed number Light pulses per second.
+local $NAME = fox.actor {
+    components = {
+        { name = "light", type = "point_light", color = vec3(1, 0.85, 0.6), radius = 8,
+          position = vec3(0, 1.5, 0) },
+        { name = "body", type = "box", size = vec3(1, 1, 1), position = vec3(0, 0.5, 0) },
+    },
+    properties = {
+        { name = "pulse_speed", type = "number", default = DEFAULT_PULSE_SPEED, min = 0, step = 0.1,
+          tooltip = "Light pulses per second." },
+    },
+}
+
+--- The declared default of `pulse_speed`, exposed for tests.
+$NAME.DEFAULT_PULSE_SPEED = DEFAULT_PULSE_SPEED
+
+--- Pure helper (no engine state), so tests can call it directly.
+---@param time number Seconds.
+---@param speed number Pulses per second.
+---@return number
+function $NAME.intensity_at(time, speed)
+    return 1 + 0.5 * math.sin(2 * math.pi * speed * time)
+end
+
+--- Called every frame with the scaled frame time in seconds.
+---@param dt number
+function $NAME:on_update(dt)
+    if dt <= 0 then
+        return
+    end
+    self.light.intensity = $NAME.intensity_at(fox.time.time, self.pulse_speed)
+end
+
+return $NAME
+)";
+    for (size_t at = text.find("$PATH"); at != std::string::npos; at = text.find("$PATH", at + scriptPath.size()))
+        text.replace(at, 5, scriptPath);
+    for (size_t at = text.find("$NAME"); at != std::string::npos; at = text.find("$NAME", at + name.size()))
+        text.replace(at, 5, name);
+    return text;
+}
+
+std::string ActorTestTemplate(const std::string& name, const std::string& scriptPath, const std::string& module)
+{
+    return "-- Tests for " + scriptPath + ". Run: FoxProject test " + name + "\n"
+           "-- Headless tests have no scene: test pure helpers, not spawned actors.\n"
+           "local " + name + " = require(\"" + module + "\")\n"
+           "\n"
+           "fox.test.case(\"pulse_speed defaults to DEFAULT_PULSE_SPEED\", function()\n"
+           "    fox.test.expect_eq(" + name + ".DEFAULT_PULSE_SPEED, 0.5)\n"
+           "end)\n"
+           "\n"
+           "fox.test.case(\"intensity peaks a quarter pulse in\", function()\n"
+           "    fox.test.expect_near(" + name + ".intensity_at(0, 1), 1.0)\n"
+           "    fox.test.expect_near(" + name + ".intensity_at(0.25, 1), 1.5)\n"
+           "end)\n";
+}
+
 } // namespace
 
 int CommandNew(ToolContext& /*context*/, const std::vector<std::string>& args)
 {
     std::string name;
     std::string subdirectory;
+    bool actor = false;
     for (size_t i = 0; i < args.size(); ++i)
     {
         const std::string& arg = args[i];
@@ -126,6 +199,8 @@ int CommandNew(ToolContext& /*context*/, const std::vector<std::string>& args)
             if (!ParseSubdirectory(args[++i], subdirectory, error))
                 return UsageError("new", error);
         }
+        else if (arg == "--actor")
+            actor = true;
         else if (!arg.empty() && arg[0] == '-')
             return UsageError("new", "unknown option '" + arg + "'");
         else if (!name.empty())
@@ -160,12 +235,13 @@ int CommandNew(ToolContext& /*context*/, const std::vector<std::string>& args)
         return k_exitFailure;
 
     std::string error;
-    if (!WriteTextFile(scriptPath, ScriptTemplate(name), &error))
+    if (!WriteTextFile(scriptPath, actor ? ActorTemplate(name, scriptPath) : ScriptTemplate(name), &error))
     {
         PrintDiagnostic(Severity::Error, scriptPath, error);
         return k_exitFailure;
     }
-    if (!WriteTextFile(testPath, TestTemplate(name, scriptPath, module), &error))
+    if (!WriteTextFile(testPath, actor ? ActorTestTemplate(name, scriptPath, module)
+                                       : TestTemplate(name, scriptPath, module), &error))
     {
         PrintDiagnostic(Severity::Error, testPath, error);
         return k_exitFailure;
