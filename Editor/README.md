@@ -45,6 +45,7 @@ an axis preset changes its label to Orthographic, not Perspective.
 - `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`): undo / redo
 - `Ctrl+S` / `Ctrl+Shift+S`: save / save as
 - `Ctrl+D`, `Del`, `F2`: duplicate, delete, rename the selection
+- `F5`: Play / Stop; `Shift+F1`: release game focus while playing
 
 Viewport commands require the pointer over the image and no active text entry,
 popup, gizmo manipulation or camera drag. The camera menu also exposes every
@@ -63,16 +64,49 @@ view, including Isometric. Blender numpad view bindings have been removed.
 - Content Browser: current-folder name search, asset-type filter, thumbnail size.
 - Details: property-group search. Matching groups remain intact so dependent
   enable toggles/settings stay accessible; this is not individual-row filtering.
+- Console (tab next to Content Browser): every log message (engine and Lua
+  script errors) with Info/Warning/Error and text filters, Clear and
+  auto-scroll. Its Lua line evaluates code in the play session (Up/Down history).
 
 All new viewport settings are session-only; the existing dock layout still uses
 `editor.ini`. Scene camera near/far/FOV controls retain their existing semantics.
 
+## Play mode
+
+`F5` or the Play button at the left of the viewport toolbar plays the current
+*unsaved* edit state: the scene is serialized and reloaded as a fresh copy, and
+`project.json` (autoloads, input actions) starts a Lua session with hot reload.
+Clicking the viewport image gives the game input focus; clicking another editor
+window, `Shift+F1` or leaving the app releases it (and the captured cursor).
+While playing, editing, gizmos, picking and Open/Save/Reload are disabled; the
+Outliner and Details show live values read-only. The red badge next to Stop
+counts the session's script errors (details in the Console); `fox.app.quit()`
+stops play. Stop reloads the edit state and restores the editor camera; the undo
+history is cleared because it pointed into the replaced scene. Closing the
+window while playing stops first and offers to save the edit state.
+
+## Scripts and empties
+
+Details shows a Scripts section for every entity kind except the spot light and
+World: per script a header (open in the default program, remove), widgets for
+the properties the script declares (`fox.script{ properties = ... }`) and a
+reset button for overridden values. Only overrides are stored; setting a value
+back to its default removes the override. Entity properties pick from entities
+that have a level id (saved entities), scene properties from the project scene
+list. "Add Script" lists the loadable `Assets/Scripts/**/*.lua` files (tests
+excluded). Schemas come from a separate headless Lua session and refresh when
+files change.
+
+Empty entities (`+ Add > Empty Entity`) carry only a transform and scripts; they
+support rename, duplicate, delete, gizmos and undo, but not viewport picking.
+
 ## Undo and scene files
 
-Undo covers gizmo transforms, Details edits of every entity kind except the
-World settings, outliner add/duplicate/delete/rename, and Content Browser mesh
-imports. Deleted entities are kept alive on the stack (including particle GPU
-buffers) and reinserted at their original index, so earlier entries stay
+Undo covers gizmo transforms, Details edits (script components included) of
+every entity kind except the World settings, outliner add/duplicate/delete/
+rename, and Content Browser mesh imports. Deleted entities are kept alive on
+the stack (including particle GPU buffers) and reinserted at their original
+index, so earlier entries stay
 valid; the stack only resets when a scene loads. Visibility toggles in the
 outliner are not recorded. The Edit menu shows the next undo/redo label.
 
