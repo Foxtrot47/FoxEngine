@@ -81,6 +81,7 @@ void BindCore(ScriptApi& api, ScriptContext& ctx);
 void BindMath(ScriptApi& api, ScriptContext& ctx);
 void BindInput(ScriptApi& api, ScriptContext& ctx);
 void BindScene(ScriptApi& api, ScriptContext& ctx);
+void BindVehicle(ScriptApi& api, ScriptContext& ctx);
 void BindUi(ScriptApi& api, ScriptContext& ctx);
 
 void RegisterAllBindings(ScriptApi& api, ScriptContext& ctx);
