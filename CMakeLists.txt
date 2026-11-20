@@ -43,6 +43,12 @@ if(BUILD_TESTING)
     add_test(NAME PhysicsWorldTests COMMAND PhysicsWorldTests)
     set_tests_properties(PhysicsWorldTests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
+    add_executable(VehicleTests Tests/VehicleTests.cpp)
+    target_link_libraries(VehicleTests PRIVATE FoxEngine)
+    target_compile_options(VehicleTests PRIVATE /W4 /WX /MP)
+    add_test(NAME VehicleTests COMMAND VehicleTests)
+    set_tests_properties(VehicleTests PROPERTIES WORKING_DIRECTORY "${FOX_DEFAULT_PROJECT}")
+
     # The LuaLS reference is generated from the bindings; fail when it drifts.
     add_test(NAME LuaApiStubs COMMAND FoxProject api --check)
     add_test(NAME ShowcaseProject COMMAND FoxProject --project "${FOX_DEFAULT_PROJECT}" check)
