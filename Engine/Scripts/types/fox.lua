@@ -866,6 +866,83 @@ fox.graphics = {}
 ---@field ambient_intensity number Image-based ambient light multiplier.
 fox.lighting = {}
 
+---A wheeled vehicle spawned at runtime (meshes load asynchronously; `ready`
+---turns true once it can be driven). Vehicles are not saved with the level
+---and are removed by the next scene load.
+---@class fox.Vehicle
+---@field ready boolean True once the meshes are loaded and the chassis exists.
+---@field position fox.Vec3 Chassis origin in world space.
+---@field forward fox.Vec3 Unit forward direction on the ground plane.
+---@field yaw number Heading in degrees (yaw turns +Z toward +X).
+---@field speed number Signed speed along the chassis forward axis, m/s.
+---@field rpm number Engine speed.
+---@field limiter_rpm number Rev limiter engine speed from the definition.
+---@field gear integer -1 reverse, 0 neutral, 1..gear_count forward.
+---@field gear_count integer Forward gears.
+---@field shifting boolean True while the gearbox interrupts drive.
+---@field clutch number Clutch engagement 0..1.
+---@field throttle number Effective throttle after limiter and traction control.
+---@field traction_control_active boolean Traction control is cutting torque.
+---@field abs_active boolean ABS is releasing brake pressure.
+---@field acceleration fox.Vec3 Chassis-space acceleration in m/s^2 (x right, y up, z forward).
+---@field automatic boolean Automatic gearbox (on by default).
+---@field traction_control boolean Traction control (on by default).
+---@field abs boolean Anti-lock brakes (on by default).
+fox.Vehicle = {}
+
+---Driver controls for the next physics step: pedals 0..1, steer -1..1
+---(+ = right). Held until changed.
+---@param throttle number
+---@param brake number
+---@param steer number
+---@param handbrake? number
+---@return nil
+function fox.Vehicle:set_input(throttle, brake, steer, handbrake) end
+
+---Queues the next higher gear (forces manual).
+---@return nil
+function fox.Vehicle:shift_up() end
+
+---Queues the next lower gear (forces manual).
+---@return nil
+function fox.Vehicle:shift_down() end
+
+----1 reverse, 0 neutral, 1..gear_count.
+---@param gear integer
+---@return nil
+function fox.Vehicle:select_gear(gear) end
+
+---Teleports upright to the position and heading (default: current) and
+---clears all dynamic state (recovery after a crash or flip).
+---@param position? fox.Vec3
+---@param yaw? number
+---@return nil
+function fox.Vehicle:reset(position, yaw) end
+
+---Runtime-spawned wheeled vehicles. The definition JSON holds the physics
+---(chassis, axles, engine, gearbox) and a "visual" block with the body and
+---wheel meshes. Spawning imports meshes asynchronously; check `ready` before
+---driving. Vehicles are not saved and are removed by the next scene load.
+---@class fox.vehicle
+fox.vehicle = {}
+
+---Starts spawning a vehicle definition ("Assets/Vehicles/Car/vehicle.json")
+---with its wheels on the position (default origin). One spawn may be in
+---flight at a time; the returned handle is usable once `ready` is true.
+---@param path string
+---@param position? fox.Vec3
+---@param yaw? number
+---@return fox.Vehicle
+function fox.vehicle.spawn(path, position, yaw) end
+
+---Removes every spawned vehicle.
+---@return nil
+function fox.vehicle.remove_all() end
+
+---Vehicles that finished loading.
+---@return integer
+function fox.vehicle.count() end
+
 ---Options for fox.ui.begin_window.
 ---@class fox.WindowOptions
 ---@field x number? Left edge relative to the game view (fixed every frame).

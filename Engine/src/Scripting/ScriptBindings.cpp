@@ -10,6 +10,7 @@ void RegisterAllBindings(ScriptApi& api, ScriptContext& ctx)
     BindMath(api, ctx);
     BindInput(api, ctx);
     BindScene(api, ctx);
+    BindVehicle(api, ctx);
     BindUi(api, ctx);
 }
 

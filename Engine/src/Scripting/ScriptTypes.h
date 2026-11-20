@@ -45,4 +45,13 @@ struct ScriptActorPart
     ScriptEntity entity;
 };
 
+// fox.Vehicle: a runtime-spawned vehicle, addressed by its runtime id. The id
+// is valid before the car's meshes finish loading; `ready` reports when it can
+// be driven.
+struct ScriptVehicle
+{
+    uint32_t id = 0;
+    uint32_t generation = 0;
+};
+
 } // namespace SE::Scripting
