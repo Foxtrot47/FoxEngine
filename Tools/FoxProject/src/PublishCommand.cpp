@@ -163,6 +163,53 @@ public:
             m_meshes.emplace(path, std::move(request));
     }
 
+    // A vehicle definition ({"layout": ..., "visual": {...}}) references its
+    // layout and visual meshes relative to the definition; ship all of them.
+    // Returns false when the file is not a vehicle definition.
+    bool AddVehicleDefinition(const std::string& path)
+    {
+        std::string text;
+        if (!ReadTextFile(path, text))
+            return false;
+        nlohmann::json root;
+        try
+        {
+            root = nlohmann::json::parse(text, nullptr, true, true);
+        }
+        catch (const nlohmann::json::exception&)
+        {
+            return false;
+        }
+        if (!root.is_object() || !root.contains("layout") || !root.contains("visual"))
+            return false;
+
+        m_set.Add(path, path);
+        const fs::path directory = fs::path(path).parent_path();
+        auto resolve = [&directory](const std::string& relative) {
+            return NormalizePath((directory / relative).generic_string());
+        };
+        try
+        {
+            m_set.AddProjectFile(resolve(root.at("layout").get<std::string>()), path, "/layout", true);
+            const nlohmann::json& visual = root.at("visual");
+            AddMesh(resolve(visual.at("body").get<std::string>()), { path, "/visual/body", true });
+            static const char* k_wheelKeys[4] = { "fl", "fr", "rl", "rr" };
+            for (const char* part : { "wheels", "spindles" })
+            {
+                if (!visual.contains(part))
+                    continue;
+                for (int w = 0; w < 4; ++w)
+                    AddMesh(resolve(visual.at(part).at(k_wheelKeys[w]).get<std::string>()),
+                            { path, "/visual/" + std::string(part) + "/" + k_wheelKeys[w], true });
+            }
+        }
+        catch (const nlohmann::json::exception& exception)
+        {
+            m_set.Report(Severity::Error, path, {}, std::string("invalid vehicle definition: ") + exception.what());
+        }
+        return true;
+    }
+
     void AddParticlePresets()
     {
         for (const std::string& path : ListFilesRecursive(k_presetDirectory))
@@ -180,6 +227,38 @@ public:
         }
     }
 
+    // Copies the quoted string starting at text[quote]; returns the index of
+    // the closing quote (or text.size() when unterminated at a line end).
+    static size_t ReadQuotedLiteral(const std::string& text, size_t quote, std::string& literal)
+    {
+        literal.clear();
+        size_t j = quote + 1;
+        for (; j < text.size() && text[j] != text[quote] && text[j] != '\n'; ++j)
+        {
+            if (text[j] == '\\' && j + 1 < text.size())
+                ++j;
+            literal += text[j];
+        }
+        return j;
+    }
+
+    void AddScriptLiteral(const std::string& literal, const std::string& owner)
+    {
+        if (!StartsWith(literal, "Assets/"))
+            return;
+        const std::string path = NormalizePath(literal);
+        if (!IsRegularFile(path))
+            return;
+        const bool isScene = StartsWith(path, std::string(k_scenesDirectory) + "/") &&
+                             ToLower(fs::path(path).extension().string()) == ".json";
+        if (isScene)
+            AddScene(path, owner);
+        else if (IsMeshSource(path))
+            AddMesh(path, { owner, {}, true });
+        else if (!AddVehicleDefinition(path))
+            m_set.Add(path, path);
+    }
+
     // Asset paths written as string literals in scripts ("Assets/Meshes/Crate.glb",
     // a scene passed to fox.scene.load) ship with their dependencies.
     void ScanScriptLiterals(const std::string& scriptPath)
@@ -189,29 +268,11 @@ public:
             return;
         for (size_t i = 0; i < text.size(); ++i)
         {
-            const char quote = text[i];
-            if (quote != '"' && quote != '\'')
+            if (text[i] != '"' && text[i] != '\'')
                 continue;
             std::string literal;
-            size_t j = i + 1;
-            for (; j < text.size() && text[j] != quote && text[j] != '\n'; ++j)
-            {
-                if (text[j] == '\\' && j + 1 < text.size())
-                    ++j;
-                literal += text[j];
-            }
-            i = j;
-            if (!StartsWith(literal, "Assets/"))
-                continue;
-            const std::string path = NormalizePath(literal);
-            if (!IsRegularFile(path))
-                continue;
-            if (StartsWith(path, std::string(k_scenesDirectory) + "/") && ToLower(fs::path(path).extension().string()) == ".json")
-                AddScene(path, scriptPath);
-            else if (IsMeshSource(path))
-                AddMesh(path, { scriptPath, {}, true });
-            else
-                m_set.Add(path, path);
+            i = ReadQuotedLiteral(text, i, literal);
+            AddScriptLiteral(literal, scriptPath);
         }
     }
 
