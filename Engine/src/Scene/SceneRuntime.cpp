@@ -607,8 +607,10 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
     // Commit only after every replacement mesh has completed its import.
     if (onSceneUnloading && HasScene())
         onSceneUnloading();
-    // Balls and actors reference the outgoing world/physics, so they go first.
-    balls.clear(); // their entities and bodies die with the outgoing world
+    // Vehicles, balls and actors reference the outgoing world/physics, so they
+    // go first (their entities and bodies die with the outgoing world).
+    RemoveVehicles();
+    balls.clear();
     actors.clear();
     world            = std::move(newWorld);
     camera           = newCamera;
@@ -1254,6 +1256,7 @@ void SceneRuntime::Update(float dt, float totalTime)
     UpdateActors();
     if (simulatePhysics)
         physicsWorld.Step(dt);
+    PumpVehicleSpawn();
     for (auto& ps : particleSystems)
         ps->Update(ctx, dt);
     for (auto& actor : actors)
@@ -1373,6 +1376,14 @@ int SceneRuntime::CountPointShadowCasters() const
 template <typename Fn>
 void SceneRuntime::ForEachMeshInstance(Fn&& fn) const
 {
+    ForEachLoadedMeshInstance(fn);
+    ForEachActorMeshInstance(fn);
+    ForEachVehicleMeshInstance(fn);
+}
+
+template <typename Fn>
+void SceneRuntime::ForEachLoadedMeshInstance(Fn& fn) const
+{
     for (const auto& loaded : loadedMeshes)
     {
         if (!loaded.visible || !loaded.mesh || !loaded.transform)
@@ -1388,13 +1399,19 @@ void SceneRuntime::ForEachMeshInstance(Fn&& fn) const
         instance.castsShadows     = loaded.def.castShadows;
         fn(instance);
     }
+}
+
+template <typename Fn>
+void SceneRuntime::ForEachActorMeshInstance(Fn& fn) const
+{
     for (const auto& actor : actors)
     {
         if (!actor.entity || !actor.entity->active)
             continue;
         for (const auto& part : actor.parts)
         {
-            if (!part.mesh || !part.transform->GetOwner()->active || (part.def.IsShape() && !part.def.visible))
+            if (!part.mesh || !part.transform->GetOwner()->active ||
+                (part.def.IsShape() && !part.def.visible))
                 continue;
             const XMMATRIX model = part.transform->GetWorldMatrix();
             MeshInstance instance;
@@ -1405,6 +1422,42 @@ void SceneRuntime::ForEachMeshInstance(Fn&& fn) const
             instance.shadowSubMeshes  = &part.shadowSubMeshes;
             instance.castsShadows     = part.def.castShadows;
             fn(instance);
+        }
+    }
+}
+
+template <typename Fn>
+void SceneRuntime::ForEachVehicleMeshInstance(Fn& fn) const
+{
+    for (const auto& vehicle : vehicles)
+    {
+        const XMMATRIX chassis = vehicle->transform->GetWorldMatrix();
+        // Wheels follow the chassis; reusing the previous chassis keeps their
+        // motion vectors consistent with the body they are attached to.
+        const XMMATRIX prevChassis = vehicle->prevChassisValid
+            ? XMLoadFloat4x4(&vehicle->prevChassisWorld) : chassis;
+        auto submit = [&fn](const VehiclePart& part, FXMMATRIX model, CXMMATRIX prevModel) {
+            if (!part.mesh)
+                return;
+            MeshInstance instance;
+            instance.mesh            = part.mesh.get();
+            instance.model           = model;
+            instance.prevModel       = prevModel;
+            instance.materials       = &part.materials;
+            instance.shadowSubMeshes = &part.shadowSubMeshes;
+            fn(instance);
+        };
+        submit(vehicle->body, chassis, prevChassis);
+        for (int w = 0; w < VehicleDesc::WheelCount; ++w)
+        {
+            const XMMATRIX wheelLocal = vehicle->vehicle->GetWheelLocalMatrix(w);
+            const XMMATRIX spindleLocal = vehicle->vehicle->GetSpindleLocalMatrix(w);
+            const XMMATRIX prevWheelLocal = vehicle->prevWheelsValid
+                ? XMLoadFloat4x4(&vehicle->prevWheelLocal[w]) : wheelLocal;
+            const XMMATRIX prevSpindleLocal = vehicle->prevWheelsValid
+                ? XMLoadFloat4x4(&vehicle->prevSpindleLocal[w]) : spindleLocal;
+            submit(vehicle->wheels[w], wheelLocal * chassis, prevWheelLocal * prevChassis);
+            submit(vehicle->spindles[w], spindleLocal * chassis, prevSpindleLocal * prevChassis);
         }
     }
 }
@@ -1545,8 +1598,9 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
 }
 
 // Forward path (HDR + PBR + IBL). Leaves the MRT bound for debug draws.
-// Submits every visible level mesh to the forward queue and flushes it. Used
-// by both the lit and the planar-reflection pass so the two cannot drift apart.
+// Submits every visible mesh (level, actor and vehicle parts) to the forward
+// queue and flushes it. Used by both the lit and the planar-reflection pass so
+// the two cannot drift apart.
 void SceneRuntime::SubmitMeshInstances(ID3D11DeviceContext* ctx)
 {
     bool submitted = false;
@@ -1582,6 +1636,17 @@ void SceneRuntime::RecordPrevTransforms()
             continue;
         XMStoreFloat4x4(&loaded.prevWorld, loaded.transform->GetWorldMatrix());
         loaded.prevWorldValid = true;
+    }
+    for (auto& vehicle : vehicles)
+    {
+        XMStoreFloat4x4(&vehicle->prevChassisWorld, vehicle->transform->GetWorldMatrix());
+        vehicle->prevChassisValid = true;
+        for (int w = 0; w < VehicleDesc::WheelCount; ++w)
+        {
+            XMStoreFloat4x4(&vehicle->prevWheelLocal[w], vehicle->vehicle->GetWheelLocalMatrix(w));
+            XMStoreFloat4x4(&vehicle->prevSpindleLocal[w], vehicle->vehicle->GetSpindleLocalMatrix(w));
+        }
+        vehicle->prevWheelsValid = true;
     }
     for (auto& ball : balls)
     {

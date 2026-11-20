@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <array>
 #include <DirectXMath.h>
 #include <functional>
 #include <memory>
@@ -12,6 +13,7 @@
 #include "Engine/Physics/OBB.h"
 #include "Engine/Physics/PhysicsWorld.h"
 #include "Engine/Physics/RigidBodyComponent.h"
+#include "Engine/Physics/Vehicle/Vehicle.h"
 #include "Engine/Renderer/Bloom.h"
 #include "Engine/Renderer/CascadedShadowMap.h"
 #include "Engine/Renderer/EnvironmentLighting.h"
@@ -33,6 +35,7 @@
 #include "Engine/Scene/Entity.h"
 #include "Engine/Scene/LevelLoadOperation.h"
 #include "Engine/Scene/LevelWorld.h"
+#include "Engine/Scene/MeshAddOperation.h"
 #include "Engine/Scene/SceneDescriptor.h"
 #include "Engine/Scene/TransformComponent.h"
 
@@ -194,6 +197,46 @@ public:
     // primitive, point light, particle emitter).
     void SetEntityActive(Entity& entity, bool active);
 
+    // --- Vehicles (spawned on demand, e.g. by scripts; not saved) ---
+    struct VehiclePart
+    {
+        AssetHandle<Mesh>                    mesh;
+        std::vector<ForwardPipeline::SubMat> materials;
+        std::vector<ShadowSubMesh>           shadowSubMeshes;
+    };
+    struct VehicleInstance
+    {
+        uint32_t                 id        = 0;
+        EntityID                 entity    = 0;
+        std::unique_ptr<Vehicle> vehicle;
+        TransformComponent*      transform = nullptr; // vehicle origin, physics-driven
+        VehiclePart              body;
+        std::array<VehiclePart, VehicleDesc::WheelCount> wheels;   // suspension, steering, spin
+        std::array<VehiclePart, VehicleDesc::WheelCount> spindles; // suspension, steering; optional
+        // Previous chassis and wheel transforms for per-object motion vectors
+        // (TAA). Wheel rotation is part of the matrix, so spinning wheels need
+        // their own previous pose instead of reusing this frame's.
+        DirectX::XMFLOAT4X4 prevChassisWorld = {};
+        std::array<DirectX::XMFLOAT4X4, VehicleDesc::WheelCount> prevWheelLocal = {};
+        std::array<DirectX::XMFLOAT4X4, VehicleDesc::WheelCount> prevSpindleLocal = {};
+        bool                prevChassisValid = false;
+        bool                prevWheelsValid  = false;
+    };
+    enum class VehicleSpawnState { Idle, Loading, Failed };
+
+    // Starts loading a vehicle definition and its meshes asynchronously; the
+    // car appears in `vehicles` (upright, wheels on groundPosition) once its
+    // meshes are uploaded. Returns the vehicle id (0 on failure, see
+    // GetVehicleSpawnError). One spawn may be in flight at a time.
+    uint32_t RequestVehicleSpawn(const std::string& vehiclePath,
+                                 const DirectX::XMFLOAT3& groundPosition, float yawDeg);
+    VehicleSpawnState  GetVehicleSpawnState() const;
+    const std::string& GetVehicleSpawnError() const { return m_vehicleSpawnError; }
+    // The ready vehicle with this id, or null (still loading, failed, removed).
+    VehicleInstance* FindVehicle(uint32_t id);
+    const VehicleInstance* FindVehicle(uint32_t id) const;
+    void RemoveVehicles();
+
     // --- Physics balls (spawned on demand, e.g. by scripts; not saved) ---
     struct PhysicsBall
     {
@@ -343,7 +386,8 @@ public:
     bool                    gravityEnabled = true;
     PhysicsWorld::RaycastHit rayHit      = {};
     bool                    rayHitValid  = false;
-    // Declared after physicsWorld and world: balls are destroyed first.
+    // Declared after physicsWorld and world: vehicles and balls are destroyed first.
+    std::vector<std::unique_ptr<VehicleInstance>> vehicles;
     std::vector<PhysicsBall> balls;
 
     // --- Debug toggles ---
@@ -369,6 +413,7 @@ private:
     void BeginAsyncSceneLoad(const std::string& scenePath);
 
     void UpdatePointLightFlicker(float totalTime);
+    void PumpVehicleSpawn();
 
     // Builds the actor's root components, parts (child entities of root in
     // scene) and bodies into the given world/physics: the incoming ones
@@ -399,9 +444,9 @@ private:
     // Point lights of enabled actor parts, packed for LightEnvironment::BindPS.
     std::vector<LightEnvironment::PointLight> m_actorLights;
 
-    // One visible level mesh with the data every render phase needs, so the
-    // shadow, reflection and lit passes stay in step instead of duplicating
-    // the iteration.
+    // One drawable mesh (a level/actor mesh or vehicle part) with the data
+    // every render phase needs, so the shadow, reflection and lit passes stay
+    // in step instead of duplicating the iteration.
     struct MeshInstance
     {
         const Mesh*        mesh              = nullptr;
@@ -413,6 +458,9 @@ private:
         bool               castsShadows      = true;
     };
     template <typename Fn> void ForEachMeshInstance(Fn&& fn) const;
+    template <typename Fn> void ForEachLoadedMeshInstance(Fn& fn) const;
+    template <typename Fn> void ForEachActorMeshInstance(Fn& fn) const;
+    template <typename Fn> void ForEachVehicleMeshInstance(Fn& fn) const;
 
     // Per-submesh shadow inputs: skips transparent materials and supplies
     // alpha-test maps for cutouts.
@@ -477,6 +525,21 @@ private:
     std::string        m_pendingSceneLoad;
     std::string        m_loadingScenePath;
     bool               m_completeSceneLoadNextFrame = false;
+
+    // Body + wheel meshes import on MeshAddOperation workers while the vehicle
+    // id is already handed to scripts.
+    struct PendingVehicle
+    {
+        uint32_t          id = 0;
+        VehicleDesc       desc;
+        DirectX::XMFLOAT3 groundPosition = {};
+        float             yawDeg = 0.0f;
+        // Body, wheels, then spindles; operations of absent optional parts stay Idle.
+        std::array<MeshAddOperation, 1 + 2 * VehicleDesc::WheelCount> meshes;
+    };
+    std::unique_ptr<PendingVehicle> m_pendingVehicle;
+    std::string                     m_vehicleSpawnError;
+    uint32_t                        m_nextVehicleId = 1;
 };
 
 } // namespace SE
