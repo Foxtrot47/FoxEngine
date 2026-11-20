@@ -7,7 +7,8 @@
     "Assets/Scenes/suntemple.json",
     "Assets/Scenes/specgloss.json",
     "Assets/Scenes/actors.json",
-    "Assets/Scenes/shooting_range.json"
+    "Assets/Scenes/shooting_range.json",
+    "Assets/Scenes/monza.json"
   ],
   "autoload": [
     "Assets/Scripts/Game/PlayerController.lua",
@@ -26,7 +27,17 @@
     "toggle_walk": ["Tab", "Gamepad.Y"],
     "pause": ["Escape", "Gamepad.Start"],
     "fire": ["MouseLeft", "Gamepad.RightShoulder"],
-    "reset": ["R", "Gamepad.Back"]
+    "reset": ["R", "Gamepad.Back"],
+    "drive_throttle": ["W", "Up"],
+    "drive_brake": ["S", "Down"],
+    "drive_left": ["A", "Left"],
+    "drive_right": ["D", "Right"],
+    "drive_handbrake": ["Space", "Gamepad.A"],
+    "drive_toggle_auto": ["M", "Gamepad.X"],
+    "drive_shift_up": ["E", "Gamepad.RightShoulder"],
+    "drive_shift_down": ["Q", "Gamepad.LeftShoulder"],
+    "drive_tc": ["T"],
+    "drive_abs": ["B"]
   },
   "window": {
     "width": 1280,
