@@ -42,6 +42,7 @@ struct LevelMeshRendererDefinition
     bool castShadows = true;
     bool receiveShadows = true;
     bool collision = false; // static triangle-mesh collider for physics
+    bool visible = true;    // false keeps only the collider (invisible walls)
 };
 
 struct LevelCameraDefinition

@@ -65,6 +65,7 @@ void DrawMeshDetails(SE::SceneRuntime& scene, int index)
     if (ImGui::Checkbox("Receive Shadows", &loaded.def.receiveShadows))
         for (auto& material : loaded.materials)
             material.receiveShadows = loaded.def.receiveShadows;
+    ImGui::Checkbox("Visible (off = collider only)", &loaded.def.visible);
 }
 
 void DrawEmptyDetails(SE::SceneRuntime& scene, int index)

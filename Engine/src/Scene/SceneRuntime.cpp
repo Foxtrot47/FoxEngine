@@ -1386,7 +1386,7 @@ void SceneRuntime::ForEachLoadedMeshInstance(Fn& fn) const
 {
     for (const auto& loaded : loadedMeshes)
     {
-        if (!loaded.visible || !loaded.mesh || !loaded.transform)
+        if (!loaded.visible || !loaded.def.visible || !loaded.mesh || !loaded.transform)
             continue;
         const XMMATRIX model = loaded.transform->GetWorldMatrix();
         MeshInstance instance;

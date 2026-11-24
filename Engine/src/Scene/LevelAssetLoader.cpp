@@ -105,6 +105,7 @@ void DecodeComponent(LevelEntityDefinition& entity, const std::string& type,
         if (value.contains("castShadows")) out.castShadows = value["castShadows"].get<bool>();
         if (value.contains("receiveShadows")) out.receiveShadows = value["receiveShadows"].get<bool>();
         if (value.contains("collision")) out.collision = value["collision"].get<bool>();
+        if (value.contains("visible")) out.visible = value["visible"].get<bool>();
         entity.meshRenderer = std::move(out);
     }
     else if (type == "camera")
@@ -333,6 +334,7 @@ void ValidateComponent(LevelAssetLoadResult& result, const std::string& type,
         ValidateBoolean(result, component, "castShadows", path);
         ValidateBoolean(result, component, "receiveShadows", path);
         ValidateBoolean(result, component, "collision", path);
+        ValidateBoolean(result, component, "visible", path);
     }
     else if (type == "camera")
     {

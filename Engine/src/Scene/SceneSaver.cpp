@@ -102,7 +102,8 @@ ojson WriteMeshComponents(const SceneDescriptor::MeshEntry& mesh)
         { "alphaCutoff", mesh.alphaCutoff },
         { "castShadows", mesh.castShadows },
         { "receiveShadows", mesh.receiveShadows },
-        { "collision", mesh.collision }
+        { "collision", mesh.collision },
+        { "visible", mesh.visible }
     };
     return components;
 }

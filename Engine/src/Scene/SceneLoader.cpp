@@ -116,6 +116,7 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
             mesh.castShadows = entity.meshRenderer->castShadows;
             mesh.receiveShadows = entity.meshRenderer->receiveShadows;
             mesh.collision = entity.meshRenderer->collision;
+            mesh.visible = entity.meshRenderer->visible;
             if (entity.transform)
             {
                 mesh.position = entity.transform->position;

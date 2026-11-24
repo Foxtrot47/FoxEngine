@@ -24,6 +24,7 @@ struct SceneDescriptor
         bool castShadows = true;
         bool receiveShadows = true;
         bool collision = false; // static triangle collision, built at level load
+        bool visible = true;    // false: collider only, never drawn
     };
     std::vector<MeshEntry> meshes;
 
