@@ -123,8 +123,13 @@ class Instance:
         return out
 
 
+MAX_SHADOW_RANGE = re.compile(r"^MaxShadowRange\s*=\s*\(\s*([0-9.]+)\s*\)", re.I)
+
+
 def read_scn(path):
-    instances, current, pending = [], None, None
+    """(instances, level shadow distance) of the scene; the distance is None when
+    the file's top-level MaxShadowRange line is missing."""
+    instances, current, pending, shadow_range = [], None, None, None
     for raw in path.read_text(encoding="latin-1").splitlines():
         line = strip_comment(raw)
         m = re.match(r"Instance\s*=\s*(\S+)", line, re.I)
@@ -138,7 +143,11 @@ def read_scn(path):
             current = None
         elif current is not None and line:
             current.lines.append(line)
-    return instances
+        elif line:
+            m = MAX_SHADOW_RANGE.match(line)
+            if m:
+                shadow_range = float(m.group(1))
+    return instances, shadow_range
 
 
 def classify(instance, coll_target, shadow_caster, shadow_object):
@@ -615,7 +624,8 @@ def read_pole(aiw_path, rows=10):
 
 # --------------------------------------------------------------------------- scene
 
-def write_scene(path, name, mesh_entries, pole, yaw, bounds_min, bounds_max, floor_top):
+def write_scene(path, name, mesh_entries, pole, yaw, bounds_min, bounds_max, floor_top,
+                shadow_distance=None):
     forward = np.array([math.sin(math.radians(yaw)), 0.0, math.cos(math.radians(yaw))])
     eye = pole - forward * 8.0 + [0.0, 2.5, 0.0]
     entities = [
@@ -656,6 +666,8 @@ def write_scene(path, name, mesh_entries, pole, yaw, bounds_min, bounds_max, flo
         },
         "entities": entities,
     }
+    if shadow_distance is not None:
+        level["settings"]["shadows"] = {"distance": shadow_distance}
     path.write_text(json.dumps(level, indent=2) + "\n", encoding="ascii")
 
 
@@ -695,7 +707,8 @@ def main():
     terrain = TerrainBaker(raw, textures, args.terrain_texel, args.max_texture_size)
 
     gmts, surfaces, counts = {}, [], defaultdict(int)
-    for instance in read_scn(scn):
+    instances, shadow_distance = read_scn(scn)
+    for instance in instances:
         for mesh_file, coll_target, caster, shadow_object in instance.meshes():
             kind = classify(instance, coll_target, caster, shadow_object)
             if kind is None:
@@ -729,7 +742,8 @@ def main():
     positions = np.concatenate([g.pos for g in surfaces])
     everything = np.concatenate([g.pos for g in gmts.values()])
     write_scene(args.scene, args.name, mesh_entries, pole, yaw, everything.min(axis=0),
-                everything.max(axis=0), float(positions[:, 1].min()) - 40.0)
+                everything.max(axis=0), float(positions[:, 1].min()) - 40.0,
+                shadow_distance)
 
     print(f"Output: {args.out}  scene: {args.scene}")
     print("Triangles: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
