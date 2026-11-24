@@ -424,6 +424,7 @@ void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
     lights.lightColor[2] = desc.sun.color[2];
     lights.iblIntensity = desc.iblIntensity;
     lights.diffuseIBLSaturation = desc.diffuseIBLSaturation;
+    m_shadowDistance = desc.shadows.distance;
     lights.numLights = (std::min)(static_cast<int>(desc.pointLights.size()), 8);
     pointLightDescs = desc.pointLights;
     std::fill(std::begin(lightCastsShadow), std::end(lightCastsShadow), false);
@@ -733,6 +734,7 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     desc.sun.color = { lights.lightColor[0], lights.lightColor[1], lights.lightColor[2] };
     desc.iblIntensity = lights.iblIntensity;
     desc.diffuseIBLSaturation = lights.diffuseIBLSaturation;
+    desc.shadows.distance = m_shadowDistance;
 
     // Point lights: descs hold base color + flicker settings; position and
     // radius are edited on the bound lights, shadow casting in the flag array.
@@ -1472,8 +1474,10 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
         float er = XMConvertToRadians(lights.elevDeg);
         float ar = XMConvertToRadians(lights.azimDeg);
         XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
+        const float shadowFar = m_shadowDistance > 0.0f
+            ? (std::min)(camera->farZ, m_shadowDistance) : camera->farZ;
         shadowMap.Update(lightDir, m_cachedView, m_cachedProjNoJitter,
-                         camera->nearZ, camera->farZ);
+                         camera->nearZ, shadowFar);
         for (int c = 0; c < CSM_NUM_CASCADES; ++c)
         {
             shadowMap.BeginCascade(ctx, c);

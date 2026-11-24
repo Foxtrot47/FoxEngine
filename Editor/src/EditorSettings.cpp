@@ -38,6 +38,12 @@ void DrawBloomSection(SE::SceneRuntime& scene)
     ImGui::SliderFloat("Scatter",   &bloom.scatter,   0.0f, 1.0f,  "%.2f");
 }
 
+void DrawShadowsSection(SE::SceneRuntime& scene)
+{
+    auto& distance = scene.ShadowDistance();
+    ImGui::DragFloat("Distance (0 = far plane)", &distance, 1.0f, 0.0f, 20000.0f);
+}
+
 void DrawSsaoSection(SE::SceneRuntime& scene)
 {
     auto& ssao = scene.ssao;
@@ -199,6 +205,7 @@ void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeig
     static const Section sections[] = {
         { "Materials", "Materials Tint Roughness Metallic", DrawWorldMaterialSection },
         { "Lighting", "Lighting Sun IBL Shadow Debug", DrawWorldLightingSection },
+        { "Shadows", "Shadows Distance Shadow", DrawShadowsSection },
         { "Physics", "Physics Gravity Floor Colliders Raycast", DrawWorldPhysicsSection },
         { "Tone Mapping", "Tone Mapping Exposure", DrawToneMapSection },
         { "Color Grading", "Color Grading Temperature Tint Saturation Contrast Vignette", DrawColorGradingSection },

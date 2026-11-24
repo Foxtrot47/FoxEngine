@@ -518,6 +518,17 @@ void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
 
         }
     }
+
+    if (result.asset.settings.contains("shadows"))
+    {
+        const auto& shadows = result.asset.settings["shadows"];
+        if (!shadows.is_object())
+            AddDiagnostic(result, Severity::Error, "/settings/shadows", "expected an object");
+        else if (shadows.contains("distance") &&
+                 (!shadows["distance"].is_number() || shadows["distance"].get<float>() <= 0.0f))
+            AddDiagnostic(result, Severity::Error, "/settings/shadows/distance",
+                          "settings.shadows.distance must be a number greater than 0");
+    }
 }
 
 // Validates a project-relative .lua path, normalizing separators.
@@ -719,7 +730,7 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
             environment[field] = root[field];
     if (!environment.empty())
         settings["environment"] = std::move(environment);
-    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "physics" })
+    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "shadows", "physics" })
         if (root.contains(field))
             settings[field] = root[field];
 

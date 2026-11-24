@@ -69,7 +69,7 @@ static json BuildSettingsJson(const LevelAsset& asset)
             if (environment.contains(field))
                 root[field] = environment[field];
     }
-    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog" })
+    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog", "shadows" })
         if (asset.settings.contains(field))
             root[field] = asset.settings[field];
 
@@ -295,6 +295,13 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
         if (f.contains("noiseSpeed"))       out.fog.noiseSpeed       = f["noiseSpeed"].get<float>();
         if (f.contains("nearClearDistance")) out.fog.nearClearDistance = f["nearClearDistance"].get<float>();
         if (f.contains("distanceDensity"))   out.fog.distanceDensity   = f["distanceDensity"].get<float>();
+    }
+
+    // Shadows
+    if (root.contains("shadows"))
+    {
+        auto& s = root["shadows"];
+        if (s.contains("distance")) out.shadows.distance = s["distance"].get<float>();
     }
 
     return true;

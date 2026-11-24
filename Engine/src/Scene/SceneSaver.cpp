@@ -86,6 +86,8 @@ ojson WriteSettings(const SceneDescriptor& desc)
         { "nearClearDistance", desc.fog.nearClearDistance },
         { "distanceDensity", desc.fog.distanceDensity }
     };
+    if (desc.shadows.distance > 0.0f)
+        settings["shadows"] = { { "distance", desc.shadows.distance } };
     return settings;
 }
 

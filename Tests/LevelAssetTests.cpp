@@ -262,6 +262,19 @@ static void TestValidationFailures()
                   d.path.find("transform/rotation") != std::string::npos &&
                   d.message.find("rotationDegrees") != std::string::npos;
     Require(legacy.Succeeded() && warned, "an unknown transform key should warn and name rotationDegrees");
+
+    // Shadow distance is a length in metres, so zero and negatives are invalid.
+    const json badShadows = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "BadShadows" },
+        { "settings", { { "shadows", { { "distance", -1.0f } } } } },
+        { "entities", json::array() }
+    };
+    const auto shadows = LevelAssetLoader::Parse(badShadows, "badShadows");
+    Require(!shadows.Succeeded(), "a negative shadow distance unexpectedly succeeded");
+    Require(HasErrorContaining(shadows, "settings.shadows.distance must be a number greater than 0"),
+            "shadow distance range error was not diagnosed");
 }
 
 static void TestLegacyConversion()
@@ -413,6 +426,43 @@ static void TestSaveRoundTrip()
         Require(SE::SceneSaver::ToJson(loaded) == text,
                 "round trip: serialization is not stable");
     }
+}
+
+// Shadow distance survives load -> save -> load, and an unset distance stays
+// out of the saved settings so existing scenes serialize identically.
+static void TestShadowDistanceRoundTrip()
+{
+    const json level = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "ShadowDistance" },
+        { "settings", { { "shadows", { { "distance", 950.0f } } } } },
+        { "entities", json::array() }
+    };
+    const auto parsed = LevelAssetLoader::Parse(level, "shadowDistance");
+    Require(parsed.Succeeded(), "shadow distance settings failed to parse");
+
+    SE::SceneDescriptor descriptor;
+    Require(SE::SceneLoader::BuildDescriptor(parsed.asset, descriptor),
+            "shadow distance descriptor build failed");
+    Require(descriptor.shadows.distance == 950.0f,
+            "shadow distance was not propagated to the descriptor");
+
+    const std::string text = SE::SceneSaver::ToJson(descriptor);
+    const auto reparsed = LevelAssetLoader::Parse(json::parse(text), "shadowDistance");
+    Require(reparsed.Succeeded(), "saved shadow distance failed validation");
+
+    SE::SceneDescriptor loaded;
+    Require(SE::SceneLoader::BuildDescriptor(reparsed.asset, loaded),
+            "saved shadow distance failed to rebuild a descriptor");
+    Require(loaded.shadows.distance == 950.0f,
+            "shadow distance did not survive the round trip");
+    Require(SE::SceneSaver::ToJson(loaded) == text,
+            "shadow distance serialization is not stable");
+
+    SE::SceneDescriptor unset;
+    Require(SE::SceneSaver::ToJson(unset).find("\"shadows\"") == std::string::npos,
+            "an unset shadow distance must not be serialized");
 }
 
 static void TestBistroRuntimeDescriptor()
@@ -1210,6 +1260,7 @@ static void RunTests()
     TestLegacyConversion();
     TestRepositoryScenes();
     TestSaveRoundTrip();
+    TestShadowDistanceRoundTrip();
     TestBistroRuntimeDescriptor();
     TestScriptParsing();
     TestDescriptorStamping();

@@ -328,6 +328,10 @@ public:
     // so dynamic actors keep their placement (editor edit mode).
     bool simulatePhysics = true;
 
+    // Cascaded shadow range in metres; 0 keeps the camera far plane.
+    float& ShadowDistance() { return m_shadowDistance; }
+    float  ShadowDistance() const { return m_shadowDistance; }
+
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
     AssetHandle<Texture2D> environmentTexture;
@@ -521,6 +525,7 @@ private:
     DirectX::XMMATRIX m_cachedView           = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX m_cachedProj           = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX m_cachedProjNoJitter   = DirectX::XMMatrixIdentity();
+    float             m_shadowDistance        = 0.0f; // metres; 0 = camera far plane
 
     LevelLoadOperation m_levelLoad;
     std::string        m_pendingSceneLoad;

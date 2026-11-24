@@ -45,6 +45,12 @@ struct SceneDescriptor
     float iblIntensity = 1.0f;
     float diffuseIBLSaturation = 1.0f;
 
+    // Range of the cascaded shadow maps in metres; 0 keeps the camera far plane.
+    struct ShadowsDesc {
+        float distance = 0.0f;
+    };
+    ShadowsDesc shadows;
+
     // Point lights
     using PointLightDesc = LevelPointLightDefinition;
     std::vector<PointLightDesc> pointLights;
