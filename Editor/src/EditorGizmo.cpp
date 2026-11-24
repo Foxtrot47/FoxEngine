@@ -532,7 +532,11 @@ Selection PickScene(SE::SceneRuntime& scene, ImVec2 imageMin, ImVec2 imageMax,
 
     for (int i = 0; i < (int)scene.loadedMeshes.size(); ++i)
     {
-        const float d = HitDistanceMesh(ray, scene.loadedMeshes[i].mesh.get(), scene.loadedMeshes[i].transform);
+        const auto& loaded = scene.loadedMeshes[i];
+        // A collider-only mesh is drawn (as wireframe) only with Show Colliders on.
+        if (!loaded.def.visible && !(scene.showColliders && loaded.collider))
+            continue;
+        const float d = HitDistanceMesh(ray, loaded.mesh.get(), loaded.transform);
         if (d < best)
         {
             best = d;

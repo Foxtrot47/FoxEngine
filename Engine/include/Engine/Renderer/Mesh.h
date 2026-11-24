@@ -82,6 +82,7 @@ public:
 
     uint32_t         GetSubMeshCount() const { return static_cast<uint32_t>(m_subMeshes.size()); }
     SubMeshInfo      GetSubMeshInfo(uint32_t index) const;
+    AlphaMode        GetSubMeshAlphaMode(uint32_t index) const { return m_subMeshes[index].alphaMode; }
     const std::string& GetDirectory() const { return m_directory; }
     const AABB&      GetBounds() const { return m_bounds; }
 

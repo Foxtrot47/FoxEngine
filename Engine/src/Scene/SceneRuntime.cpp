@@ -549,10 +549,13 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
         newFloor, desc.physics.floor.friction, desc.physics.floor.restitution);
     // Level geometry collision (meshes flagged "collision"); placed once at
     // load, so editor moves of these meshes do not move their colliders.
-    for (const auto& loaded : newLoadedMeshes)
+    for (auto& loaded : newLoadedMeshes)
         if (loaded.collider)
+        {
             newPhysicsWorld.AddStaticMesh(loaded.collider, loaded.transform->position,
                                           loaded.transform->eulerDeg, loaded.transform->scale);
+            XMStoreFloat4x4(&loaded.colliderWorld, loaded.transform->GetWorldMatrix());
+        }
 
     // Character controller
     CharacterController newCharacterController;
@@ -1828,7 +1831,15 @@ void SceneRuntime::RenderDebugShapes(ID3D11DeviceContext* ctx)
                         part.def.radius * (std::max)({ scale.x, scale.y, scale.z }),
                         { 0.2f, 0.8f, 1.0f });
                 }
+                else if (part.def.type == ActorComponentType::Mesh && part.mesh)
+                    pipeline.DrawWireMesh(ctx, *part.mesh, partWorld, { 0.2f, 0.8f, 1.0f });
             }
+        // Static level mesh colliders stay where they were added at load (an
+        // editor move of the mesh does not move them), so draw that pose.
+        for (const LoadedMesh& loaded : loadedMeshes)
+            if (loaded.collider && loaded.mesh)
+                pipeline.DrawWireMesh(ctx, *loaded.mesh, XMLoadFloat4x4(&loaded.colliderWorld),
+                                      { 1.0f, 0.5f, 0.1f });
 
         XMFLOAT3 bottom = { cc.position.x, cc.position.y + cc.radius, cc.position.z };
         pipeline.DrawWireSphere(ctx, bottom, cc.radius, { 1.0f, 0.4f, 0.8f });

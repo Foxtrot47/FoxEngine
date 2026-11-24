@@ -104,6 +104,10 @@ public:
                      DirectX::XMMATRIX world, DirectX::XMFLOAT3 color);
     void DrawLine(ID3D11DeviceContext* ctx,
                   DirectX::XMFLOAT3 from, DirectX::XMFLOAT3 to, DirectX::XMFLOAT3 color);
+    // Triangle edges of the mesh's opaque submeshes (what a static mesh
+    // collider is built from), drawn over the shaded surface.
+    void DrawWireMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
+                      DirectX::XMMATRIX world, DirectX::XMFLOAT3 color);
 
     // Draw a sphere with explicit PBR textures and a metallic override scalar.
     // Uses the SubMat's albedo/normal/roughness textures. Set metallic per-sphere via SetMaterialParams.
@@ -204,6 +208,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11BlendState>      m_alphaBlend;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_noCullRS;
     Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_wireframeRS;
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState>  m_wireOverlayRS;
 
     DirectX::XMMATRIX m_view = {};
     DirectX::XMMATRIX m_proj = {};

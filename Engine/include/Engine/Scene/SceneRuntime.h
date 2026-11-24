@@ -67,6 +67,7 @@ public:
         DirectX::XMFLOAT4X4                  prevWorld = {};
         bool                                 prevWorldValid = false;
         std::shared_ptr<const StaticMeshCollider> collider; // set when def.collision
+        DirectX::XMFLOAT4X4                  colliderWorld = {}; // pose the body was added at
     };
 
     struct LoadedObject

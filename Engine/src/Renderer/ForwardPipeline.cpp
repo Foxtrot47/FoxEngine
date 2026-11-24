@@ -184,6 +184,11 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
         SE_HR(device->CreateRasterizerState(&rd, m_noCullRS.GetAddressOf()));
         rd.FillMode = D3D11_FILL_WIREFRAME;
         SE_HR(device->CreateRasterizerState(&rd, m_wireframeRS.GetAddressOf()));
+        // DrawWireMesh: edges pulled toward the camera so they win the depth
+        // test against the shaded surface they lie on.
+        rd.DepthBias = -8;
+        rd.SlopeScaledDepthBias = -1.5f;
+        SE_HR(device->CreateRasterizerState(&rd, m_wireOverlayRS.GetAddressOf()));
     }
 
     return true;
@@ -572,6 +577,29 @@ void ForwardPipeline::DrawWireBox(ID3D11DeviceContext* ctx,
     m_wireAABBIB.Bind(ctx);
     ctx->DrawIndexed(m_wireAABBIB.GetCount(), 0, 0);
     ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void ForwardPipeline::DrawWireMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
+                                   DirectX::XMMATRIX world, DirectX::XMFLOAT3 color)
+{
+    MaterialParamsCBData mc = {};
+    mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
+    m_materialCB.Update(ctx, mc);
+    m_materialCB.BindPS(ctx, 3);
+
+    m_defaultWhite->BindPSSrgb(ctx, 0);
+    m_defaultWhite->BindPS(ctx, 1);
+    m_defaultNormal->BindPS(ctx, 2);
+
+    UploadTransformCB(ctx, world);
+
+    Microsoft::WRL::ComPtr<ID3D11RasterizerState> previous;
+    ctx->RSGetState(previous.GetAddressOf());
+    ctx->RSSetState(m_wireOverlayRS.Get());
+    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+        if (mesh.GetSubMeshAlphaMode(i) == AlphaMode::Opaque)
+            mesh.DrawSubMesh(ctx, i);
+    ctx->RSSetState(previous.Get());
 }
 
 void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
