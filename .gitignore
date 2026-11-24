@@ -15,3 +15,6 @@ editor.ini
 FoxEngine.log
 ThirdParty/fsr3-dx11/
 Cache/
+# Extracted LMU track (proprietary); regenerate with Tools/External/LMU/import_lmu_track.py
+Projects/Showcase/Assets/Tracks/
+__pycache__/

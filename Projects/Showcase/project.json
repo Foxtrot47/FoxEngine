@@ -8,7 +8,8 @@
     "Assets/Scenes/specgloss.json",
     "Assets/Scenes/actors.json",
     "Assets/Scenes/shooting_range.json",
-    "Assets/Scenes/monza.json"
+    "Assets/Scenes/monza.json",
+    "Assets/Scenes/roadatlanta.json"
   ],
   "autoload": [
     "Assets/Scripts/Game/PlayerController.lua",

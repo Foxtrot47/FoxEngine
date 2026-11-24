@@ -1,0 +1,1761 @@
+{
+  "format": "FoxLevel",
+  "version": 2,
+  "name": "Road Atlanta",
+  "settings": {
+    "environment": {
+      "skybox": "Assets/Textures/citrus_orchard_road_puresky_2k.dds",
+      "iblIntensity": 0.4
+    },
+    "physics": {
+      "floor": {
+        "min": [
+          -3704.607,
+          -52.591,
+          -4964.944
+        ],
+        "max": [
+          4627.21,
+          -51.591,
+          3366.873
+        ],
+        "friction": 0.9,
+        "restitution": 0.05
+      },
+      "characterSpawn": [
+        295.426,
+        -4.676,
+        -197.326
+      ],
+      "gravity": true
+    },
+    "toneMapping": {
+      "operator": "ACES",
+      "exposure": 1.0
+    },
+    "bloom": {
+      "enabled": true,
+      "threshold": 1.0,
+      "intensity": 0.12,
+      "scatter": 0.6
+    }
+  },
+  "entities": [
+    {
+      "id": "0000000000000001",
+      "name": "Main Camera",
+      "components": {
+        "camera": {
+          "eye": [
+            289.132,
+            -3.176,
+            -192.387
+          ],
+          "yaw": 128.122,
+          "pitch": -8,
+          "nearZ": 0.05,
+          "farZ": 4000
+        }
+      }
+    },
+    {
+      "id": "0000000000000002",
+      "name": "Sun",
+      "components": {
+        "directionalLight": {
+          "elevation": 42.0,
+          "azimuth": -35.0,
+          "intensity": 2.6,
+          "color": [
+            1.0,
+            0.93,
+            0.82
+          ]
+        }
+      }
+    },
+    {
+      "id": "0000000000000003",
+      "name": "Car Spawn",
+      "actor": "Assets/Scripts/Actors/CarSpawn.lua",
+      "components": {
+        "transform": {
+          "position": [
+            295.426,
+            -5.676,
+            -197.326
+          ],
+          "rotationDegrees": [
+            0,
+            128.122,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "id": "0000000000000004",
+      "name": "collision",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/collision.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": false
+        }
+      }
+    },
+    {
+      "id": "0000000000000005",
+      "name": "ground_-1_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000006",
+      "name": "ground_-1_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000007",
+      "name": "ground_-1_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000008",
+      "name": "ground_-1_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000009",
+      "name": "ground_-1_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-5.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000000A",
+      "name": "ground_-1_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-6.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000000B",
+      "name": "ground_-1_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_-7.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000000C",
+      "name": "ground_-1_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000000D",
+      "name": "ground_-1_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000000E",
+      "name": "ground_-1_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-1_2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000000F",
+      "name": "ground_-2_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000010",
+      "name": "ground_-2_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000011",
+      "name": "ground_-2_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000012",
+      "name": "ground_-2_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000013",
+      "name": "ground_-2_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-5.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000014",
+      "name": "ground_-2_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-6.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000015",
+      "name": "ground_-2_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_-7.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000016",
+      "name": "ground_-2_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000017",
+      "name": "ground_-2_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000018",
+      "name": "ground_-2_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-2_2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000019",
+      "name": "ground_-3_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000001A",
+      "name": "ground_-3_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000001B",
+      "name": "ground_-3_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000001C",
+      "name": "ground_-3_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000001D",
+      "name": "ground_-3_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-5.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000001E",
+      "name": "ground_-3_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-6.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000001F",
+      "name": "ground_-3_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-7.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000020",
+      "name": "ground_-3_-8",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-3_-8.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000021",
+      "name": "ground_-4_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_-4_-6.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000022",
+      "name": "ground_0_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000023",
+      "name": "ground_0_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000024",
+      "name": "ground_0_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000025",
+      "name": "ground_0_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000026",
+      "name": "ground_0_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_-5.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000027",
+      "name": "ground_0_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000028",
+      "name": "ground_0_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000029",
+      "name": "ground_0_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000002A",
+      "name": "ground_0_3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_0_3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000002B",
+      "name": "ground_1_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_1_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000002C",
+      "name": "ground_1_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_1_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000002D",
+      "name": "ground_1_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_1_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000002E",
+      "name": "ground_1_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_1_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000002F",
+      "name": "ground_1_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_1_1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000030",
+      "name": "ground_1_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_1_2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000031",
+      "name": "ground_2_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_2_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000032",
+      "name": "ground_2_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_2_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000033",
+      "name": "ground_2_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_2_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000034",
+      "name": "ground_2_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_2_1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000035",
+      "name": "ground_3_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_3_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000036",
+      "name": "ground_3_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_3_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000037",
+      "name": "ground_3_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_3_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000038",
+      "name": "ground_3_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_3_1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000039",
+      "name": "ground_4_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_4_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000003A",
+      "name": "ground_4_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_4_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000003B",
+      "name": "ground_4_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_4_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000003C",
+      "name": "ground_wide",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/ground_wide.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000003D",
+      "name": "scenery_-1_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000003E",
+      "name": "scenery_-1_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000003F",
+      "name": "scenery_-1_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-3.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000040",
+      "name": "scenery_-1_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-4.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000041",
+      "name": "scenery_-1_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-5.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000042",
+      "name": "scenery_-1_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-6.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000043",
+      "name": "scenery_-1_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_-7.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000044",
+      "name": "scenery_-1_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000045",
+      "name": "scenery_-1_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000046",
+      "name": "scenery_-1_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-1_2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000047",
+      "name": "scenery_-2_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000048",
+      "name": "scenery_-2_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000049",
+      "name": "scenery_-2_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-3.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000004A",
+      "name": "scenery_-2_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-4.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000004B",
+      "name": "scenery_-2_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-5.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000004C",
+      "name": "scenery_-2_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-6.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000004D",
+      "name": "scenery_-2_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_-7.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000004E",
+      "name": "scenery_-2_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000004F",
+      "name": "scenery_-2_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000050",
+      "name": "scenery_-2_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-2_2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000051",
+      "name": "scenery_-3_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-3_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000052",
+      "name": "scenery_-3_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_-3_-5.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000053",
+      "name": "scenery_0_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000054",
+      "name": "scenery_0_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000055",
+      "name": "scenery_0_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_-3.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000056",
+      "name": "scenery_0_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_-4.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000057",
+      "name": "scenery_0_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000058",
+      "name": "scenery_0_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000059",
+      "name": "scenery_0_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000005A",
+      "name": "scenery_1_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_1_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000005B",
+      "name": "scenery_1_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_1_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000005C",
+      "name": "scenery_1_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_1_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000005D",
+      "name": "scenery_1_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_1_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000005E",
+      "name": "scenery_1_2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_1_2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000005F",
+      "name": "scenery_2_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_2_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000060",
+      "name": "scenery_2_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_2_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000061",
+      "name": "scenery_2_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_2_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000062",
+      "name": "scenery_2_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_2_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000063",
+      "name": "scenery_3_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_3_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000064",
+      "name": "scenery_3_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_3_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000065",
+      "name": "scenery_3_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_3_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000066",
+      "name": "scenery_3_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_3_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000067",
+      "name": "scenery_4_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_4_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000068",
+      "name": "scenery_4_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_4_-2.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000069",
+      "name": "scenery_4_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_4_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000006A",
+      "name": "scenery_4_1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_4_1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000006B",
+      "name": "scenery_5_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_5_-1.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000006C",
+      "name": "scenery_5_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_5_0.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000006D",
+      "name": "scenery_wide",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/scenery_wide.gltf",
+          "castShadows": true,
+          "receiveShadows": true,
+          "collision": false,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000006E",
+      "name": "surface_-1_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000006F",
+      "name": "surface_-1_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000070",
+      "name": "surface_-1_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000071",
+      "name": "surface_-1_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_-5.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000072",
+      "name": "surface_-1_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_-6.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000073",
+      "name": "surface_-1_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_-7.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000074",
+      "name": "surface_-1_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-1_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000075",
+      "name": "surface_-2_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000076",
+      "name": "surface_-2_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000077",
+      "name": "surface_-2_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000078",
+      "name": "surface_-2_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000079",
+      "name": "surface_-2_-5",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-5.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000007A",
+      "name": "surface_-2_-6",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-6.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000007B",
+      "name": "surface_-2_-7",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_-7.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000007C",
+      "name": "surface_-2_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_-2_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000007D",
+      "name": "surface_0_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_0_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000007E",
+      "name": "surface_0_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_0_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "000000000000007F",
+      "name": "surface_0_-3",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_0_-3.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000080",
+      "name": "surface_0_-4",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_0_-4.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000081",
+      "name": "surface_0_0",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_0_0.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000082",
+      "name": "surface_1_-1",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_1_-1.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    },
+    {
+      "id": "0000000000000083",
+      "name": "surface_1_-2",
+      "components": {
+        "meshRenderer": {
+          "mesh": "Assets/Tracks/RoadAtlanta/surface_1_-2.gltf",
+          "castShadows": false,
+          "receiveShadows": true,
+          "collision": true,
+          "visible": true
+        }
+      }
+    }
+  ]
+}
