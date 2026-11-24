@@ -33,6 +33,17 @@ public:
     // playing (and the session runs).
     void Draw(SE::ScriptSystem& scripts, bool playing);
 
+    struct LogEntry
+    {
+        uint64_t     seq;
+        SE::LogLevel level;
+        std::string  text; // prefix + text
+    };
+    // Retained lines with seq >= since, oldest first. seq counts every line
+    // ever appended, from 0, so callers can poll for new output.
+    std::vector<LogEntry> Snapshot(uint64_t since) const;
+    uint64_t NextSeq() const;
+
 private:
     struct Line
     {
@@ -53,7 +64,7 @@ private:
     void Run(SE::ScriptSystem& scripts, const std::string& code);
     static int InputCallback(ImGuiInputTextCallbackData* data);
 
-    std::mutex       m_mutex; // the sink runs on logging threads
+    mutable std::mutex m_mutex; // the sink runs on logging threads
     std::deque<Line> m_lines;
     uint64_t         m_appended = 0;
     uint64_t         m_seenAppended = 0;

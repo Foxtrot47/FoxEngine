@@ -5,6 +5,7 @@
 #include <imgui_internal.h>
 #include <algorithm>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@
 #include "EditorContentBrowser.h"
 #include "EditorConsole.h"
 #include "EditorScripts.h"
+#include "EditorMcpTools.h"
 #include <ImGuizmo.h>
 
 class EditorApp : public SE::Engine
@@ -42,6 +44,7 @@ public:
 
     void Shutdown()
     {
+        m_mcp.reset();
         m_editorCam.CancelDrag();
         if (m_scripts.IsRunning())
             m_scripts.Stop();
@@ -54,7 +57,8 @@ public:
         m_console.Detach();
     }
 
-    bool Setup(const std::string& scenePath = "")
+    // mcpPort 0 disables the MCP server.
+    bool Setup(const std::string& scenePath, uint16_t mcpPort)
     {
         m_console.Attach();
         // Keep editor dock layout separate from the player's imgui.ini.
@@ -86,6 +90,8 @@ public:
         std::string targetScene = scenePath.empty() ? sceneFiles[0] : scenePath;
         m_scene.RequestSceneLoad(targetScene);
         SE_LOG_INFO("Editor initial scene queued — %s", targetScene.c_str());
+        if (mcpPort != 0)
+            StartMcp(mcpPort);
         return true;
     }
 
@@ -98,6 +104,7 @@ protected:
             !m_scene.IsLoading())
             OnSceneLoadReady();
         UpdatePlayTransitions();
+        if (m_mcp) m_mcp->BeginFrame();
 
         // Match the offscreen viewport RT to last frame's panel size before
         // this frame's ImGui::Image captures its SRV.
@@ -123,7 +130,8 @@ protected:
 
     void OnPostProcess() override
     {
-        if (m_scene.HasScene() && !m_scene.IsLoading() && m_viewportRT.GetRTV())
+        const bool rendered = m_scene.HasScene() && !m_scene.IsLoading() && m_viewportRT.GetRTV();
+        if (rendered)
         {
             const bool animate = m_viewOptions.realtime || m_playState != PlayState::Edit;
             m_scene.PostProcess(m_viewportRT.GetWidth(), m_viewportRT.GetHeight(),
@@ -132,9 +140,58 @@ protected:
         }
         // Bind the swap chain so ImGui draws over a known background.
         GetRenderer().BindBackBuffer(GetRenderer().GetContext());
+        if (rendered && m_mcp) m_mcp->OnViewportRendered();
+    }
+
+    void OnPrePresent() override
+    {
+        if (m_mcp) m_mcp->OnFrameRendered();
     }
 
 private:
+    void StartMcp(uint16_t port)
+    {
+        Editor::McpEditorAccess access;
+        access.scene       = &m_scene;
+        access.selection   = &m_selection;
+        access.undo        = &m_undo;
+        access.camera      = &m_editorCam;
+        access.viewOptions = &m_viewOptions;
+        access.gizmoOp     = &m_gizmoOp;
+        access.scripts     = &m_scripts;
+        access.console     = &m_console;
+        access.input       = &GetInput();
+        access.renderer    = &GetRenderer();
+        access.clock       = &GetClock();
+        access.assets      = &GetAssets();
+        access.viewportRT  = &m_viewportRT;
+        access.imageMin    = &m_imageMin;
+        access.imageMax    = &m_imageMax;
+        access.playState = [this]() {
+            switch (m_playState)
+            {
+            case PlayState::Starting: return "starting";
+            case PlayState::Playing:  return "playing";
+            case PlayState::Stopping: return "stopping";
+            default:                  return "edit";
+            }
+        };
+        access.canTogglePlay     = [this]() { return CanTogglePlay(); };
+        access.requestTogglePlay = [this]() { m_togglePlayRequested = true; };
+        access.isDirty           = [this]() { return IsSceneDirtyNow(); };
+        access.save              = [this]() { return SaveScene(); };
+        access.saveAs            = [this](const std::string& path) { return SaveSceneAs(path); };
+        access.loadEditedScene   = [this](const std::string& json) {
+            m_editedSceneJson = json;
+            m_scene.RequestSceneLoad(m_scene.currentScenePath, json);
+        };
+        access.sceneReadyCount   = [this]() { return m_sceneReadyCount; };
+        access.spawnPosition     = [this]() { return SpawnPosition(); };
+        m_mcp = std::make_unique<Editor::McpTools>(std::move(access));
+        if (!m_mcp->Start(port))
+            m_mcp.reset();
+    }
+
     // Edit: the editor owns the scene. Starting/Stopping: the play or edit
     // copy of the scene is loading. Playing: scripts drive the scene.
     enum class PlayState { Edit, Starting, Playing, Stopping };
@@ -196,7 +253,7 @@ private:
         const float width  = m_imageMax.x - m_imageMin.x;
         const float height = m_imageMax.y - m_imageMin.y;
         m_scripts.SetViewRect({ m_imageMin.x, m_imageMin.y, width, height });
-        m_scripts.SetInputFocus(m_gameFocused);
+        m_scripts.SetInputFocus(m_gameFocused || (m_mcp && m_mcp->AgentHasInputFocus()));
         const ImVec2 origin = ImGui::GetMainViewport()->Pos; // ImGui -> client coords
         RECT capture;
         capture.left   = static_cast<LONG>(m_imageMin.x - origin.x);
@@ -236,6 +293,7 @@ private:
             OnSceneReady();
             break;
         }
+        ++m_sceneReadyCount;
     }
 
     void OnSceneReady()
@@ -244,7 +302,18 @@ private:
         m_editorCam.SyncFromCamera(*m_scene.camera);
         m_selection.Clear();
         m_undo.Clear(); // undo entries point into the previous scene
-        TakeSavedSnapshot();
+        // An agent's apply_scene_json loads unsaved edits: compare them
+        // against the last save instead of treating them as clean.
+        if (!m_editedSceneJson.empty() && m_scene.lastRequestedSceneJson == m_editedSceneJson)
+        {
+            m_scene.SyncDescriptorFromRuntime();
+            m_sceneDirty = SE::SceneSaver::ToJson(m_scene.currentDesc) != m_savedSceneJson;
+            m_dirtyCheckFrames = 0;
+            UpdateWindowTitle();
+        }
+        else
+            TakeSavedSnapshot();
+        m_editedSceneJson.clear();
     }
 
     // --- Play mode ---------------------------------------------------------
@@ -1213,6 +1282,11 @@ private:
     bool                 m_quitRequested = false; // fox.app.quit, handled next frame
     bool                 m_gameFocused = false;
     bool                 m_playSimulated = false; // on_gui waits for the first Simulate
+
+    std::string          m_editedSceneJson;   // apply_scene_json text being loaded
+    uint64_t             m_sceneReadyCount = 0; // scene loads handled by OnSceneLoadReady
+    // Declared last: destroyed first, while everything it references exists.
+    std::unique_ptr<Editor::McpTools> m_mcp;
 };
 
 namespace {
@@ -1232,12 +1306,27 @@ void ShowFatalError(const std::string& message)
     MessageBoxA(nullptr, message.c_str(), "FoxEditor", MB_OK | MB_ICONERROR);
 }
 
+constexpr const char* k_usage =
+    "--project <dir-or-project.json> --scene <path> --mcp-port <port> --no-mcp";
+
+// 1..65535, or 0 when text is not such an integer.
+uint16_t ParsePort(const std::wstring& text)
+{
+    if (text.empty() || text.size() > 5 ||
+        !std::all_of(text.begin(), text.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; }))
+        return 0;
+    const unsigned long value = std::wcstoul(text.c_str(), nullptr, 10);
+    return value >= 1 && value <= 65535 ? static_cast<uint16_t>(value) : 0;
+}
+
 struct LaunchOptions
 {
     std::filesystem::path project;
     std::string scene;
     std::string error;
     std::vector<std::string> warnings;
+    uint16_t mcpPort = 47800;
+    bool mcp = true;
 };
 
 LaunchOptions ParseCommandLine()
@@ -1274,9 +1363,23 @@ LaunchOptions ParseCommandLine()
             options.scene = NarrowPath(arg.c_str() + 8);
             if (options.scene.empty()) options.error = "Expected a path after --scene=.";
         }
+        else if (arg == L"--mcp-port" || arg.rfind(L"--mcp-port=", 0) == 0)
+        {
+            const bool inlineValue = arg != L"--mcp-port";
+            const std::wstring value = inlineValue ? arg.substr(11)
+                                     : (i + 1 < argc ? std::wstring(argv[++i]) : std::wstring());
+            options.mcpPort = ParsePort(value);
+            if (options.mcpPort == 0)
+            {
+                options.error = "Expected a port 1-65535 after --mcp-port.";
+                break;
+            }
+        }
+        else if (arg == L"--no-mcp")
+            options.mcp = false;
         else
             options.warnings.push_back("ignoring command-line argument '" + NarrowPath(arg.c_str()) +
-                                       "' (usage: --project <dir-or-project.json> --scene <path>)");
+                                       "' (usage: " + k_usage + ")");
     }
     LocalFree(argv);
     if (!options.scene.empty() && options.scene.find_first_of("\\/") == std::string::npos)
@@ -1291,7 +1394,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     const LaunchOptions options = ParseCommandLine();
     if (!options.error.empty())
     {
-        ShowFatalError(options.error + "\nUsage: --project <dir-or-project.json> --scene <path>");
+        ShowFatalError(options.error + "\nUsage: " + k_usage);
         return 1;
     }
     if (!SE::SetProjectRootCwd(options.project))
@@ -1322,7 +1425,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     if (!app.Initialize(desc)) return 1;
     for (const std::string& warning : options.warnings)
         SE_LOG_WARN("%s", warning.c_str());
-    if (!app.Setup(scenePath)) return 1;
+    if (!app.Setup(scenePath, options.mcp ? options.mcpPort : uint16_t(0))) return 1;
     app.Run();
     app.Shutdown();
     return 0;

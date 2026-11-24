@@ -12,19 +12,14 @@ namespace Editor {
 
 namespace {
 
-// --- Transform snapshot (undo) ------------------------------------------------
-
-struct Snapshot
-{
-    XMFLOAT3 position = { 0, 0, 0 };
-    XMFLOAT3 euler    = { 0, 0, 0 };
-    XMFLOAT3 scale    = { 1, 1, 1 };
-};
-
 bool operator==(const XMFLOAT3& a, const XMFLOAT3& b)
 {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
+
+} // namespace
+
+// --- Transform snapshot (undo) ------------------------------------------------
 
 bool HasFullTransform(Selection::Kind kind)
 {
@@ -33,7 +28,7 @@ bool HasFullTransform(Selection::Kind kind)
 }
 
 // Returns the gizmo target's world position (and full TRS for meshes and empties).
-bool CaptureSnapshot(SE::SceneRuntime& scene, const Selection& sel, Snapshot& out)
+bool CaptureTransform(SE::SceneRuntime& scene, const Selection& sel, TransformSnapshot& out)
 {
     switch (sel.kind)
     {
@@ -84,7 +79,7 @@ bool CaptureSnapshot(SE::SceneRuntime& scene, const Selection& sel, Snapshot& ou
     }
 }
 
-void ApplySnapshot(SE::SceneRuntime& scene, const Selection& sel, const Snapshot& s)
+void ApplyTransform(SE::SceneRuntime& scene, const Selection& sel, const TransformSnapshot& s)
 {
     switch (sel.kind)
     {
@@ -145,9 +140,22 @@ void ApplySnapshot(SE::SceneRuntime& scene, const Selection& sel, const Snapshot
     }
 }
 
+void PushTransformUndo(SE::SceneRuntime& scene, UndoStack& undo, Selection sel,
+                       const TransformSnapshot& before, const TransformSnapshot& after)
+{
+    if (before.position == after.position && before.euler == after.euler &&
+        before.scale == after.scale)
+        return;
+    undo.Push({ "Transform",
+                [&scene, sel, before] { ApplyTransform(scene, sel, before); },
+                [&scene, sel, after]  { ApplyTransform(scene, sel, after);  } });
+}
+
+namespace {
+
 // --- Matrix helpers -------------------------------------------------------------
 
-void SnapshotToMatrix(const Snapshot& s, XMFLOAT4X4& out)
+void SnapshotToMatrix(const TransformSnapshot& s, XMFLOAT4X4& out)
 {
     XMStoreFloat4x4(&out,
         XMMatrixScaling(s.scale.x, s.scale.y, s.scale.z) *
@@ -159,7 +167,7 @@ void SnapshotToMatrix(const Snapshot& s, XMFLOAT4X4& out)
 
 // Decomposes an SRT matrix into the XMMatrixRotationRollPitchYaw euler
 // convention used by TransformComponent (pitch/yaw/roll in degrees).
-void MatrixToSnapshot(const XMFLOAT4X4& m, Snapshot& out)
+void MatrixToSnapshot(const XMFLOAT4X4& m, TransformSnapshot& out)
 {
     out.position = { m.m[3][0], m.m[3][1], m.m[3][2] };
 
@@ -199,17 +207,6 @@ void MatrixToSnapshot(const XMFLOAT4X4& m, Snapshot& out)
     }
     out.euler = { XMConvertToDegrees(pitch), XMConvertToDegrees(yaw),
                   XMConvertToDegrees(roll) };
-}
-
-void PushTransformUndo(SE::SceneRuntime& scene, UndoStack& undo, Selection sel,
-                       const Snapshot& before, const Snapshot& after)
-{
-    if (before.position == after.position && before.euler == after.euler &&
-        before.scale == after.scale)
-        return;
-    undo.Push({ "Transform",
-                [&scene, sel, before] { ApplySnapshot(scene, sel, before); },
-                [&scene, sel, after]  { ApplySnapshot(scene, sel, after);  } });
 }
 
 // --- Picking ---------------------------------------------------------------------
@@ -336,7 +333,7 @@ namespace {
 struct DragState
 {
     bool      wasUsing = false;
-    Snapshot  before;
+    TransformSnapshot before;
     Selection sel;
 };
 DragState s_drag;
@@ -355,7 +352,7 @@ float SnapStep(GizmoOp op, const GizmoSettings& settings)
 // Runs ImGuizmo over the viewport rect and returns true when the matrix
 // was modified this frame.
 bool RunManipulate(SE::SceneRuntime& scene, GizmoOp op, const GizmoSettings& settings,
-                   const Snapshot& current, ImVec2 imageMin, ImVec2 imageMax, XMFLOAT4X4& matrix)
+                   const TransformSnapshot& current, ImVec2 imageMin, ImVec2 imageMax, XMFLOAT4X4& matrix)
 {
     ImGuizmo::SetOrthographic(scene.camera->orthographic);
     ImGuizmo::SetDrawlist();
@@ -381,22 +378,22 @@ bool RunManipulate(SE::SceneRuntime& scene, GizmoOp op, const GizmoSettings& set
 }
 
 void ApplyManipulation(SE::SceneRuntime& scene, const Selection& sel,
-                       const XMFLOAT4X4& matrix, const Snapshot& current)
+                       const XMFLOAT4X4& matrix, const TransformSnapshot& current)
 {
-    Snapshot edited;
+    TransformSnapshot edited;
     MatrixToSnapshot(matrix, edited);
     if (!HasFullTransform(sel.kind)) // keep untouched components exact
     {
         edited.euler = current.euler;
         edited.scale = current.scale;
     }
-    ApplySnapshot(scene, sel, edited);
+    ApplyTransform(scene, sel, edited);
 }
 
 // Captures the pre-drag state when a manipulation starts and pushes an undo
 // entry when it ends.
 void TrackDragUndo(SE::SceneRuntime& scene, UndoStack& undo, const Selection& sel,
-                   bool usingNow, const Snapshot& current)
+                   bool usingNow, const TransformSnapshot& current)
 {
     if (usingNow && !s_drag.wasUsing)
     {
@@ -405,8 +402,8 @@ void TrackDragUndo(SE::SceneRuntime& scene, UndoStack& undo, const Selection& se
     }
     if (!usingNow && s_drag.wasUsing)
     {
-        Snapshot after;
-        if (CaptureSnapshot(scene, s_drag.sel, after))
+        TransformSnapshot after;
+        if (CaptureTransform(scene, s_drag.sel, after))
             PushTransformUndo(scene, undo, s_drag.sel, s_drag.before, after);
     }
     s_drag.wasUsing = usingNow;
@@ -417,8 +414,8 @@ void TrackDragUndo(SE::SceneRuntime& scene, UndoStack& undo, const Selection& se
 bool DrawGizmo(SE::SceneRuntime& scene, const Selection& sel, UndoStack& undo,
                GizmoOp op, const GizmoSettings& settings, ImVec2 imageMin, ImVec2 imageMax)
 {
-    Snapshot current;
-    if (op == GizmoOp::None || !CaptureSnapshot(scene, sel, current))
+    TransformSnapshot current;
+    if (op == GizmoOp::None || !CaptureTransform(scene, sel, current))
     {
         s_drag.wasUsing = false;
         return false;
@@ -468,8 +465,8 @@ void StoreSphere(XMVECTOR wmin, XMVECTOR wmax, XMFLOAT3& outCenter, float& outRa
 bool GetSelectionBounds(SE::SceneRuntime& scene, const Selection& sel,
                         XMFLOAT3& outCenter, float& outRadius)
 {
-    Snapshot snap;
-    if (!CaptureSnapshot(scene, sel, snap))
+    TransformSnapshot snap;
+    if (!CaptureTransform(scene, sel, snap))
         return false;
     outCenter = snap.position;
     outRadius = 2.0f; // sensible framing for point targets (lights, emitters)

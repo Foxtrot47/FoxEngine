@@ -88,7 +88,7 @@ void InputManager::NewFrame()
     m_mouseWheel = 0;
     PollGamepads();
 
-    if (m_cursorCaptured)
+    if (m_cursorCaptured && !m_virtualCapture)
     {
         // While captured the delta comes from the cursor itself: queued
         // WM_MOUSEMOVEs straddle the re-centre warp and can't be trusted.
@@ -131,6 +131,11 @@ void InputManager::SetCursorCaptured(bool captured)
 {
     if (captured == m_cursorCaptured || !m_hwnd)
         return;
+    if (m_virtualCapture)
+    {
+        m_cursorCaptured = captured;
+        return;
+    }
     m_cursorCaptured = captured;
     if (captured)
     {
@@ -142,6 +147,40 @@ void InputManager::SetCursorCaptured(bool captured)
     {
         ClipCursor(nullptr);
         ShowCursor(TRUE);
+    }
+}
+
+void InputManager::InjectKey(int vk, bool down)
+{
+    if (vk < 1 || vk > 255)
+        return;
+    if (down  && !m_keyDown[vk]) m_keyPressed[vk]  = true;
+    if (!down &&  m_keyDown[vk]) m_keyReleased[vk] = true;
+    m_keyDown[vk] = down;
+}
+
+void InputManager::InjectMouseDelta(int32_t dx, int32_t dy)
+{
+    m_mouseDX += dx;
+    m_mouseDY += dy;
+}
+
+void InputManager::SetVirtualCapture(bool enabled)
+{
+    if (enabled == m_virtualCapture)
+        return;
+    m_virtualCapture = enabled;
+    if (enabled)
+    {
+        if (m_cursorCaptured)
+        {
+            ClipCursor(nullptr);
+            ShowCursor(TRUE);
+        }
+    }
+    else
+    {
+        m_cursorCaptured = false;
     }
 }
 

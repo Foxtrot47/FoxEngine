@@ -34,8 +34,8 @@ void BeginRename(Selection::Kind kind, int index, const std::string& current)
     s_rename.takeFocus = true;
 }
 
-// Persisted display-name storage for the selection, or nullptr when the
-// entity kind has no editable name.
+} // namespace
+
 std::string* EntityName(SE::SceneRuntime& scene, Selection::Kind kind, int index)
 {
     using Kind = Selection::Kind;
@@ -63,6 +63,8 @@ std::string* EntityName(SE::SceneRuntime& scene, Selection::Kind kind, int index
         return nullptr;
     }
 }
+
+namespace {
 
 struct IconDesc
 {
@@ -295,20 +297,7 @@ void DrawAddMenu(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
 
 void ApplyRename(SE::SceneRuntime& scene, UndoStack& undo, const RenameCommit& commit)
 {
-    std::string* name = EntityName(scene, commit.target.kind, commit.target.index);
-    if (!name || *name == commit.name)
-        return;
-    const Selection target = commit.target;
-    const std::string before = *name;
-    const std::string after  = commit.name;
-    *name = after;
-    auto set = [&scene, target](const std::string& value) {
-        if (std::string* n = EntityName(scene, target.kind, target.index))
-            *n = value;
-    };
-    undo.Push({ "Rename",
-                [set, before] { set(before); },
-                [set, after]  { set(after); } });
+    RenameEntity(scene, undo, commit.target, commit.name);
 }
 
 // Point light, mesh, object, and emitter rows with editable names.
@@ -387,6 +376,27 @@ RowAction DrawEntityRows(SE::SceneRuntime& scene, Selection& sel)
 }
 
 } // namespace
+
+bool RenameEntity(SE::SceneRuntime& scene, UndoStack& undo, Selection target,
+                  const std::string& name)
+{
+    std::string* current = EntityName(scene, target.kind, target.index);
+    if (!current)
+        return false;
+    if (*current == name)
+        return true;
+    const std::string before = *current;
+    const std::string after  = name;
+    *current = after;
+    auto set = [&scene, target](const std::string& value) {
+        if (std::string* n = EntityName(scene, target.kind, target.index))
+            *n = value;
+    };
+    undo.Push({ "Rename",
+                [set, before] { set(before); },
+                [set, after]  { set(after); } });
+    return true;
+}
 
 void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel)
 {

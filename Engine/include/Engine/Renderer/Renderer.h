@@ -30,6 +30,8 @@ public:
 
     ID3D11Device*        GetDevice()  const { return m_device.Get(); }
     ID3D11DeviceContext* GetContext() const { return m_context.Get(); }
+    // Swap-chain back buffer (R8G8B8A8_UNORM); valid only before Present.
+    ID3D11Texture2D*     GetBackBuffer() const { return m_backBuffer.Get(); }
     RenderStateCache&    GetStateCache()    { return m_stateCache; }
 
 private:

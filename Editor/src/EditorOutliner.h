@@ -1,5 +1,6 @@
 #pragma once
 #include <DirectXMath.h>
+#include <string>
 #include "EditorSelection.h"
 
 namespace SE {
@@ -22,5 +23,14 @@ void DrawOutlinerPanel(SE::SceneRuntime& scene, Selection& sel, UndoStack& undo,
 
 // Starts inline outliner rename for the selection when its name is editable.
 void RequestRenameSelection(SE::SceneRuntime& scene, const Selection& sel);
+
+// Persisted display-name storage for the entity, or nullptr when the
+// kind has no editable name (or the index is stale).
+std::string* EntityName(SE::SceneRuntime& scene, Selection::Kind kind, int index);
+
+// Undoable rename. False when the entity has no editable name; an
+// unchanged name succeeds without an undo entry.
+bool RenameEntity(SE::SceneRuntime& scene, UndoStack& undo, Selection target,
+                  const std::string& name);
 
 } // namespace Editor

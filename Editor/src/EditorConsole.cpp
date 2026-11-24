@@ -80,6 +80,25 @@ void Console::Append(SE::LogLevel level, const char* file, int line, const char*
     }
 }
 
+std::vector<Console::LogEntry> Console::Snapshot(uint64_t since) const
+{
+    std::lock_guard lock(m_mutex);
+    std::vector<LogEntry> out;
+    const uint64_t first = m_appended - m_lines.size();
+    for (size_t i = since > first ? size_t(since - first) : 0; i < m_lines.size(); ++i)
+    {
+        const Line& line = m_lines[i];
+        out.push_back({ first + i, line.level, line.prefix + line.text });
+    }
+    return out;
+}
+
+uint64_t Console::NextSeq() const
+{
+    std::lock_guard lock(m_mutex);
+    return m_appended;
+}
+
 bool Console::PassesFilter(const Line& line) const
 {
     if (IsError(line.level))

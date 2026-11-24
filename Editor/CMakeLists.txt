@@ -4,7 +4,7 @@ add_executable(Editor WIN32 ${EDITOR_SOURCES})
 
 find_package(imguizmo CONFIG REQUIRED)
 
-target_link_libraries(Editor PRIVATE FoxEngine imguizmo::imguizmo shell32)
+target_link_libraries(Editor PRIVATE FoxEngine imguizmo::imguizmo shell32 ws2_32)
 
 target_compile_definitions(Editor PRIVATE
     UNICODE

@@ -65,11 +65,12 @@ void Engine::Run()
         m_clock.Tick();
 
         m_renderer.BeginFrame(0.1f, 0.15f, 0.25f);
-        m_imgui.BeginFrame();
+        m_imgui.BeginFrame(m_window.GetWidth(), m_window.GetHeight());
         OnUpdate();
         if (m_window.IsQuitRequested()) break;
         OnPostProcess();
         m_imgui.EndFrame();
+        OnPrePresent();
         m_renderer.Present();
 
         fpsTimer += m_clock.GetDeltaTime();

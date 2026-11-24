@@ -42,6 +42,9 @@ protected:
     // Override to insert post-process passes; must leave the back buffer bound when done.
     virtual void OnPostProcess() { m_renderer.BindBackBuffer(m_renderer.GetContext()); }
 
+    // After ImGui has drawn into the back buffer, before Present (frame capture).
+    virtual void OnPrePresent() {}
+
 private:
     std::wstring m_titleBase = L"FoxEngine";
     bool m_titleStats = true;

@@ -121,6 +121,33 @@ switches the editor to it. Opening or reloading a scene (menu or Content
 Browser) and closing the window prompt Save / Don't Save / Cancel when the
 serialized scene differs from the last save.
 
+## MCP server
+
+The editor serves the Model Context Protocol (Streamable HTTP, JSON responses,
+no sessions or SSE) at `http://127.0.0.1:47800/mcp` so a coding agent can inspect
+and drive it; the repository's `.mcp.json` points clients there.
+`--mcp-port <port>` picks another port, `--no-mcp` disables it, and a port that
+is in use only logs a warning. It binds loopback only and refuses requests whose
+`Host` or `Origin` is not localhost/127.0.0.1 (DNS rebinding).
+
+Requests are parsed on connection threads; every tool runs on the main thread at
+the start of the frame, so calls see the same state as the UI. Tools:
+
+| Group | Tools |
+|---|---|
+| Inspect | `editor_status`, `list_entities`, `get_entity`, `get_scene_json`, `get_logs`, `screenshot` (`viewport`, `viewport_ui`, `window`) |
+| Edit (undoable) | `select`, `set_transform`, `rename_entity`, `add_entity`, `duplicate_entity`, `delete_entity`, `undo`, `redo` |
+| Scene files | `save_scene`, `open_scene` (refuses unsaved changes unless `discard_changes`), `apply_scene_json` (loads edited FoxLevel JSON as the unsaved edit state) |
+| View | `set_camera`, `frame_entity`, `set_view_options` |
+| Play | `play` (`start`/`stop`), `eval_lua`, `play_input`, `wait_frames` |
+
+Entities are addressed as `{kind, index}`, `{id}` or `{name}`. Edits are refused
+while playing or loading. `play_input` holds keys (`fox.Key` names) or project
+input actions and adds mouse deltas for N frames; while it runs the game has
+input focus and cursor capture is virtual (the OS cursor is never hidden or
+clipped). Screenshots work while the window is minimized or covered: ImGui keeps
+the swap-chain size as its display size when the client area is 0x0.
+
 ## Rendering limits
 
 Orthographic views skip perspective-only SSAO, volumetric fog and FSR rather than
@@ -142,6 +169,8 @@ part of this pass.
 `EditorCameraTests` covers projection changes without repositioning/zoom resets,
 exact axis bases, viewport-scaled panning, portrait/landscape focus framing,
 parallel ortho pick rays, dolly clamping and orthographic shadow-volume coverage.
+`EditorMcpTests` covers HTTP request parsing, Host/Origin checks, MCP version
+negotiation, JSON-RPC errors and a loopback socket round trip.
 
 Manual interaction checklist:
 

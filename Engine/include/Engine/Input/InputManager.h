@@ -41,6 +41,14 @@ public:
     // its viewport image). An empty rect means the whole client area.
     void SetCaptureRect(const RECT& clientRect) { m_captureRect = clientRect; }
 
+    // Agent-driven input (editor MCP). InjectKey takes a Win32 VK (keys and
+    // mouse buttons) and produces the same pressed/released edges as messages.
+    void InjectKey(int vk, bool down);
+    void InjectMouseDelta(int32_t dx, int32_t dy);
+    // While enabled, cursor capture is tracked (IsCursorCaptured) but never
+    // hides, clips or warps the OS cursor, and NewFrame takes no delta from it.
+    void SetVirtualCapture(bool enabled);
+
     // Passed to Window::SetInputHook
     static LRESULT WndProcHandler(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
@@ -52,6 +60,7 @@ private:
 
     HWND    m_hwnd = nullptr;
     bool    m_cursorCaptured = false;
+    bool    m_virtualCapture = false;
     RECT    m_captureRect    = {};
 
     bool    m_keyDown    [256] = {};

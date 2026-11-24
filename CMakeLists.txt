@@ -37,6 +37,14 @@ if(BUILD_TESTING)
     add_test(NAME EditorUndoTests COMMAND EditorUndoTests)
     set_tests_properties(EditorUndoTests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
+    add_executable(EditorMcpTests Tests/EditorMcpTests.cpp
+        Editor/src/EditorMcpHttp.cpp Editor/src/EditorMcpProtocol.cpp)
+    target_include_directories(EditorMcpTests PRIVATE Editor/src)
+    target_link_libraries(EditorMcpTests PRIVATE FoxEngine ws2_32)
+    target_compile_options(EditorMcpTests PRIVATE /W4 /WX /MP)
+    add_test(NAME EditorMcpTests COMMAND EditorMcpTests)
+    set_tests_properties(EditorMcpTests PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
     add_executable(PhysicsWorldTests Tests/PhysicsWorldTests.cpp)
     target_link_libraries(PhysicsWorldTests PRIVATE FoxEngine)
     target_compile_options(PhysicsWorldTests PRIVATE /W4 /WX /MP)

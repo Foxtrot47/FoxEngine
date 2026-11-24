@@ -39,10 +39,13 @@ void ImGuiLayer::Shutdown()
     ImGui::DestroyContext();
 }
 
-void ImGuiLayer::BeginFrame()
+void ImGuiLayer::BeginFrame(uint32_t width, uint32_t height)
 {
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
+        io.DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
     ImGui::NewFrame();
 }
 

@@ -26,7 +26,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 
 - **Engine/** — Static library (`FoxEngine.lib`). All code in `namespace SE {}`.
 - **Player/**: `FoxPlayer.exe`, the generic game executable: loads `project.json`, its startup scene and scripts. Holds no game logic; `FoxProject publish` ships it as `<ProjectName>.exe`.
-- **Editor/**: `FoxEditor.exe` level editor with Play mode, Console and script property editing (see `Editor/README.md`).
+- **Editor/**: `FoxEditor.exe` level editor with Play mode, Console, script property editing and an MCP server on `127.0.0.1:47800/mcp` (`.mcp.json`; inspect, edit, screenshot, play and drive input from an agent; `--mcp-port`/`--no-mcp`; see `Editor/README.md`).
 - **Tools/FoxProject/**: Headless project CLI: API stubs, Lua tests, validation, REPL, scaffolding, publish (see Scripting).
 - **Engine/Shaders/** — HLSL files loaded directly from source at runtime via `D3DCompileFromFile`.
 - **Engine/Scripts/**: Lua runtime prelude (`fox/runtime.lua`) and the generated LuaLS API reference (`types/fox.lua`).
