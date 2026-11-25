@@ -32,48 +32,33 @@ bool CopyScratch(const DirectX::ScratchImage& image, TextureSourceData& output)
     return !output.subresources.empty();
 }
 
-bool IsSrgbFormat(DXGI_FORMAT format)
+// Colour formats with both a linear and an sRGB interpretation. The resource is
+// created typeless so either view can be made; a typed resource only accepts
+// views of its own format.
+struct CastableFormat { DXGI_FORMAT typeless, linear, srgb; };
+constexpr CastableFormat k_castableFormats[] = {
+    { DXGI_FORMAT_R8G8B8A8_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB },
+    { DXGI_FORMAT_B8G8R8A8_TYPELESS, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB },
+    { DXGI_FORMAT_B8G8R8X8_TYPELESS, DXGI_FORMAT_B8G8R8X8_UNORM, DXGI_FORMAT_B8G8R8X8_UNORM_SRGB },
+    { DXGI_FORMAT_BC1_TYPELESS,      DXGI_FORMAT_BC1_UNORM,      DXGI_FORMAT_BC1_UNORM_SRGB },
+    { DXGI_FORMAT_BC2_TYPELESS,      DXGI_FORMAT_BC2_UNORM,      DXGI_FORMAT_BC2_UNORM_SRGB },
+    { DXGI_FORMAT_BC3_TYPELESS,      DXGI_FORMAT_BC3_UNORM,      DXGI_FORMAT_BC3_UNORM_SRGB },
+    { DXGI_FORMAT_BC7_TYPELESS,      DXGI_FORMAT_BC7_UNORM,      DXGI_FORMAT_BC7_UNORM_SRGB },
+};
+
+const CastableFormat* FindCastableFormat(DXGI_FORMAT format)
 {
-    switch (format)
-    {
-    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
-    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
-    case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
-    case DXGI_FORMAT_BC1_UNORM_SRGB:
-    case DXGI_FORMAT_BC2_UNORM_SRGB:
-    case DXGI_FORMAT_BC3_UNORM_SRGB:
-    case DXGI_FORMAT_BC7_UNORM_SRGB:
-        return true;
-    default:
-        return false;
-    }
+    for (const CastableFormat& entry : k_castableFormats)
+        if (format == entry.linear || format == entry.srgb) return &entry;
+    return nullptr;
 }
 
-DXGI_FORMAT ToSrgbFormat(DXGI_FORMAT format)
+HRESULT CreateSrv(ID3D11Device* device, ID3D11Texture2D* texture,
+                  const TextureSourceData& source, DXGI_FORMAT format,
+                  ID3D11ShaderResourceView** outView)
 {
-    switch (format)
-    {
-    case DXGI_FORMAT_R8G8B8A8_UNORM: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    case DXGI_FORMAT_B8G8R8A8_UNORM: return DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-    case DXGI_FORMAT_B8G8R8X8_UNORM: return DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
-    case DXGI_FORMAT_BC1_UNORM:     return DXGI_FORMAT_BC1_UNORM_SRGB;
-    case DXGI_FORMAT_BC2_UNORM:     return DXGI_FORMAT_BC2_UNORM_SRGB;
-    case DXGI_FORMAT_BC3_UNORM:     return DXGI_FORMAT_BC3_UNORM_SRGB;
-    case DXGI_FORMAT_BC7_UNORM:     return DXGI_FORMAT_BC7_UNORM_SRGB;
-    default:                        return DXGI_FORMAT_UNKNOWN;
-    }
-}
-
-HRESULT CreateSrgbSrv(ID3D11Device* device, ID3D11Texture2D* texture,
-                      const TextureSourceData& source,
-                      ID3D11ShaderResourceView** outView)
-{
-    const DXGI_FORMAT srgbFormat = ToSrgbFormat(source.format);
-    if (srgbFormat == DXGI_FORMAT_UNKNOWN)
-        return E_INVALIDARG;
-
     D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
-    sd.Format = srgbFormat;
+    sd.Format = format;
     if (source.cubeMap)
     {
         sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
@@ -182,7 +167,8 @@ bool Texture2D::Upload(ID3D11Device* device, const TextureSourceData& source)
     desc.Height = source.height;
     desc.MipLevels = source.mipLevels;
     desc.ArraySize = source.arraySize;
-    desc.Format = source.format;
+    const CastableFormat* castable = FindCastableFormat(source.format);
+    desc.Format = castable ? castable->typeless : source.format;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -195,14 +181,19 @@ bool Texture2D::Upload(ID3D11Device* device, const TextureSourceData& source)
         initial[i].SysMemSlicePitch = source.subresources[i].slicePitch;
     }
     if (FAILED(device->CreateTexture2D(&desc, initial.data(), &m_texture))) return false;
-    if (FAILED(device->CreateShaderResourceView(m_texture.Get(), nullptr, &m_srv))) return false;
-
+    m_srv.Reset();
     m_srvSrgb.Reset();
-    if (IsSrgbFormat(source.format))
+    if (castable)
+    {
+        if (FAILED(CreateSrv(device, m_texture.Get(), source, castable->linear, &m_srv))) return false;
+        if (FAILED(CreateSrv(device, m_texture.Get(), source, castable->srgb, &m_srvSrgb))) return false;
+    }
+    else
+    {
+        // No sRGB variant (float or two-channel data): both bindings read it as stored.
+        if (FAILED(device->CreateShaderResourceView(m_texture.Get(), nullptr, &m_srv))) return false;
         m_srvSrgb = m_srv;
-    else if (FAILED(CreateSrgbSrv(device, m_texture.Get(), source,
-                                  m_srvSrgb.GetAddressOf())))
-        m_srvSrgb = m_srv; // Format has no sRGB variant (e.g. float data).
+    }
 
     m_width = source.width;
     m_height = source.height;
@@ -236,23 +227,20 @@ bool Texture2D::CreateSRV(ID3D11Device* device, ID3D11DeviceContext* ctx,
     td.Height = height;
     td.MipLevels = 0;
     td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.Format = DXGI_FORMAT_R8G8B8A8_TYPELESS;
     td.SampleDesc.Count = 1;
     td.Usage = D3D11_USAGE_DEFAULT;
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
     td.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
     if (FAILED(device->CreateTexture2D(&td, nullptr, &m_texture))) return false;
     D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
-    sd.Format = td.Format;
+    sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
     sd.Texture2D.MipLevels = UINT(-1);
     if (FAILED(device->CreateShaderResourceView(m_texture.Get(), &sd, &m_srv))) return false;
-
     sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     m_srvSrgb.Reset();
-    if (FAILED(device->CreateShaderResourceView(m_texture.Get(), &sd,
-                                                m_srvSrgb.GetAddressOf())))
-        m_srvSrgb = m_srv;
+    if (FAILED(device->CreateShaderResourceView(m_texture.Get(), &sd, &m_srvSrgb))) return false;
 
     ctx->UpdateSubresource(m_texture.Get(), 0, nullptr, rgba, width * 4, 0);
     ctx->GenerateMips(m_srv.Get());
