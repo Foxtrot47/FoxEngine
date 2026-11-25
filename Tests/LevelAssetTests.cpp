@@ -616,6 +616,20 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, boo
          a.detailAlbedoBlend != b.detailAlbedoBlend || a.detailAlbedoStrength != b.detailAlbedoStrength ||
          a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint))
         return false;
+    if (gltfExtras)
+    {
+        const SE::TerrainMaterial& ta = a.terrain;
+        const SE::TerrainMaterial& tb = b.terrain;
+        if (a.kind != b.kind || ta.layerCount != tb.layerCount ||
+            ta.albedoAlphaIsRoughness != tb.albedoAlphaIsRoughness || ta.overlayStrength != tb.overlayStrength ||
+            ta.roughnessScale != tb.roughnessScale || !SameSlot(ta.splat, tb.splat, true) ||
+            !SameSlot(ta.overlay, tb.overlay, true))
+            return false;
+        for (uint32_t i = 0; i < SE::k_maxTerrainLayers; ++i)
+            if (ta.layerScale[i] != tb.layerScale[i] || !SameSlot(ta.layerAlbedo[i], tb.layerAlbedo[i], true) ||
+                !SameSlot(ta.layerNormal[i], tb.layerNormal[i], true))
+                return false;
+    }
     return a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
            a.workflow == b.workflow && a.roughnessFactor == b.roughnessFactor &&
            a.glossinessFactor == b.glossinessFactor;
@@ -994,6 +1008,95 @@ static void TestVertexTint()
     for (size_t i = 0; i < imported.subMeshes.size(); ++i)
         Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
                 "tint.gltf MeshCache round trip altered vertexTint");
+    fs::remove_all(root);
+}
+
+// extras.fox.material .foxmat terrain sidecars: parsed fields (texture paths rebased from the
+// sidecar to the mesh directory), the sidecar as a cache dependency, and Standard fallbacks for
+// missing, malformed and invalid sidecars.
+static void TestTerrainMaterial()
+{
+    const auto checkTerrain = [](const SE::MeshSourceData& data, const std::string& foxmat) {
+        Require(data.subMeshes.size() == 2, "terrain.gltf submesh count mismatch");
+        const SE::SubMeshInfo& info = data.subMeshes[0].material;
+        Require(info.kind == SE::MaterialKind::Terrain, "terrain.gltf material is not a terrain material");
+        const SE::TerrainMaterial& terrain = info.terrain;
+        Require(terrain.layerCount == 4, "terrain layer count mismatch");
+        const char* albedo[] = { "terrain/layers/grass_a_albr.dds", "terrain/layers/grass_b_albr.dds",
+                                 "terrain/layers/dirt_c_albr.dds", "terrain/layers/dirt_d_albr.dds" };
+        const char* normal[] = { "terrain/layers/grass_na_nm.dds", "terrain/layers/grass_na_nm.dds",
+                                 "terrain/layers/dirt_nb_nm.dds", "" };
+        const float scale[] = { 0.195f, 0.25f, 0.5f, 1.0f };
+        for (uint32_t i = 0; i < SE::k_maxTerrainLayers; ++i)
+        {
+            Require(terrain.layerAlbedo[i].path == albedo[i], "terrain layer albedo path mismatch");
+            Require(terrain.layerNormal[i].path == normal[i], "terrain layer normal path mismatch");
+            Require(terrain.layerScale[i] == scale[i], "terrain layer world scale mismatch");
+        }
+        Require(terrain.albedoAlphaIsRoughness, "terrain albedoAlphaIsRoughness mismatch");
+        Require(terrain.splat.path == "ra_splat.dds" && terrain.splat.uvSet == 1 &&
+                terrain.splat.scale[0] == 1.0f && terrain.splat.scale[1] == 1.0f, "terrain splat mismatch");
+        Require(terrain.overlay.path == "ra_overlay.dds" && terrain.overlay.uvSet == 2 &&
+                terrain.overlay.scale[0] == 2.0f && terrain.overlay.scale[1] == 2.5f &&
+                terrain.overlayStrength == 0.91f, "terrain overlay mismatch");
+        Require(terrain.roughnessScale == 0.8f, "terrain roughness scale mismatch");
+        Require(info.albedo.path == "fallback_albedo.png", "terrain material lost its glTF albedo slot");
+        size_t paths = 0;
+        SE::ForEachTexturePath(info, [&paths](const std::string&) { ++paths; });
+        Require(paths == 10, "ForEachTexturePath did not enumerate every terrain texture");
+        Require(std::find(data.sourceFiles.begin(), data.sourceFiles.end(), foxmat) != data.sourceFiles.end(),
+                "the .foxmat sidecar is not a mesh dependency");
+
+        const SE::SubMeshInfo& missing = data.subMeshes[1].material;
+        Require(missing.kind == SE::MaterialKind::Standard && missing.albedo.path == "fallback_albedo.png",
+                "a missing .foxmat did not fall back to the glTF material");
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/terrain.gltf", imported), "failed to import terrain.gltf");
+    checkTerrain(imported, "Assets/TestFixtures/terrain/terrain.foxmat");
+
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "FoxEngineTerrainMaterialTest";
+    fs::remove_all(root);
+    fs::create_directories(root / "src" / "terrain");
+    fs::copy_file("Assets/TestFixtures/terrain.gltf", root / "src" / "terrain.gltf");
+    const fs::path foxmat = root / "src" / "terrain" / "terrain.foxmat";
+    fs::copy_file("Assets/TestFixtures/terrain/terrain.foxmat", foxmat);
+    const std::string source = (root / "src" / "terrain.gltf").generic_string();
+    const SE::MeshCache cache((root / "cache").string());
+
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load(source, firstLoad, {}, nullptr, &hit) && !hit, "terrain.gltf first cache load did not import");
+    Require(cache.Load(source, cachedLoad, {}, nullptr, &hit) && hit, "terrain.gltf second cache load missed");
+    checkTerrain(cachedLoad, foxmat.lexically_normal().generic_string());
+    for (size_t i = 0; i < firstLoad.subMeshes.size(); ++i)
+        Require(SameMaterial(cachedLoad.subMeshes[i].material, firstLoad.subMeshes[i].material),
+                "terrain.gltf MeshCache round trip altered the terrain material");
+
+    const auto rewrite = [&foxmat](const std::string& text) {
+        const auto written = fs::last_write_time(foxmat);
+        std::ofstream(foxmat, std::ios::binary | std::ios::trunc) << text;
+        fs::last_write_time(foxmat, written + std::chrono::seconds(2));
+    };
+    const auto loadStandard = [&](const std::string& label) {
+        SE::MeshSourceData reloaded;
+        Require(cache.Load(source, reloaded, {}, nullptr, &hit) && !hit,
+                ("editing the .foxmat did not invalidate the cooked entry (" + label + ")").c_str());
+        const SE::SubMeshInfo& info = reloaded.subMeshes[0].material;
+        Require(info.kind == SE::MaterialKind::Standard && info.albedo.path == "fallback_albedo.png",
+                (label + " .foxmat did not fall back to the glTF material").c_str());
+    };
+    rewrite("{ \"format\": \"FoxMaterial\", \"version\": 1, \"type\": \"terrain\", ");
+    loadStandard("malformed");
+    rewrite("{ \"format\": \"FoxMaterial\", \"version\": 1, \"type\": \"terrain\","
+            " \"layers\": [ { \"albedo\": \"a.dds\", \"worldScale\": 0 } ] }");
+    loadStandard("invalid");
+    rewrite("{ \"format\": \"FoxMaterial\", \"version\": 1, \"type\": \"terrain\","
+            " \"layers\": [ { \"albedo\": \"a.dds\", \"worldScale\": 1 } ],"
+            " \"overlay\": { \"texture\": \"o.dds\", \"uvScale\": [2, 0] } }");
+    loadStandard("invalid uvScale");
     fs::remove_all(root);
 }
 
@@ -1605,6 +1708,7 @@ static void RunTests()
     TestVertexStreams();
     TestTextureSlots();
     TestVertexTint();
+    TestTerrainMaterial();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 

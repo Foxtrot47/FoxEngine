@@ -36,6 +36,9 @@ enum class MaterialWorkflow : uint8_t { SeparateMR, PackedMR, SpecularGloss };
 enum class VertexTint : uint8_t { None, Multiply, AlbedoAlphaMask };
 // How detail albedo (t14) blends with base albedo in Basic.hlsl.
 enum class DetailBlend : uint8_t { Overlay, Multiply, AlphaBlend };
+// Standard: the texture slots below. Terrain: SubMeshInfo::terrain replaces albedo,
+// roughness and normal sampling (Basic.hlsl FOX_TERRAIN permutation).
+enum class MaterialKind : uint8_t { Standard, Terrain };
 
 // One material texture: path relative to GetDirectory() (empty = no texture), the UV
 // set it samples (0..2 = TEXCOORD_0..2) and its tiling, applied as uv * scale + offset.
@@ -45,6 +48,24 @@ struct TextureSlot
     uint8_t uvSet = 0;
     float scale[2] = { 1, 1 };
     float offset[2] = { 0, 0 };
+};
+
+constexpr uint32_t k_maxTerrainLayers = 4;
+
+// Layered terrain from a .foxmat sidecar (glTF extras.fox.material). Layer i samples
+// world X/Z * layerScale[i]; layers B..D lerp over A by splat R, G, B; the overlay
+// multiplies the result (w = overlayStrength * overlay.a). Paths are relative to the
+// mesh directory like TextureSlot::path; only splat and overlay use uvSet and scale.
+struct TerrainMaterial
+{
+    TextureSlot layerAlbedo[k_maxTerrainLayers];
+    TextureSlot layerNormal[k_maxTerrainLayers]; // empty = flat
+    float       layerScale[k_maxTerrainLayers] = { 1, 1, 1, 1 };
+    uint8_t     layerCount = 0;
+    bool        albedoAlphaIsRoughness = false;
+    TextureSlot splat, overlay;
+    float       overlayStrength = 0.0f;
+    float       roughnessScale = 1.0f;
 };
 
 struct SubMeshInfo
@@ -61,6 +82,8 @@ struct SubMeshInfo
     float       roughnessFactor = 1.0f;   // scalar roughness for texture-less MR materials
     float       glossinessFactor = 1.0f;  // scalar glossiness for spec/gloss materials
     VertexTint  vertexTint = VertexTint::None;
+    MaterialKind kind = MaterialKind::Standard;
+    TerrainMaterial terrain;                 // used when kind == Terrain
 };
 
 // Calls fn(const std::string&) for every non-empty texture path of the material.
@@ -68,9 +91,14 @@ template <typename Fn>
 void ForEachTexturePath(const SubMeshInfo& info, Fn&& fn)
 {
     for (const TextureSlot* slot : { &info.albedo, &info.normal, &info.roughness, &info.emissive,
-                                     &info.occlusion, &info.detailAlbedo, &info.detailNormal })
+                                     &info.occlusion, &info.detailAlbedo, &info.detailNormal,
+                                     &info.terrain.splat, &info.terrain.overlay })
         if (!slot->path.empty())
             fn(slot->path);
+    for (uint32_t i = 0; i < k_maxTerrainLayers; ++i)
+        for (const TextureSlot* slot : { &info.terrain.layerAlbedo[i], &info.terrain.layerNormal[i] })
+            if (!slot->path.empty())
+                fn(slot->path);
 }
 
 struct MeshSubMeshSource

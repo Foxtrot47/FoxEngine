@@ -1,8 +1,14 @@
 // Basic.hlsl — forward PBR + equirectangular IBL + directional/point shadows.
 // Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB
 //            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic,
-//            t13=occlusion, t14=detail albedo, t15=detail normal
+//            t13=occlusion, t14=detail albedo, t15=detail normal,
+//            FOX_TERRAIN only: t16-t19=layer albedo A-D, t20=splat, t21=overlay, t22-t25=layer normal A-D
 //            s0=sampler, s1=shadowSampler(cmp), s2=cubeSampler
+// FOX_TERRAIN=1 (layered terrain permutation) replaces albedo, roughness and normal sampling.
+
+#ifndef FOX_TERRAIN
+#define FOX_TERRAIN 0
+#endif
 
 cbuffer TransformCB : register(b0)
 {
@@ -46,6 +52,10 @@ cbuffer MaterialCB : register(b3)
     float4 SlotUVB;     // UV set of slots 4-6, w = DetailNormalStrength
     float4 SlotFlags;   // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel (0 R, 1 G)
     float4 TintParams;  // x = vertex tint mode (0 none, 1 multiply, 2 albedoAlphaMask), y = detail albedo mode (0 overlay, 1 multiply, 2 alphaBlend), z = detail albedo strength
+    float4 TerrainScale;   // world X/Z scale of terrain layers A-D
+    float4 TerrainParams;  // x layerCount, y albedoAlphaIsRoughness, z overlayStrength, w overlay uvSet
+    float4 TerrainParams2; // x splat uvSet
+    float4 TerrainST;      // xy splat uv scale, zw overlay uv scale
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -96,6 +106,18 @@ Texture2D              g_planarReflection : register(t12);
 Texture2D              g_occlusion    : register(t13);
 Texture2D              g_detailAlbedo : register(t14);
 Texture2D              g_detailNormal : register(t15);
+#if FOX_TERRAIN
+Texture2D              g_terrainAlbedo0 : register(t16);
+Texture2D              g_terrainAlbedo1 : register(t17);
+Texture2D              g_terrainAlbedo2 : register(t18);
+Texture2D              g_terrainAlbedo3 : register(t19);
+Texture2D              g_terrainSplat   : register(t20);
+Texture2D              g_terrainOverlay : register(t21);
+Texture2D              g_terrainNormal0 : register(t22);
+Texture2D              g_terrainNormal1 : register(t23);
+Texture2D              g_terrainNormal2 : register(t24);
+Texture2D              g_terrainNormal3 : register(t25);
+#endif
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -278,12 +300,17 @@ static const int SLOT_OCCLUSION     = 4;
 static const int SLOT_DETAIL_ALBEDO = 5;
 static const int SLOT_DETAIL_NORMAL = 6;
 
+// Vertex UV set 0..2 (TEXCOORD0..2).
+float2 SetUV(float set, PSIn i)
+{
+    return set > 1.5f ? i.TexCoord2 : (set > 0.5f ? i.TexCoord1 : i.TexCoord);
+}
+
 // Texture coordinate of one material slot: its UV set, then uv * scale + offset.
 float2 SlotUV(int slot, PSIn i)
 {
     float set = (slot < 4 ? SlotUVA : SlotUVB)[slot & 3];
-    float2 uv = set > 1.5f ? i.TexCoord2 : (set > 0.5f ? i.TexCoord1 : i.TexCoord);
-    return uv * SlotST[slot].xy + SlotST[slot].zw;
+    return SetUV(set, i) * SlotST[slot].xy + SlotST[slot].zw;
 }
 
 // Sampling a tangent-space normal map (RG, reconstructed Z).
@@ -292,6 +319,46 @@ float3 SampleTangentNormal(Texture2D map, float2 uv)
     float2 rg = map.Sample(g_sampler, uv).rg * 2.0f - 1.0f;
     return float3(rg, sqrt(saturate(1.0f - dot(rg, rg))));
 }
+
+#if FOX_TERRAIN
+// Layered terrain: layer i tiles world X/Z * TerrainScale[i]; the result starts at
+// layer A and lerps toward B, C, D by the splat's R, G, B. Tangent-space layer normals
+// blend with the same weights and are UDN-applied onto the vertex TBN. The overlay
+// multiplies the colour: w = strength * overlay.a, rgb *= 1 - w + w * overlay.rgb.
+void SampleTerrain(PSIn i, out float4 albedo, out float3 normalTS)
+{
+    float2 xz = i.WorldPos.xz;
+    float2 uv = xz * TerrainScale.x;
+    albedo    = g_terrainAlbedo0.Sample(g_sampler, uv);
+    float3 n  = SampleTangentNormal(g_terrainNormal0, uv);
+    if (TerrainParams.x > 1.5f)
+    {
+        float3 splat = g_terrainSplat.Sample(g_sampler, SetUV(TerrainParams2.x, i) * TerrainST.xy).rgb;
+        uv     = xz * TerrainScale.y;
+        albedo = lerp(albedo, g_terrainAlbedo1.Sample(g_sampler, uv), splat.r);
+        n      = lerp(n, SampleTangentNormal(g_terrainNormal1, uv), splat.r);
+        if (TerrainParams.x > 2.5f)
+        {
+            uv     = xz * TerrainScale.z;
+            albedo = lerp(albedo, g_terrainAlbedo2.Sample(g_sampler, uv), splat.g);
+            n      = lerp(n, SampleTangentNormal(g_terrainNormal2, uv), splat.g);
+        }
+        if (TerrainParams.x > 3.5f)
+        {
+            uv     = xz * TerrainScale.w;
+            albedo = lerp(albedo, g_terrainAlbedo3.Sample(g_sampler, uv), splat.b);
+            n      = lerp(n, SampleTangentNormal(g_terrainNormal3, uv), splat.b);
+        }
+    }
+    if (TerrainParams.z > 0.0f)
+    {
+        float4 overlay = g_terrainOverlay.Sample(g_sampler, SetUV(TerrainParams.w, i) * TerrainST.zw);
+        float  w       = TerrainParams.z * overlay.a;
+        albedo.rgb    *= 1.0f - w + w * overlay.rgb;
+    }
+    normalTS = normalize(n);
+}
+#endif
 
 PSOut PS_Main(PSIn input)
 {
@@ -307,7 +374,16 @@ PSOut PS_Main(PSIn input)
     }
 
     // Normal map → world-space N; the detail normal is UDN-blended in tangent space.
+#if FOX_TERRAIN
+    float4 albedo;
+    float3 tbn_n;
+    SampleTerrain(input, albedo, tbn_n);
+    // Terrain layer alpha is roughness data (or unused), never opacity.
+    float terrainRoughness = TerrainParams.y > 0.5f ? albedo.a : 1.0f;
+    albedo.a = 1.0f;
+#else
     float3 tbn_n  = SampleTangentNormal(g_normal, SlotUV(SLOT_NORMAL, input));
+#endif
     if (SlotFlags.z > 0.5f)
     {
         float3 detailN = SampleTangentNormal(g_detailNormal, SlotUV(SLOT_DETAIL_NORMAL, input));
@@ -317,7 +393,9 @@ PSOut PS_Main(PSIn input)
     float3 N      = normalize(mul(tbn_n, TBN));
 
     float3 V        = normalize(CameraPos - input.WorldPos);
+#if !FOX_TERRAIN
     float4 albedo   = g_albedo.Sample(g_sampler, SlotUV(SLOT_ALBEDO, input));
+#endif
     // Vertex colour tint: 1 = multiply, 2 = albedo-alpha mask (alpha is mask, not opacity).
     if (TintParams.x > 1.5f)
     {
@@ -359,12 +437,17 @@ PSOut PS_Main(PSIn input)
         return o;
     }
 
-    // See MaterialCB Workflow comment for the t1 texture interpretations.
-    float2 roughnessUV = SlotUV(SLOT_ROUGHNESS, input);
-    float4 mrSample = g_roughness.Sample(g_sampler, roughnessUV);
     float roughness;
     float metallic;
     float3 F0;
+#if FOX_TERRAIN
+    roughness = max(saturate(terrainRoughness * RoughnessScale), 0.04f);
+    metallic  = 0.0f;
+    F0        = float3(0.04f, 0.04f, 0.04f);
+#else
+    // See MaterialCB Workflow comment for the t1 texture interpretations.
+    float2 roughnessUV = SlotUV(SLOT_ROUGHNESS, input);
+    float4 mrSample = g_roughness.Sample(g_sampler, roughnessUV);
     if (Workflow > 1.5f) // spec/gloss: RGB drives F0 directly, no metal term
     {
         float gloss = saturate(mrSample.a * GlossinessFactor);
@@ -381,6 +464,7 @@ PSOut PS_Main(PSIn input)
         metallic  = saturate(metalSample * Metallic);
         F0        = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
     }
+#endif
     // Geometric specular AA: widen roughness where the shaded normal changes
     // faster than a pixel, so sub-pixel highlights stop shimmering (thin bars,
     // high-curvature edges). Kaplanyan-style normal-variance kernel.

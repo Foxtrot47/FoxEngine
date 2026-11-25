@@ -1,0 +1,13 @@
+{
+  "format": "FoxMaterial", "version": 1, "type": "terrain",
+  "layers": [
+    { "albedo": "layers/grass_a_albr.dds", "normal": "layers/grass_na_nm.dds", "worldScale": 0.195 },
+    { "albedo": "layers/grass_b_albr.dds", "normal": "layers/grass_na_nm.dds", "worldScale": 0.25 },
+    { "albedo": "layers/dirt_c_albr.dds", "normal": "layers/dirt_nb_nm.dds", "worldScale": 0.5 },
+    { "albedo": "layers/dirt_d_albr.dds", "worldScale": 1.0 }
+  ],
+  "albedoAlphaIsRoughness": true,
+  "splat":   { "texture": "../ra_splat.dds", "uvSet": 1 },
+  "overlay": { "texture": "../ra_overlay.dds", "uvSet": 2, "uvScale": [2.0, 2.5], "strength": 0.91 },
+  "roughnessScale": 0.8
+}

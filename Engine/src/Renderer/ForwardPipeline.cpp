@@ -89,6 +89,13 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     }
     m_vs = perm->vs;
     m_ps = perm->ps;
+    const ShaderPermutation* terrainPerm = shaders.Get(L"Engine/Shaders/Basic.hlsl", { { "FOX_TERRAIN", "1" } });
+    if (!terrainPerm)
+    {
+        SE_LOG_ERROR("ForwardPipeline: failed to compile Basic.hlsl (FOX_TERRAIN) via ShaderLibrary");
+        return false;
+    }
+    m_terrainPerm = *terrainPerm;
 
     SE_HR(device->CreateInputLayout(k_meshInputLayout, static_cast<UINT>(std::size(k_meshInputLayout)),
         perm->vsBlob->GetBufferPointer(), perm->vsBlob->GetBufferSize(), &m_layout));
@@ -419,6 +426,19 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.tintParams = { static_cast<float>(mat.vertexTint),
                       static_cast<float>(mat.detailAlbedoBlend),
                       mat.detailAlbedoStrength, 0.0f };
+    const TerrainMat& terrain = mat.terrain;
+    if (mat.kind == MaterialKind::Terrain)
+    {
+        mc.terrainScale = { terrain.layerScale[0], terrain.layerScale[1],
+                            terrain.layerScale[2], terrain.layerScale[3] };
+        mc.terrainParams = { static_cast<float>(terrain.layerCount),
+                             terrain.albedoAlphaIsRoughness ? 1.0f : 0.0f,
+                             terrain.overlay ? terrain.overlayStrength : 0.0f,
+                             static_cast<float>(terrain.overlayUVSet) };
+        mc.terrainParams2 = { static_cast<float>(terrain.splatUVSet), 0.0f, 0.0f, 0.0f };
+        mc.terrainST = { terrain.splatUVScale[0], terrain.splatUVScale[1],
+                         terrain.overlayUVScale[0], terrain.overlayUVScale[1] };
+    }
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
@@ -432,6 +452,16 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     // would brighten the albedo by the mid-grey normalisation factor.
     if (mat.detailAlbedo) mat.detailAlbedo->BindPSSrgb(ctx, 14);
     if (mat.detailNormal) mat.detailNormal->BindPS(ctx, 15);
+    if (mat.kind == MaterialKind::Terrain)
+    {
+        for (uint32_t i = 0; i < k_maxTerrainLayers; ++i)
+        {
+            (terrain.layerAlbedo[i] ? terrain.layerAlbedo[i] : m_defaultWhite)->BindPSSrgb(ctx, 16 + i);
+            (terrain.layerNormal[i] ? terrain.layerNormal[i] : m_defaultNormal)->BindPS(ctx, 22 + i);
+        }
+        (terrain.splat ? terrain.splat : m_defaultBlack)->BindPS(ctx, 20);
+        (terrain.overlay ? terrain.overlay : m_defaultWhite)->BindPSSrgb(ctx, 21);
+    }
 }
 
 void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
@@ -442,6 +472,7 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
     m_lastDrawCalls = 0;
 
     AlphaMode prevMode = AlphaMode::Opaque;
+    MaterialKind boundKind = MaterialKind::Standard; // Begin() binds the standard permutation
 
     for (auto& item : m_queue.Items())
     {
@@ -456,6 +487,13 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
             ApplyAlphaModeState(ctx, mat.alphaMode);
             prevMode = mat.alphaMode;
         }
+        if (mat.kind != boundKind)
+        {
+            const bool terrain = mat.kind == MaterialKind::Terrain;
+            ctx->VSSetShader(terrain ? m_terrainPerm.vs.Get() : m_vs.Get(), nullptr, 0);
+            ctx->PSSetShader(terrain ? m_terrainPerm.ps.Get() : m_ps.Get(), nullptr, 0);
+            boundKind = mat.kind;
+        }
 
         BindSubMaterial(ctx, mat);
         draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
@@ -464,6 +502,11 @@ void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 
     if (prevMode != AlphaMode::Opaque)
         ApplyAlphaModeState(ctx, AlphaMode::Opaque);
+    if (boundKind != MaterialKind::Standard)
+    {
+        ctx->VSSetShader(m_vs.Get(), nullptr, 0);
+        ctx->PSSetShader(m_ps.Get(), nullptr, 0);
+    }
 }
 
 void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
@@ -479,7 +522,7 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.emissiveIntensity = emissiveIntensity;
     mc.emissiveColor  = emissiveColor;
-    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail and vertex tint keep their neutral defaults
+    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail, vertex tint and terrain keep their neutral defaults
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }

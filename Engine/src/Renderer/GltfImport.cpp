@@ -14,6 +14,8 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -173,9 +175,10 @@ TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, co
     return slot;
 }
 
-// materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength), detailNormal (+ strength), vertexTint.
+// materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength), detailNormal (+ strength),
+// vertexTint, material (.foxmat sidecar path relative to the glTF file, returned in `foxmat`).
 void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
-                   SubMeshInfo& out)
+                   SubMeshInfo& out, std::string& foxmat)
 {
     cgltf_size size = 0;
     if (cgltf_copy_extras_json(data, &material->extras, nullptr, &size) != cgltf_result_success || size <= 1)
@@ -259,11 +262,154 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
                         material->name ? material->name : "", raw.c_str());
         }
     }
+    const auto sidecar = fox->find("material");
+    if (sidecar != fox->end() && sidecar->is_string())
+        foxmat = sidecar->get<std::string>();
+}
+
+// .foxmat terrain sidecar. `relative` is the sidecar path relative to the glTF directory;
+// texture paths in it are relative to the sidecar and come back relative to the glTF
+// directory (the mesh directory). Returns false with `error` on any validation failure.
+bool ReadFoxMat(const fs::path& directory, const std::string& relative, TerrainMaterial& out,
+                std::string& error)
+{
+    std::ifstream file(directory / relative, std::ios::binary);
+    if (!file)
+    {
+        error = "cannot open file";
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const nlohmann::json root = nlohmann::json::parse(text, nullptr, false, false);
+    if (root.is_discarded() || !root.is_object())
+    {
+        error = "invalid JSON";
+        return false;
+    }
+    const auto fail = [&error](std::string message) {
+        error = std::move(message);
+        return false;
+    };
+    const auto format = root.find("format");
+    if (format == root.end() || *format != "FoxMaterial")
+        return fail("format must be \"FoxMaterial\"");
+    const auto version = root.find("version");
+    if (version == root.end() || !version->is_number_integer() || version->get<int>() != 1)
+        return fail("version must be 1");
+    const auto type = root.find("type");
+    if (type == root.end() || *type != "terrain")
+        return fail("type must be \"terrain\"");
+
+    const fs::path base = fs::path(relative).parent_path();
+    // Texture path string -> mesh-directory relative path; false when not a non-empty string.
+    const auto texturePath = [&base](const nlohmann::json& value, std::string& outPath) {
+        if (!value.is_string() || value.get_ref<const std::string&>().empty())
+            return false;
+        outPath = (base / value.get<std::string>()).lexically_normal().generic_string();
+        return true;
+    };
+    const auto uvSet = [](const nlohmann::json& object, uint8_t& outSet) {
+        const auto set = object.find("uvSet");
+        if (set == object.end())
+            return true;
+        if (!set->is_number_integer() || set->get<int>() < 0 || set->get<int>() > 2)
+            return false;
+        outSet = static_cast<uint8_t>(set->get<int>());
+        return true;
+    };
+    // Optional "uvScale": [sx, sy], both > 0 (default [1, 1]).
+    const auto uvScale = [](const nlohmann::json& object, float (&outScale)[2]) {
+        const auto scale = object.find("uvScale");
+        if (scale == object.end())
+            return true;
+        if (!scale->is_array() || scale->size() != 2 || !(*scale)[0].is_number() || !(*scale)[1].is_number() ||
+            !((*scale)[0].get<float>() > 0.0f) || !((*scale)[1].get<float>() > 0.0f))
+            return false;
+        outScale[0] = (*scale)[0].get<float>();
+        outScale[1] = (*scale)[1].get<float>();
+        return true;
+    };
+
+    const auto layers = root.find("layers");
+    if (layers == root.end() || !layers->is_array() || layers->empty() || layers->size() > k_maxTerrainLayers)
+        return fail("layers must be an array of 1 to 4 layers");
+    TerrainMaterial terrain;
+    terrain.layerCount = static_cast<uint8_t>(layers->size());
+    for (size_t i = 0; i < layers->size(); ++i)
+    {
+        const nlohmann::json& layer = (*layers)[i];
+        const std::string at = "layers[" + std::to_string(i) + "]";
+        if (!layer.is_object())
+            return fail(at + " must be an object");
+        const auto albedo = layer.find("albedo");
+        if (albedo == layer.end() || !texturePath(*albedo, terrain.layerAlbedo[i].path))
+            return fail(at + ".albedo must be a texture path");
+        const auto normal = layer.find("normal");
+        if (normal != layer.end() && !texturePath(*normal, terrain.layerNormal[i].path))
+            return fail(at + ".normal must be a texture path");
+        const auto scale = layer.find("worldScale");
+        if (scale == layer.end() || !scale->is_number() || !(scale->get<float>() > 0.0f))
+            return fail(at + ".worldScale must be a number greater than 0");
+        terrain.layerScale[i] = scale->get<float>();
+    }
+
+    const auto alphaIsRoughness = root.find("albedoAlphaIsRoughness");
+    if (alphaIsRoughness != root.end())
+    {
+        if (!alphaIsRoughness->is_boolean())
+            return fail("albedoAlphaIsRoughness must be a boolean");
+        terrain.albedoAlphaIsRoughness = alphaIsRoughness->get<bool>();
+    }
+
+    const auto splat = root.find("splat");
+    if (splat != root.end())
+    {
+        const auto texture = splat->is_object() ? splat->find("texture") : splat->end();
+        if (!splat->is_object() || texture == splat->end() || !texturePath(*texture, terrain.splat.path))
+            return fail("splat.texture must be a texture path");
+        if (!uvSet(*splat, terrain.splat.uvSet))
+            return fail("splat.uvSet must be 0, 1 or 2");
+        if (!uvScale(*splat, terrain.splat.scale))
+            return fail("splat.uvScale must be two numbers greater than 0");
+    }
+    else if (terrain.layerCount > 1)
+        return fail("splat is required with more than one layer");
+
+    const auto overlay = root.find("overlay");
+    if (overlay != root.end())
+    {
+        const auto texture = overlay->is_object() ? overlay->find("texture") : overlay->end();
+        if (!overlay->is_object() || texture == overlay->end() || !texturePath(*texture, terrain.overlay.path))
+            return fail("overlay.texture must be a texture path");
+        if (!uvSet(*overlay, terrain.overlay.uvSet))
+            return fail("overlay.uvSet must be 0, 1 or 2");
+        if (!uvScale(*overlay, terrain.overlay.scale))
+            return fail("overlay.uvScale must be two numbers greater than 0");
+        terrain.overlayStrength = 1.0f;
+        const auto strength = overlay->find("strength");
+        if (strength != overlay->end())
+        {
+            if (!strength->is_number() || strength->get<float>() < 0.0f)
+                return fail("overlay.strength must be a number of at least 0");
+            terrain.overlayStrength = strength->get<float>();
+        }
+    }
+
+    const auto roughnessScale = root.find("roughnessScale");
+    if (roughnessScale != root.end())
+    {
+        if (!roughnessScale->is_number() || roughnessScale->get<float>() < 0.0f)
+            return fail("roughnessScale must be a number of at least 0");
+        terrain.roughnessScale = roughnessScale->get<float>();
+    }
+    out = std::move(terrain);
+    return true;
 }
 
 // Same semantics as the Assimp path's ExtractSubMeshMaterial / ResolveRoughnessWorkflow /
-// DetectAlphaMode for glTF sources.
-SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material, const char* path)
+// DetectAlphaMode for glTF sources. A readable .foxmat sidecar is added to `sourceFiles`.
+SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material, const char* path,
+                         std::vector<std::string>& sourceFiles)
 {
     SubMeshInfo out;
     if (!material)
@@ -299,7 +445,21 @@ SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material,
     out.occlusion = ReadSlot(data, material->occlusion_texture, material, path);
     if (!out.occlusion.path.empty())
         out.occlusionStrength = material->occlusion_texture.scale;
-    ReadFoxExtras(data, material, path, out);
+    std::string foxmat;
+    ReadFoxExtras(data, material, path, out, foxmat);
+    if (!foxmat.empty())
+    {
+        const fs::path directory = fs::path(path).parent_path();
+        const fs::path sidecar = (directory / foxmat).lexically_normal();
+        std::error_code ec;
+        if (fs::is_regular_file(sidecar, ec))
+            sourceFiles.push_back(sidecar.generic_string());
+        std::string error;
+        if (ReadFoxMat(directory, foxmat, out.terrain, error))
+            out.kind = MaterialKind::Terrain;
+        else
+            SE_LOG_ERROR("foxmat '%s': %s", sidecar.generic_string().c_str(), error.c_str());
+    }
 
     if (material->alpha_mode == cgltf_alpha_mode_mask)
         out.alphaMode = AlphaMode::Cutout;
@@ -761,6 +921,9 @@ bool ImportGltf(const char* path, MeshSourceData& output,
         if (uri && std::strncmp(uri, "data:", 5) != 0)
             output.sourceFiles.push_back((directory / DecodeUri(uri)).lexically_normal().generic_string());
     }
+    std::vector<SubMeshInfo> materials(data->materials_count);
+    for (cgltf_size i = 0; i < data->materials_count; ++i)
+        materials[i] = ReadMaterial(data.get(), &data->materials[i], path, output.sourceFiles);
     std::sort(output.sourceFiles.begin(), output.sourceFiles.end());
     output.sourceFiles.erase(std::unique(output.sourceFiles.begin(), output.sourceFiles.end()),
                              output.sourceFiles.end());
@@ -773,9 +936,6 @@ bool ImportGltf(const char* path, MeshSourceData& output,
         for (cgltf_size i = 0; i < scene->nodes_count; ++i)
             CollectInstances(data.get(), scene->nodes[i], instances);
 
-    std::vector<SubMeshInfo> materials(data->materials_count);
-    for (cgltf_size i = 0; i < data->materials_count; ++i)
-        materials[i] = ReadMaterial(data.get(), &data->materials[i], path);
     const SubMeshInfo defaultMaterial;
 
     // Mesh-major order (all instances of a primitive together), as the Assimp path emits.

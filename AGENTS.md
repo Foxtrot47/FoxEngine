@@ -72,7 +72,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | b0 | TransformCB | Model, View, Projection (row_major) |
 | b1 | LightCB | LightDir, IBLIntensity, LightColor, CameraPos, LightViewProj |
 | b2 | PointLightCB | PointLight[8] (pos, radius, color), NumPointLights |
-| b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags (`MaterialParamsCBData` mirrors it, size asserted) |
+| b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags, tint/detail params, terrain layer scales and params (`TerrainScale`, `TerrainParams`, `TerrainParams2`, `TerrainST`) (`MaterialParamsCBData` mirrors it, size asserted) |
 | b4 | ForwardShadowCB | NumPointShadowCasters, PointShadowBias |
 
 ### Texture Slots (Basic.hlsl)
@@ -93,6 +93,10 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t13 | Occlusion (glTF `occlusionTexture`; multiplies IBL ambient only) |
 | t14 | Detail albedo (`extras.fox.detailAlbedo`, ×4.59 around sRGB mid-grey) |
 | t15 | Detail normal (`extras.fox.detailNormal`, UDN blend) |
+| t16–t19 | Terrain layer albedo A–D (`FOX_TERRAIN` permutation; alpha = roughness when `albedoAlphaIsRoughness`) |
+| t20 | Terrain splat (layers B, C, D lerp over A by R, G, B) |
+| t21 | Terrain overlay (colour multiply, weighted by strength × alpha) |
+| t22–t25 | Terrain layer normal A–D |
 
 ## Scripting
 
@@ -135,9 +139,9 @@ A vehicle definition (`Assets/Vehicles/<Car>/vehicle.json`) holds the physics (c
 
 `Assets/Tracks/` is gitignored (extracted LMU content is proprietary and about 1 GB): a fresh clone has `roadatlanta.json` listed in `project.json` but no track meshes, so `FoxProject check`, `publish` and the level tests that load every listed scene fail until the importer has been run locally.
 
-Terrain grass (LMU `L2IBLTERRAIN`) blends four world-tiled layers per pixel by a circuit-wide splat map (UV_B, an affine map of world X/Z) and multiplies in a colour map (UV_C, a ribbon along the track). The importer bakes that blend (`TerrainBaker`: the order is inferred, not decoded from the shader) into one albedo per material and file, at 0.1 m/texel on drivable surfaces (capped at 2048², about 12 cm on a full 250 m cell) and 0.4 m off track, so the patches and colours match the game but close-up grass is softer. Pattern/mix maps, vertex colour and terrain normals are not reproduced.
+Terrain grass (LMU `L2IBLTERRAIN`) blends four world-tiled layers per pixel by a circuit-wide splat map (UV_B, an affine map of world X/Z) and multiplies in a colour map (UV_C, a ribbon along the track). The importer writes each such material as a `<material>.foxmat` terrain sidecar (layers A–D with `worldScale`, splat on UV set 1, overlay with its UV set, `uvScale` and strength) referenced from `extras.fox.material`, and the engine blends it per pixel in the `FOX_TERRAIN` permutation of `Basic.hlsl` (B ← splat.r, C ← splat.g, D ← splat.b; the order is inferred, not decoded from the shader). Layer normals (`normalA` → layers A–B, `normalB` → C–D) are inferred too; pattern/mix maps and vertex colour are not reproduced.
 
-Parked vehicles, trucks, trailers, fuel rigs, pit stands and awnings are painted per vertex from a palette texture: each vertex's UV_B picks a swatch, and the albedo's alpha masks where it multiplies in (`PaletteTint`: `L2IBLSTANDARDBLEND` `albedoAltMap` with `BLENDMASK=AlbedoA_A`, or `L2IBLCLEARCOAT` `detailMap` with `DETAILMASKING=AlbedoAlpha`). FoxEngine meshes have one UV set and no vertex colours, so the importer splits those materials by swatch and bakes one tinted albedo per swatch, capped at 1024² (Road Atlanta: 110 variants over 12 materials).
+Parked vehicles, trucks, trailers, fuel rigs, pit stands and awnings are painted per vertex from a palette texture: each vertex's UV_B picks a swatch, and the albedo's alpha masks where it multiplies in (`PaletteTint`: `L2IBLSTANDARDBLEND` `albedoAltMap` with `BLENDMASK=AlbedoA_A`, or `L2IBLCLEARCOAT` `detailMap` with `DETAILMASKING=AlbedoAlpha`). The importer samples the swatch per vertex into `COLOR_0` and marks the material `extras.fox.vertexTint = "albedoAlphaMask"`; the engine multiplies it in where the albedo alpha masks.
 
 A level `meshRenderer` with `"collision": true` builds a static mesh collider from its opaque submeshes; `"visible": false` keeps only that collider (invisible walls). The editor's Show Colliders draws every mesh collider as wireframe (level meshes orange, at the pose they were added at load; actor meshes cyan) and makes collider-only meshes pickable.
 
@@ -234,7 +238,8 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 - Levels and source assets are loaded directly during the current runtime/rendering phase.
 - `LevelLoadOperation` prepares dependencies asynchronously, uploads GPU resources on the main thread, and reuses the in-memory `AssetManager` cache.
 - glTF (`.gltf`/`.glb`) is read natively with cgltf (`Renderer/GltfImport.cpp`; MikkTSpace tangents when the file has none; Draco/meshopt compression is rejected); Assimp imports FBX, OBJ and everything else. `Mesh::Import` takes an optional `MeshImporter` to force either path; both produce the same left-handed output (Z mirrored, node transforms baked, one submesh per primitive instance in mesh order). `MeshCache` cooks imported meshes to `Cache/Meshes/*.fxmesh` (zstd, 256 KiB blocks) on first load or via `FoxCook` (`Tools/FoxCook`).
-- Cooked entries invalidate when the source or any side file the importer read (`.bin`, `.mtl`, ...) changes, when the importer (cgltf or Assimp) or its version changes, or when `k_meshCacheVersion` is bumped; a missing source loads its cooked entry.
+- Cooked entries invalidate when the source or any side file the importer read (`.bin`, `.mtl`, `.foxmat`, ...) changes, when the importer (cgltf or Assimp) or its version changes, or when `k_meshCacheVersion` is bumped; a missing source loads its cooked entry.
+- Layered terrain: a glTF material whose `extras.fox.material` names a `.foxmat` sidecar (JSON, path relative to the glTF; `format` `"FoxMaterial"`, `version` 1, `type` `"terrain"`, 1–4 `layers` of `albedo`/optional `normal`/`worldScale`, `albedoAlphaIsRoughness`, `splat {texture, uvSet, uvScale}`, optional `overlay {texture, uvSet, uvScale, strength}`, `roughnessScale`; `uvScale` is an optional `[sx, sy]`; texture paths relative to the sidecar) becomes `MaterialKind::Terrain`. Layers tile world X/Z × `worldScale` and are drawn by `Basic.hlsl` compiled with `FOX_TERRAIN=1`; an invalid sidecar logs `foxmat '<path>': <reason>` and keeps the glTF's own material.
 - Textures still use offline BC DDS from `Tools/ConvertTextures.ps1`.
 
 ## Current Milestone Roadmap

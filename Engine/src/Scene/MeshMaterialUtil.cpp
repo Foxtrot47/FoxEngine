@@ -121,6 +121,33 @@ std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
         material.alphaMode = info.alphaMode;
         material.alphaCutoff = info.alphaCutoff;
         material.vertexTint = info.vertexTint;
+        if (info.kind == MaterialKind::Terrain)
+        {
+            // Missing textures stay null: the pipeline binds white albedo/overlay,
+            // flat normals and a black splat (layer A only).
+            const TerrainMaterial& source = info.terrain;
+            ForwardPipeline::TerrainMat& terrain = material.terrain;
+            for (uint32_t layer = 0; layer < k_maxTerrainLayers; ++layer)
+            {
+                terrain.layerAlbedo[layer] = resolve(source.layerAlbedo[layer]);
+                terrain.layerNormal[layer] = resolve(source.layerNormal[layer]);
+                terrain.layerScale[layer] = source.layerScale[layer];
+            }
+            terrain.splat = resolve(source.splat);
+            terrain.overlay = resolve(source.overlay);
+            terrain.layerCount = source.layerCount;
+            terrain.albedoAlphaIsRoughness = source.albedoAlphaIsRoughness;
+            terrain.splatUVSet = source.splat.uvSet;
+            terrain.overlayUVSet = source.overlay.uvSet;
+            for (int axis = 0; axis < 2; ++axis)
+            {
+                terrain.splatUVScale[axis] = source.splat.scale[axis];
+                terrain.overlayUVScale[axis] = source.overlay.scale[axis];
+            }
+            terrain.overlayStrength = source.overlayStrength;
+            material.roughnessScale = source.roughnessScale;
+            material.kind = MaterialKind::Terrain;
+        }
         materials.push_back(std::move(material));
     }
     return materials;

@@ -36,6 +36,23 @@ public:
         float   offset[2] = { 0.0f, 0.0f };
     };
 
+    // Layered terrain inputs (MaterialKind::Terrain; Basic.hlsl FOX_TERRAIN permutation).
+    struct TerrainMat
+    {
+        AssetHandle<Texture2D> layerAlbedo[k_maxTerrainLayers]; // t16-t19 (sRGB); nullptr → default white
+        AssetHandle<Texture2D> layerNormal[k_maxTerrainLayers]; // t22-t25; nullptr → flat
+        AssetHandle<Texture2D> splat;    // t20; nullptr → default black (layer A only)
+        AssetHandle<Texture2D> overlay;  // t21 (sRGB); nullptr → no overlay
+        float   layerScale[k_maxTerrainLayers] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        uint8_t layerCount = 1;
+        bool    albedoAlphaIsRoughness = false;
+        uint8_t splatUVSet = 0;
+        uint8_t overlayUVSet = 0;
+        float   splatUVScale[2] = { 1.0f, 1.0f };
+        float   overlayUVScale[2] = { 1.0f, 1.0f };
+        float   overlayStrength = 0.0f;
+    };
+
     struct SubMat
     {
         AssetHandle<Texture2D> albedo;
@@ -61,6 +78,8 @@ public:
         DirectX::XMFLOAT3 tint = { 1.0f, 1.0f, 1.0f }; // multiplies the albedo (linear RGB)
         DirectX::XMFLOAT3 emissiveColor = { 1.0f, 1.0f, 1.0f }; // multiplies the emissive map (linear HDR)
         VertexTint vertexTint = VertexTint::None;
+        MaterialKind kind = MaterialKind::Standard;
+        TerrainMat terrain; // kind == Terrain: replaces albedo/roughness/normal; roughnessScale applies
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -188,8 +207,12 @@ private:
         DirectX::XMFLOAT4 slotUVB;   // UV set of slots 4-6, w = detail normal strength
         DirectX::XMFLOAT4 slotFlags; // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel
         DirectX::XMFLOAT4 tintParams = { 0.0f, 0.0f, 1.0f, 0.0f }; // x = VertexTint (0..2), y = DetailBlend (0..2), z = detailAlbedoStrength
+        DirectX::XMFLOAT4 terrainScale = { 1.0f, 1.0f, 1.0f, 1.0f }; // world X/Z scale of layers A-D
+        DirectX::XMFLOAT4 terrainParams;  // x layerCount, y albedoAlphaIsRoughness, z overlayStrength, w overlay uvSet
+        DirectX::XMFLOAT4 terrainParams2; // x splat uvSet
+        DirectX::XMFLOAT4 terrainST = { 1.0f, 1.0f, 1.0f, 1.0f }; // xy splat uv scale, zw overlay uv scale
     };
-    static_assert(sizeof(MaterialParamsCBData) == 240, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
+    static_assert(sizeof(MaterialParamsCBData) == 304, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
     struct PlanarReflectionCBData
     {
         DirectX::XMFLOAT4X4 reflectionViewProj;
@@ -208,6 +231,7 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
     Microsoft::WRL::ComPtr<ID3D11PixelShader>  m_ps;
+    ShaderPermutation                          m_terrainPerm; // Basic.hlsl with FOX_TERRAIN=1
     Microsoft::WRL::ComPtr<ID3D11InputLayout>  m_layout;
     Microsoft::WRL::ComPtr<ID3D11Buffer>       m_lineBuffer;
 

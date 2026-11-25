@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 7;
+constexpr uint32_t k_meshCacheVersion = 8;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -69,6 +69,8 @@ struct SlotRecord
 
 // Slot order: albedo, normal, roughness, emissive, occlusion, detail albedo, detail normal.
 constexpr size_t k_slotCount = 7;
+// Terrain slot order: layer albedo A-D, layer normal A-D, splat, overlay.
+constexpr size_t k_terrainSlotCount = 2 * k_maxTerrainLayers + 2;
 
 struct SubMeshRecord
 {
@@ -77,14 +79,17 @@ struct SubMeshRecord
     float alphaCutoff, roughnessFactor, glossinessFactor;
     float occlusionStrength, detailAlbedoStrength, detailNormalStrength;
     uint8_t alphaMode, workflow, occlusionChannel, vertexTint;
-    uint8_t detailAlbedoBlend, pad[3];
+    uint8_t detailAlbedoBlend, kind, terrainLayerCount, terrainAlbedoAlphaIsRoughness;
+    float terrainLayerScale[k_maxTerrainLayers];
+    float terrainOverlayStrength, terrainRoughnessScale;
+    SlotRecord terrainSlots[k_terrainSlotCount];
 };
 
 static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
 static_assert(sizeof(FileHeader) == 96, ".fxmesh FileHeader size");
 static_assert(sizeof(DependencyRecord) == 24, ".fxmesh DependencyRecord size");
 static_assert(sizeof(SlotRecord) == 28, ".fxmesh SlotRecord size");
-static_assert(sizeof(SubMeshRecord) == 244, ".fxmesh SubMeshRecord size");
+static_assert(sizeof(SubMeshRecord) == 548, ".fxmesh SubMeshRecord size");
 
 // SubMeshInfo slots in SubMeshRecord::slots order (const or mutable pointers).
 template <typename Info>
@@ -92,6 +97,35 @@ auto Slots(Info& info)
 {
     return std::array { &info.albedo, &info.normal, &info.roughness, &info.emissive,
                         &info.occlusion, &info.detailAlbedo, &info.detailNormal };
+}
+
+// TerrainMaterial slots in SubMeshRecord::terrainSlots order.
+template <typename Terrain>
+auto TerrainSlots(Terrain& terrain)
+{
+    return std::array { &terrain.layerAlbedo[0], &terrain.layerAlbedo[1], &terrain.layerAlbedo[2],
+                        &terrain.layerAlbedo[3], &terrain.layerNormal[0], &terrain.layerNormal[1],
+                        &terrain.layerNormal[2], &terrain.layerNormal[3], &terrain.splat, &terrain.overlay };
+}
+
+void WriteSlot(SlotRecord& record, const TextureSlot& slot, StringRef path)
+{
+    record.path = path;
+    record.scale[0] = slot.scale[0];
+    record.scale[1] = slot.scale[1];
+    record.offset[0] = slot.offset[0];
+    record.offset[1] = slot.offset[1];
+    record.uvSet = slot.uvSet;
+}
+
+void ReadSlot(const SlotRecord& record, TextureSlot& slot, std::string path)
+{
+    slot.path = std::move(path);
+    slot.scale[0] = record.scale[0];
+    slot.scale[1] = record.scale[1];
+    slot.offset[0] = record.offset[0];
+    slot.offset[1] = record.offset[1];
+    slot.uvSet = record.uvSet;
 }
 
 enum class ReadResult { Hit, Miss, Cancelled };
@@ -335,15 +369,7 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.indexCount = sub.indexCount;
         const auto slots = Slots(sub.material);
         for (size_t s = 0; s < k_slotCount; ++s)
-        {
-            SlotRecord& slot = record.slots[s];
-            slot.path = addString(slots[s]->path);
-            slot.scale[0] = slots[s]->scale[0];
-            slot.scale[1] = slots[s]->scale[1];
-            slot.offset[0] = slots[s]->offset[0];
-            slot.offset[1] = slots[s]->offset[1];
-            slot.uvSet = slots[s]->uvSet;
-        }
+            WriteSlot(record.slots[s], *slots[s], addString(slots[s]->path));
         record.alphaCutoff = sub.material.alphaCutoff;
         record.roughnessFactor = sub.material.roughnessFactor;
         record.glossinessFactor = sub.material.glossinessFactor;
@@ -355,6 +381,17 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.occlusionChannel = sub.material.occlusionChannel;
         record.vertexTint = static_cast<uint8_t>(sub.material.vertexTint);
         record.detailAlbedoBlend = static_cast<uint8_t>(sub.material.detailAlbedoBlend);
+        const TerrainMaterial& terrain = sub.material.terrain;
+        record.kind = static_cast<uint8_t>(sub.material.kind);
+        record.terrainLayerCount = terrain.layerCount;
+        record.terrainAlbedoAlphaIsRoughness = terrain.albedoAlphaIsRoughness ? 1 : 0;
+        for (uint32_t i = 0; i < k_maxTerrainLayers; ++i)
+            record.terrainLayerScale[i] = terrain.layerScale[i];
+        record.terrainOverlayStrength = terrain.overlayStrength;
+        record.terrainRoughnessScale = terrain.roughnessScale;
+        const auto terrainSlots = TerrainSlots(terrain);
+        for (size_t s = 0; s < k_terrainSlotCount; ++s)
+            WriteSlot(record.terrainSlots[s], *terrainSlots[s], addString(terrainSlots[s]->path));
         subMeshes.push_back(record);
     }
     header.stringBytes = static_cast<uint32_t>(strings.size());
@@ -521,10 +558,16 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
             if (!validRef(slot.path)) return miss("corrupt string table");
             if (slot.uvSet > 2) return miss("corrupt submesh table");
         }
+        for (const SlotRecord& slot : sub.terrainSlots)
+        {
+            if (!validRef(slot.path)) return miss("corrupt string table");
+            if (slot.uvSet > 2) return miss("corrupt submesh table");
+        }
         if (uint64_t(sub.firstVertex) + sub.vertexCount > header.vertexCount ||
             uint64_t(sub.firstIndex) + sub.indexCount > header.indexCount ||
             sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1 ||
-            sub.vertexTint > 2 || sub.detailAlbedoBlend > 2)
+            sub.vertexTint > 2 || sub.detailAlbedoBlend > 2 || sub.kind > 1 ||
+            sub.terrainLayerCount > k_maxTerrainLayers || sub.terrainAlbedoAlphaIsRoughness > 1)
             return miss("corrupt submesh table");
     }
     if (text(header.sourceKey) != key) return miss("key collision");
@@ -576,15 +619,7 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         sub.indexCount = record.indexCount;
         const auto slots = Slots(sub.material);
         for (size_t s = 0; s < k_slotCount; ++s)
-        {
-            const SlotRecord& slot = record.slots[s];
-            slots[s]->path = text(slot.path);
-            slots[s]->scale[0] = slot.scale[0];
-            slots[s]->scale[1] = slot.scale[1];
-            slots[s]->offset[0] = slot.offset[0];
-            slots[s]->offset[1] = slot.offset[1];
-            slots[s]->uvSet = slot.uvSet;
-        }
+            ReadSlot(record.slots[s], *slots[s], text(record.slots[s].path));
         sub.material.occlusionStrength = record.occlusionStrength;
         sub.material.occlusionChannel = record.occlusionChannel;
         sub.material.detailAlbedoBlend = static_cast<DetailBlend>(record.detailAlbedoBlend);
@@ -596,6 +631,17 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         sub.material.roughnessFactor = record.roughnessFactor;
         sub.material.glossinessFactor = record.glossinessFactor;
         sub.material.vertexTint = static_cast<VertexTint>(record.vertexTint);
+        sub.material.kind = static_cast<MaterialKind>(record.kind);
+        TerrainMaterial& terrain = sub.material.terrain;
+        terrain.layerCount = record.terrainLayerCount;
+        terrain.albedoAlphaIsRoughness = record.terrainAlbedoAlphaIsRoughness != 0;
+        for (uint32_t i = 0; i < k_maxTerrainLayers; ++i)
+            terrain.layerScale[i] = record.terrainLayerScale[i];
+        terrain.overlayStrength = record.terrainOverlayStrength;
+        terrain.roughnessScale = record.terrainRoughnessScale;
+        const auto terrainSlots = TerrainSlots(terrain);
+        for (size_t s = 0; s < k_terrainSlotCount; ++s)
+            ReadSlot(record.terrainSlots[s], *terrainSlots[s], text(record.terrainSlots[s].path));
         out->subMeshes.push_back(std::move(sub));
     }
     out->sourceFiles.reserve(dependencies.size());
