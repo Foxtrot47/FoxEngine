@@ -164,8 +164,8 @@ public:
     }
 
     // A vehicle definition ({"layout": ..., "visual": {...}}) references its
-    // layout and visual meshes relative to the definition; ship all of them.
-    // Returns false when the file is not a vehicle definition.
+    // layout, tires, aero and visual meshes relative to the definition; ship
+    // all of them. Returns false when the file is not a vehicle definition.
     bool AddVehicleDefinition(const std::string& path)
     {
         std::string text;
@@ -190,7 +190,8 @@ public:
         };
         try
         {
-            m_set.AddProjectFile(resolve(root.at("layout").get<std::string>()), path, "/layout", true);
+            for (const char* file : { "layout", "tires", "aero" })
+                m_set.AddProjectFile(resolve(root.at(file).get<std::string>()), path, std::string("/") + file, true);
             const nlohmann::json& visual = root.at("visual");
             AddMesh(resolve(visual.at("body").get<std::string>()), { path, "/visual/body", true });
             static const char* k_wheelKeys[4] = { "fl", "fr", "rl", "rr" };

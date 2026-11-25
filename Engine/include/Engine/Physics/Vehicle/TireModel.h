@@ -1,15 +1,49 @@
 #pragma once
+#include <vector>
 
 namespace SE {
+
+// rFactor-style slip curve: normalised force against slip sampled at
+// x = i * step (Catmull-Rom). Slip is rescaled so the peak lands on the
+// load-dependent peak slip.
+struct TireCurve
+{
+    float step    = 0.01f;
+    float dropoff = 0.0f; // post-peak slip stretch exponent (DropoffFunction)
+    std::vector<float> data;
+};
+
+struct TireAxisParams
+{
+    float mu = 1.0f;                // peak friction (DryLatLong)
+    float loadSens[3] = {};         // a, m, Fmax (LoadSensLat/Long)
+    float peakSlip[3] = {};         // p0, p1, Lref (LatPeak/LongPeak)
+};
+
+// One axle's tire, from tires.json (generated from the car's .tbc compound).
+struct TireParams
+{
+    TireAxisParams lateral, longitudinal;
+    TireCurve lateralCurve, tractionCurve, brakingCurve;
+    float speedHalfGrip        = 0.0f; // m/s at which grip halves (0 disables)
+    float speedLoadEquivalency = 0.0f; // N of peak-slip load per m/s
+    float camberPeakDeg   = 1.0f;
+    float camberLatGain   = 0.0f;
+    float camberLongLoss  = 0.0f;
+    float rollingResistance = 0.0f; // N*m per m of tire deflection
+    float verticalStiffness = 1.0f; // N/m at the setup pressure
+};
 
 // Tire state in the contact frame. The slip angle is the relaxed (transient)
 // value from the wheel's relaxation-length filter; the slip ratio is
 // instantaneous (the vehicle solves it implicitly with wheel spin).
 struct TireInput
 {
-    float slipRatio      = 0.0f; // kappa: (omega*r - Vx) / |Vx|, > 0 when driving
-    float slipAngle      = 0.0f; // alpha, radians; > 0 when the contact slides to +lateral
-    float normalLoad     = 0.0f; // Fz, N (>= 0)
+    float slipRatio  = 0.0f; // kappa: (omega*r - Vx) / |Vx|, > 0 when driving
+    float slipAngle  = 0.0f; // alpha, radians; > 0 when the contact slides to +lateral
+    float normalLoad = 0.0f; // Fz, N (>= 0)
+    float speed      = 0.0f; // contact patch speed, m/s
+    float camber     = 0.0f; // inclination to the road, rad; > 0 = top leaning toward +lateral
 };
 
 struct TireForces
@@ -18,51 +52,45 @@ struct TireForces
     float lateral      = 0.0f; // Fy along +lateral (opposes positive slip angle), N
 };
 
-// Steady-state force model of the contact patch. Wheel spin, slip
-// relaxation, rolling resistance and suspension live in the vehicle; a model
-// only maps slip + load to forces, so richer formulations (full Magic Formula
-// with camber/pressure, thermal grip) can replace this interface's
-// implementation without touching the rest of the simulation.
+// Steady-state slip-curve tire (rFactor 2 .tbc semantics); combined slip by
+// the similarity method. Temperature, pressure, wear and aligning torque are
+// not modelled.
 class TireModel
 {
 public:
-    virtual ~TireModel() = default;
-    virtual TireForces Evaluate(const TireInput& input) const = 0;
+    explicit TireModel(const TireParams& params);
+
+    TireForces Evaluate(const TireInput& input) const;
     // Slip ratio of peak longitudinal force; TC/ABS intervene around it.
-    virtual float PeakSlipRatio() const = 0;
-};
-
-// Pacejka "Magic Formula" per axis:
-//   F = D sin(C atan(B s - E (B s - atan(B s)))),  D = mu(Fz) * Fz
-// with linear load sensitivity of the peak friction and combined slip by the
-// similarity method (slip vector normalized by each axis' peak slip), which
-// yields a friction-ellipse envelope.
-struct MagicFormulaParams
-{
-    struct Axis
-    {
-        float B = 12.0f;  // stiffness factor
-        float C = 1.6f;   // shape factor
-        float E = 0.0f;   // curvature factor
-        float mu = 1.3f;  // peak friction at nominal load
-    };
-    Axis  longitudinal;
-    Axis  lateral;
-    float nominalLoad     = 4000.0f; // Fz0, N
-    float loadSensitivity = -0.1f;   // d(mu)/mu per unit (Fz - Fz0) / Fz0
-};
-
-class MagicFormulaTire final : public TireModel
-{
-public:
-    explicit MagicFormulaTire(const MagicFormulaParams& params);
-    TireForces Evaluate(const TireInput& input) const override;
-    float PeakSlipRatio() const override { return m_peakSlipRatio; }
+    float PeakSlipRatio(float load, float speed) const;
+    // dFy/dalpha at zero slip, N/rad (low-speed lateral damping).
+    float CorneringStiffness(float load, float speed) const;
+    // Pure-lateral peak force without camber, N (damper clamp).
+    float PeakLateralForce(float load, float speed) const;
+    // Rolling resistance torque from the tire's deflection under load, N*m.
+    float RollingResistanceTorque(float load) const;
 
 private:
-    MagicFormulaParams m_params;
-    float m_peakSlipRatio = 0.1f;
-    float m_peakSlipAngle = 0.1f;
+    struct Curve
+    {
+        std::vector<float> data;
+        float step    = 0.01f;
+        float dropoff = 0.0f;
+        float peakX   = 0.0f;
+    };
+
+    static Curve Prepare(const TireCurve& curve);
+    static float Spline(const Curve& curve, float x);
+    static float Lookup(const Curve& curve, float s, float sp);
+
+    float SpeedGrip(float speed) const;
+    float PeakSlip(const TireAxisParams& axis, float load, float speed) const;
+
+    TireParams m_params;
+    Curve m_lateral, m_traction, m_braking;
 };
+
+// Peak friction multiplier g(F) of a TBC (a, m, Fmax) triple at load F (N).
+float TireLoadSensitivity(const float (&loadSens)[3], float load);
 
 } // namespace SE

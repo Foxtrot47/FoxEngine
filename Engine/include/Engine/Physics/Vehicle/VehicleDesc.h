@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 #include <DirectXMath.h>
+#include "Engine/Physics/Vehicle/AeroModel.h"
 #include "Engine/Physics/Vehicle/TireModel.h"
 
 namespace SE {
@@ -21,14 +22,6 @@ struct VehicleDesc
         DirectX::XMFLOAT3 centerOfMass = {};         // vehicle space
         DirectX::XMFLOAT3 inertia = { 2000.0f, 2100.0f, 550.0f }; // pitch (X), yaw (Y), roll (Z), kg*m^2
         std::vector<DirectX::XMFLOAT3> hullPoints;   // collision hull, vehicle space
-    };
-
-    struct Aero
-    {
-        float airDensity = 1.225f; // kg/m^3
-        float dragArea   = 0.75f;  // Cd * A, m^2
-        float liftAreaFront = 0.9f; // downforce Cl * A acting at the front axle, m^2
-        float liftAreaRear  = 1.2f; // ... at the rear axle
     };
 
     struct Wheel
@@ -51,10 +44,10 @@ struct VehicleDesc
 
     struct Axle
     {
-        Suspension         suspension;
-        MagicFormulaParams tire;
-        float relaxationLengthLat  = 0.45f; // m
-        float rollingResistance    = 0.012f; // Fx / Fz
+        Suspension suspension;
+        TireParams tire;                  // tires.json "front"/"rear"
+        float relaxationLengthLat = 0.45f; // m
+        float camberDeg        = 0.0f;    // setup camber, < 0 = top leaning inward
         float wheelInertia     = 1.2f;    // spin inertia per wheel incl. disc, kg*m^2
         float maxBrakeTorque   = 2500.0f; // per wheel at full pedal, N*m
         float handbrakeTorque  = 0.0f;    // per wheel
@@ -94,7 +87,7 @@ struct VehicleDesc
 
     std::string  name;
     Chassis      chassis;
-    Aero         aero;
+    AeroParams   aero;
     std::array<Wheel, WheelCount> wheels;
     Axle         front;
     Axle         rear;
@@ -106,8 +99,9 @@ struct VehicleDesc
 };
 
 // Loads the physics part of a vehicle definition (JSON); the "visual" block
-// belongs to the scene layer. Geometry (wheel placement, hull) comes from the
-// layout file referenced relative to the definition.
+// belongs to the scene layer. Geometry (wheel placement, hull), tires and aero
+// come from the "layout", "tires" and "aero" files referenced relative to the
+// definition.
 bool LoadVehicleDesc(const std::string& path, VehicleDesc& out, std::string* error = nullptr);
 
 } // namespace SE

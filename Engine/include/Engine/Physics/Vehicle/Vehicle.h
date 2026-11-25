@@ -1,9 +1,10 @@
 #pragma once
 #include <array>
-#include <memory>
 #include <string>
+#include <vector>
 #include <DirectXMath.h>
 #include "Engine/Physics/PhysicsWorld.h"
+#include "Engine/Physics/Vehicle/AeroModel.h"
 #include "Engine/Physics/Vehicle/TireModel.h"
 #include "Engine/Physics/Vehicle/VehicleDesc.h"
 
@@ -30,6 +31,7 @@ struct WheelTelemetry
     float lateralForce      = 0.0f; // N
     float angularVelocity   = 0.0f; // rad/s
     float steerAngle        = 0.0f; // rad
+    float camber            = 0.0f; // inclination to the road, rad; > 0 = top leaning toward +lateral
 };
 
 struct VehicleTelemetry
@@ -43,6 +45,11 @@ struct VehicleTelemetry
     bool  tractionControlActive = false;
     bool  absActive  = false;
     DirectX::XMFLOAT3 acceleration = {}; // chassis-space, m/s^2 (x right, y up, z forward)
+    float downforceFront  = 0.0f; // N, aero -Y force at the front axle (lever rule)
+    float downforceRear   = 0.0f; // N
+    float drag            = 0.0f; // N, aero force against chassis forward
+    float rideHeightFront = 0.0f; // m, aero reference plane above ground at the axle
+    float rideHeightRear  = 0.0f; // m
     std::array<WheelTelemetry, VehicleDesc::WheelCount> wheels;
 };
 
@@ -50,10 +57,10 @@ struct VehicleTelemetry
 // the chassis and handles its collisions; this class owns everything at the
 // wheels: suspension (spring, dampers, bump stops, anti-roll bars), tire
 // contact via ray queries, slip (longitudinal solved implicitly with wheel
-// spin, lateral through a relaxation length), a pluggable tire force model,
-// brakes with ABS, and the drivetrain (engine, launch clutch, gearbox,
-// limited-slip differential, traction control) integrated in sub-steps of
-// each fixed physics step.
+// spin, lateral through a relaxation length), slip-curve tires (TireModel),
+// aero (AeroModel), brakes with ABS, and the drivetrain (engine, launch
+// clutch, gearbox, limited-slip differential, traction control) integrated in
+// sub-steps of each fixed physics step.
 class Vehicle final : public PhysicsStepListener
 {
 public:
@@ -114,6 +121,7 @@ private:
         float compression = 0.0f;
         float preload    = 0.0f;
         float steer      = 0.0f;
+        float camber     = 0.0f; // TireInput::camber
         float load       = 0.0f;
         bool  contact    = false;
         float fx = 0.0f, fy = 0.0f;
@@ -159,12 +167,11 @@ private:
     void ApplySuspensionForces(PhysicsWorld& world, DirectX::XMVECTOR up);
     void SolveWheelDynamics(float dt, const StepState& step);
     void ApplyTireForces(PhysicsWorld& world, DirectX::XMVECTOR up);
-    void ApplyAerodynamics(PhysicsWorld& world, const PhysicsWorld::BodyState& state,
-                           DirectX::XMVECTOR position, DirectX::XMVECTOR rotation,
-                           DirectX::XMVECTOR up, DirectX::XMVECTOR fwd);
+    void ApplyAerodynamics(PhysicsWorld& world, DirectX::XMVECTOR position, DirectX::XMVECTOR rotation);
     void UpdateTelemetry(const PhysicsWorld::BodyState& state, float dt,
                          DirectX::XMVECTOR right, DirectX::XMVECTOR up, DirectX::XMVECTOR fwd,
                          const StepState& step);
+    float PatchSpeed(int wheel) const; // m/s, last sampled contact
 
     float RevLimitedThrottle(float engineRpm);
     float TractionControlFactor(float dt, int drivenLeft, int drivenRight);
@@ -185,7 +192,7 @@ private:
     TransformComponent* m_transform = nullptr;
     RigidBodyComponent* m_rigidBody = nullptr;
     VehicleDesc        m_desc;
-    std::array<std::unique_ptr<TireModel>, VehicleDesc::WheelCount> m_tires;
+    std::vector<TireModel> m_tires;
     std::array<WheelState, VehicleDesc::WheelCount> m_wheels;
 
     // Per-step scratch.
@@ -197,6 +204,8 @@ private:
     std::array<float, VehicleDesc::WheelCount> m_forceSlope = {};
     std::array<float, VehicleDesc::WheelCount> m_fxSum = {};
     std::array<float, VehicleDesc::WheelCount> m_fySum = {};
+    AeroInput  m_aeroInput;
+    AeroForces m_aeroForces;
 
     VehicleInput     m_input;
     VehicleTelemetry m_telemetry;

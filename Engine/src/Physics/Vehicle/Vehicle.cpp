@@ -59,6 +59,14 @@ XMVECTOR ToWorld(FXMVECTOR position, FXMVECTOR rotation, const XMFLOAT3& local)
     return XMVectorAdd(position, XMVector3Rotate(Load(local), rotation));
 }
 
+// TC/ABS output (1 = no intervention) for a wheel slipping by `slip`, tire force peaking at `peak`.
+float AidTarget(bool enabled, float slip, float peak)
+{
+    if (!enabled)
+        return 1.0f;
+    return std::clamp(1.0f - (slip - k_aidSlipStart * peak) / (k_aidSlipWindow * peak), 0.0f, 1.0f);
+}
+
 } // namespace
 
 Vehicle::~Vehicle()
@@ -108,8 +116,9 @@ bool Vehicle::Init(PhysicsWorld& world, const VehicleDesc& desc, TransformCompon
     m_transform = transform;
     m_rigidBody = body;
 
+    m_tires.clear();
     for (int w = 0; w < VehicleDesc::WheelCount; ++w)
-        m_tires[w] = std::make_unique<MagicFormulaTire>(desc.AxleOf(w).tire);
+        m_tires.emplace_back(desc.AxleOf(w).tire);
     ResetState();
     world.AddStepListener(this);
     return true;
@@ -295,7 +304,7 @@ void Vehicle::OnPhysicsStep(PhysicsWorld& world, float dt)
     ApplySuspensionForces(world, up);
     SolveWheelDynamics(dt, step);
     ApplyTireForces(world, up);
-    ApplyAerodynamics(world, state, position, rotation, up, fwd);
+    ApplyAerodynamics(world, position, rotation);
     UpdateTelemetry(state, dt, right, up, fwd, step);
 }
 
@@ -336,11 +345,12 @@ float Vehicle::RevLimitedThrottle(float engineRpm)
 float Vehicle::TractionControlFactor(float dt, int drivenLeft, int drivenRight)
 {
     // Trims throttle when a driven wheel spins past the tire's peak slip.
-    const float peakSlip = m_tires[drivenLeft]->PeakSlipRatio();
-    const float spin = (std::max)(m_wheels[drivenLeft].slipRatio, m_wheels[drivenRight].slipRatio);
-    const float target = m_tractionControl
-        ? std::clamp(1.0f - (spin - k_aidSlipStart * peakSlip) / (k_aidSlipWindow * peakSlip), 0.0f, 1.0f)
-        : 1.0f;
+    float target = 1.0f;
+    for (int w : { drivenLeft, drivenRight })
+    {
+        const float peak = m_tires[w].PeakSlipRatio(m_wheels[w].load, PatchSpeed(w));
+        target = (std::min)(target, AidTarget(m_tractionControl, m_wheels[w].slipRatio, peak));
+    }
     m_tcFactor += (target - m_tcFactor) * (std::min)(1.0f, dt * k_aidResponse);
     return m_tcFactor;
 }
@@ -349,13 +359,15 @@ void Vehicle::UpdateAbsFactors(float dt)
 {
     for (int w = 0; w < VehicleDesc::WheelCount; ++w)
     {
-        const float lock = -m_wheels[w].slipRatio;
-        const float peak = m_tires[w]->PeakSlipRatio();
-        const float target = m_abs
-            ? std::clamp(1.0f - (lock - k_aidSlipStart * peak) / (k_aidSlipWindow * peak), 0.0f, 1.0f)
-            : 1.0f;
+        const float peak = m_tires[w].PeakSlipRatio(m_wheels[w].load, PatchSpeed(w));
+        const float target = AidTarget(m_abs, -m_wheels[w].slipRatio, peak);
         m_absFactor[w] += (target - m_absFactor[w]) * (std::min)(1.0f, dt * k_aidResponse);
     }
+}
+
+float Vehicle::PatchSpeed(int wheel) const
+{
+    return hypotf(m_contacts[wheel].vx, m_contacts[wheel].vy);
 }
 
 float Vehicle::IdleThrottle(float throttle, float engineRpm) const
@@ -420,6 +432,10 @@ void Vehicle::SampleContacts(PhysicsWorld& world, XMVECTOR position, XMVECTOR ro
         c.lateral = OnPlane(XMVectorSubtract(XMVectorScale(right, co), XMVectorScale(fwd, s)), n);
         c.vx = Dot(relative, c.forward);
         c.vy = Dot(relative, c.lateral);
+        // Negative setup camber leans the top inboard; roll and banking add to it.
+        const float setup = XMConvertToRadians(m_desc.AxleOf(w).camberDeg);
+        ws.camber = setup * (w % 2 == 1 ? 1.0f : -1.0f) +
+                    asinf(std::clamp(Dot(up, c.lateral), -1.0f, 1.0f));
     }
 }
 
@@ -471,10 +487,9 @@ void Vehicle::ComputeLowSpeedDamping()
         if (!ws.contact || ws.load <= 0.0f)
             continue;
         const auto& axle = m_desc.AxleOf(w);
-        const auto& p = axle.tire;
-        const float patchSpeed = hypotf(m_contacts[w].vx, m_contacts[w].vy);
+        const float patchSpeed = PatchSpeed(w);
         const float fade = 1.0f - (std::min)(patchSpeed / k_lowSpeed, 1.0f);
-        const float kLat = p.lateral.B * p.lateral.C * p.lateral.mu * ws.load / axle.relaxationLengthLat;
+        const float kLat = m_tires[w].CorneringStiffness(ws.load, patchSpeed) / axle.relaxationLengthLat;
         m_latDamping[w] = fade * 2.0f * k_dampingRatio * sqrtf(kLat * 0.25f * m_desc.chassis.mass);
     }
 }
@@ -495,24 +510,27 @@ void Vehicle::ComputeWheelTorques(const StepState& step)
             // overshoot after clutch/brake transients).
             const float vd = (std::max)(fabsf(m_contacts[w].vx), k_slipSpeedFloor);
             ws.slipRatio = std::clamp((ws.omega * r - m_contacts[w].vx) / vd, -k_maxSlip, k_maxSlip);
+            const TireModel& tire = m_tires[w];
             TireInput in;
             in.slipRatio  = ws.slipRatio;
             in.slipAngle  = atanf(ws.tanSlip);
             in.normalLoad = ws.load;
-            const TireForces f = m_tires[w]->Evaluate(in);
+            in.speed      = PatchSpeed(w);
+            in.camber     = ws.camber;
+            const TireForces f = tire.Evaluate(in);
             in.slipRatio += k_slopeEpsilon;
-            const float slope = (m_tires[w]->Evaluate(in).longitudinal - f.longitudinal) / k_slopeEpsilon;
+            const float slope = (tire.Evaluate(in).longitudinal - f.longitudinal) / k_slopeEpsilon;
             m_forceSlope[w] = (std::max)(slope, 0.0f) * r / vd;
             ws.fx = f.longitudinal;
             // The damper stands in for static friction, so it never pushes
             // the lateral force past the friction limit.
-            const float limit = (std::max)(fabsf(f.lateral), axle.tire.lateral.mu * ws.load);
+            const float limit = (std::max)(fabsf(f.lateral), tire.PeakLateralForce(ws.load, in.speed));
             ws.fy = std::clamp(f.lateral - m_latDamping[w] * m_contacts[w].vy, -limit, limit);
         }
         m_externalTorque[w] = -ws.fx * r;
         m_brakeTorque[w] = step.brake * axle.maxBrakeTorque * m_absFactor[w] +
                            step.handbrake * axle.handbrakeTorque +
-                           axle.rollingResistance * ws.load * r;
+                           m_tires[w].RollingResistanceTorque(ws.load);
     }
 }
 
@@ -623,27 +641,33 @@ void Vehicle::ApplyTireForces(PhysicsWorld& world, XMVECTOR up)
     }
 }
 
-void Vehicle::ApplyAerodynamics(PhysicsWorld& world, const PhysicsWorld::BodyState& state,
-                                XMVECTOR position, XMVECTOR rotation, XMVECTOR up, XMVECTOR fwd)
+void Vehicle::ApplyAerodynamics(PhysicsWorld& world, XMVECTOR position, XMVECTOR rotation)
 {
-    const XMVECTOR velocity = Load(state.linearVelocity);
-    const float speed = XMVectorGetX(XMVector3Length(velocity));
-    if (speed <= 0.1f)
-        return;
-    const auto& aero = m_desc.aero;
-    const float q = 0.5f * aero.airDensity;
-    world.AddForceAtPoint(m_body, Store(XMVectorScale(velocity, -q * aero.dragArea * speed)),
-                          state.centerOfMass);
-    const float forward = Dot(velocity, fwd);
-    const float yCom = m_desc.chassis.centerOfMass.y;
-    const auto& wheels = m_desc.wheels;
-    const XMFLOAT3 frontAxle = { 0.0f, yCom, 0.5f * (wheels[0].center.z + wheels[1].center.z) };
-    const XMFLOAT3 rearAxle  = { 0.0f, yCom, 0.5f * (wheels[2].center.z + wheels[3].center.z) };
-    const float q2 = q * forward * forward;
-    world.AddForceAtPoint(m_body, Store(XMVectorScale(up, -q2 * aero.liftAreaFront)),
-                          Store(ToWorld(position, rotation, frontAxle)));
-    world.AddForceAtPoint(m_body, Store(XMVectorScale(up, -q2 * aero.liftAreaRear)),
-                          Store(ToWorld(position, rotation, rearAxle)));
+    // The aero reference plane follows suspension travel from the static ride heights.
+    const AeroParams& aero = m_desc.aero;
+    float rideHeight[VehicleDesc::WheelCount];
+    for (int w = 0; w < VehicleDesc::WheelCount; ++w)
+        rideHeight[w] = aero.staticRideHeight[w < VehicleDesc::RearLeft ? 0 : 1] -
+                        (m_wheels[w].compression - m_desc.AxleOf(w).suspension.droopTravel);
+    AeroInput& in = m_aeroInput;
+    in.frontRideHeight = 0.5f * (rideHeight[VehicleDesc::FrontLeft] + rideHeight[VehicleDesc::FrontRight]);
+    in.rearRideHeight  = 0.5f * (rideHeight[VehicleDesc::RearLeft] + rideHeight[VehicleDesc::RearRight]);
+    in.rollSlope = 0.0f;
+    for (int left : { VehicleDesc::FrontLeft, VehicleDesc::RearLeft })
+        in.rollSlope += 0.5f * (rideHeight[left + 1] - rideHeight[left]) /
+                        (m_desc.wheels[left + 1].center.x - m_desc.wheels[left].center.x);
+
+    XMVECTOR points[AeroElementCount];
+    for (int e = 0; e < AeroElementCount; ++e)
+    {
+        points[e] = ToWorld(position, rotation, AeroElementCenter(aero, e));
+        const XMVECTOR velocity = Load(world.GetPointVelocity(m_body, Store(points[e])));
+        in.elementVelocity[e] = Store(XMVector3InverseRotate(velocity, rotation));
+    }
+    m_aeroForces = EvaluateAero(aero, in);
+    for (int e = 0; e < AeroElementCount; ++e)
+        world.AddForceAtPoint(m_body, Store(XMVector3Rotate(Load(m_aeroForces.elements[e].force), rotation)),
+                              Store(points[e]));
 }
 
 void Vehicle::UpdateTelemetry(const PhysicsWorld::BodyState& state, float dt,
@@ -664,6 +688,11 @@ void Vehicle::UpdateTelemetry(const PhysicsWorld::BodyState& state, float dt,
     const XMVECTOR accel = XMVectorScale(XMVectorSubtract(velocity, Load(m_prevVelocity)), 1.0f / dt);
     t.acceleration = { Dot(accel, right), Dot(accel, up), Dot(accel, fwd) };
     m_prevVelocity = state.linearVelocity;
+    t.downforceFront  = m_aeroForces.downforceFront;
+    t.downforceRear   = m_aeroForces.downforceRear;
+    t.drag            = m_aeroForces.drag;
+    t.rideHeightFront = m_aeroInput.frontRideHeight;
+    t.rideHeightRear  = m_aeroInput.rearRideHeight;
     for (int w = 0; w < VehicleDesc::WheelCount; ++w)
     {
         const WheelState& ws = m_wheels[w];
@@ -677,6 +706,7 @@ void Vehicle::UpdateTelemetry(const PhysicsWorld::BodyState& state, float dt,
         wt.lateralForce      = ws.fy;
         wt.angularVelocity   = ws.omega;
         wt.steerAngle        = ws.steer;
+        wt.camber            = ws.camber;
     }
 }
 
