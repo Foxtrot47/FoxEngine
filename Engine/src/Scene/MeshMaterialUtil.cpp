@@ -118,6 +118,7 @@ std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
         material.metallic = assets.GetDefaultBlack();
         material.alphaMode = info.alphaMode;
         material.alphaCutoff = info.alphaCutoff;
+        material.vertexTint = info.vertexTint;
         materials.push_back(std::move(material));
     }
     return materials;

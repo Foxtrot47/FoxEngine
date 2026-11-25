@@ -32,6 +32,8 @@ enum class AlphaMode : uint8_t { Opaque, Cutout, Transparent };
 //  PackedMR:      t1 = (unused, roughness, metallic) — glTF metallic-roughness or ORCA FBX
 //  SpecularGloss: t1.rgb = specular color (F0), t1.a = glossiness
 enum class MaterialWorkflow : uint8_t { SeparateMR, PackedMR, SpecularGloss };
+// How vertex colour (COLOR0) tints albedo in Basic.hlsl.
+enum class VertexTint : uint8_t { None, Multiply, AlbedoAlphaMask };
 
 // One material texture: path relative to GetDirectory() (empty = no texture), the UV
 // set it samples (0..2 = TEXCOORD_0..2) and its tiling, applied as uv * scale + offset.
@@ -54,6 +56,7 @@ struct SubMeshInfo
     MaterialWorkflow workflow = MaterialWorkflow::SeparateMR;
     float       roughnessFactor = 1.0f;   // scalar roughness for texture-less MR materials
     float       glossinessFactor = 1.0f;  // scalar glossiness for spec/gloss materials
+    VertexTint  vertexTint = VertexTint::None;
 };
 
 // Calls fn(const std::string&) for every non-empty texture path of the material.

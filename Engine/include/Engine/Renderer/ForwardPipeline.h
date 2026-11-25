@@ -58,6 +58,7 @@ public:
         bool      receiveShadows = true;
         DirectX::XMFLOAT3 tint = { 1.0f, 1.0f, 1.0f }; // multiplies the albedo (linear RGB)
         DirectX::XMFLOAT3 emissiveColor = { 1.0f, 1.0f, 1.0f }; // multiplies the emissive map (linear HDR)
+        VertexTint vertexTint = VertexTint::None;
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -184,8 +185,9 @@ private:
         DirectX::XMFLOAT4 slotUVA;   // UV set of slots 0-3
         DirectX::XMFLOAT4 slotUVB;   // UV set of slots 4-6, w = detail normal strength
         DirectX::XMFLOAT4 slotFlags; // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel
+        DirectX::XMFLOAT4 tintParams = { 0.0f, 0.0f, 0.0f, 0.0f }; // x = VertexTint mode (0 none, 1 multiply, 2 albedoAlphaMask)
     };
-    static_assert(sizeof(MaterialParamsCBData) == 224, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
+    static_assert(sizeof(MaterialParamsCBData) == 240, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
     struct PlanarReflectionCBData
     {
         DirectX::XMFLOAT4X4 reflectionViewProj;

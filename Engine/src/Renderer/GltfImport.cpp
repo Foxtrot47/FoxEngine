@@ -173,7 +173,7 @@ TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, co
     return slot;
 }
 
-// materials[i].extras.fox: occlusionChannel, detailAlbedo, detailNormal (+ strength).
+// materials[i].extras.fox: occlusionChannel, detailAlbedo, detailNormal (+ strength), vertexTint.
 void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
                    SubMeshInfo& out)
 {
@@ -209,6 +209,27 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
         const auto strength = detailNormal->find("strength");
         if (strength != detailNormal->end() && strength->is_number())
             out.detailNormalStrength = strength->get<float>();
+    }
+    const auto vertexTint = fox->find("vertexTint");
+    if (vertexTint != fox->end())
+    {
+        if (vertexTint->is_string())
+        {
+            const std::string mode = vertexTint->get<std::string>();
+            if (mode == "multiply")
+                out.vertexTint = VertexTint::Multiply;
+            else if (mode == "albedoAlphaMask")
+                out.vertexTint = VertexTint::AlbedoAlphaMask;
+            else
+                SE_LOG_WARN("glTF material '%s': unknown vertexTint '%s'",
+                            material->name ? material->name : "", mode.c_str());
+        }
+        else
+        {
+            const std::string raw = vertexTint->dump();
+            SE_LOG_WARN("glTF material '%s': unknown vertexTint '%s'",
+                        material->name ? material->name : "", raw.c_str());
+        }
     }
 }
 

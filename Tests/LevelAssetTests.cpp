@@ -613,7 +613,7 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, boo
     if (gltfExtras &&
         (!SameSlot(a.detailAlbedo, b.detailAlbedo, true) || !SameSlot(a.detailNormal, b.detailNormal, true) ||
          a.occlusionStrength != b.occlusionStrength || a.occlusionChannel != b.occlusionChannel ||
-         a.detailNormalStrength != b.detailNormalStrength))
+         a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint))
         return false;
     return a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
            a.workflow == b.workflow && a.roughnessFactor == b.roughnessFactor &&
@@ -932,6 +932,44 @@ static void TestTextureSlots()
     for (size_t i = 0; i < imported.subMeshes.size(); ++i)
         Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
                 "slots.gltf MeshCache round trip altered material slots");
+    fs::remove_all(root);
+}
+// extras.fox.vertexTint parsing ("multiply", "albedoAlphaMask", unknown/absent -> None)
+// and MeshCache round trip.
+static void TestVertexTint()
+{
+    const auto checkSource = [](const SE::MeshSourceData& data) {
+        Require(data.subMeshes.size() == 5, "tint.gltf submesh count mismatch");
+        Require(data.subMeshes[0].material.vertexTint == SE::VertexTint::Multiply,
+                "tint.gltf multiply mode mismatch");
+        Require(data.subMeshes[1].material.vertexTint == SE::VertexTint::AlbedoAlphaMask,
+                "tint.gltf albedoAlphaMask mode mismatch");
+        Require(data.subMeshes[2].material.vertexTint == SE::VertexTint::None,
+                "tint.gltf unknown string should default to None");
+        Require(data.subMeshes[3].material.vertexTint == SE::VertexTint::None,
+                "tint.gltf non-string vertexTint should default to None");
+        Require(data.subMeshes[4].material.vertexTint == SE::VertexTint::None,
+                "tint.gltf absent vertexTint should default to None");
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/tint.gltf", imported), "failed to import tint.gltf");
+    checkSource(imported);
+
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "FoxEngineVertexTintCacheTest";
+    fs::remove_all(root);
+    const SE::MeshCache cache((root / "cache").string());
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load("Assets/TestFixtures/tint.gltf", firstLoad, {}, nullptr, &hit) && !hit,
+            "tint.gltf first cache load did not import");
+    Require(cache.Load("Assets/TestFixtures/tint.gltf", cachedLoad, {}, nullptr, &hit) && hit,
+            "tint.gltf second cache load missed");
+    checkSource(cachedLoad);
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+        Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
+                "tint.gltf MeshCache round trip altered vertexTint");
     fs::remove_all(root);
 }
 
@@ -1542,6 +1580,7 @@ static void RunTests()
     TestMeshCache();
     TestVertexStreams();
     TestTextureSlots();
+    TestVertexTint();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 

@@ -45,6 +45,7 @@ cbuffer MaterialCB : register(b3)
     float4 SlotUVA;     // UV set (0..2) of slots 0-3
     float4 SlotUVB;     // UV set of slots 4-6, w = DetailNormalStrength
     float4 SlotFlags;   // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel (0 R, 1 G)
+    float4 TintParams;  // x = vertex tint mode (0 none, 1 multiply, 2 albedoAlphaMask)
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -317,6 +318,16 @@ PSOut PS_Main(PSIn input)
 
     float3 V        = normalize(CameraPos - input.WorldPos);
     float4 albedo   = g_albedo.Sample(g_sampler, SlotUV(SLOT_ALBEDO, input));
+    // Vertex colour tint: 1 = multiply, 2 = albedo-alpha mask (alpha is mask, not opacity).
+    if (TintParams.x > 1.5f)
+    {
+        albedo.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), input.Color.rgb, albedo.a);
+        albedo.a = 1.0f;
+    }
+    else if (TintParams.x > 0.5f)
+    {
+        albedo.rgb *= input.Color.rgb;
+    }
     // Detail albedo (sRGB) is neutral at mid-grey: sRGB 0.5 = linear 1 / 4.59479.
     if (SlotFlags.y > 0.5f)
         albedo.rgb *= g_detailAlbedo.Sample(g_sampler, SlotUV(SLOT_DETAIL_ALBEDO, input)).rgb * 4.59479f;

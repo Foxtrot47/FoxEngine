@@ -416,6 +416,7 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.slotUVB   = { uvSets[4], uvSets[5], uvSets[6], mat.detailNormalStrength };
     mc.slotFlags = { mat.occlusion ? 1.0f : 0.0f, mat.detailAlbedo ? 1.0f : 0.0f,
                      mat.detailNormal ? 1.0f : 0.0f, static_cast<float>(mat.occlusionChannel) };
+    mc.tintParams = { static_cast<float>(mat.vertexTint), 0.0f, 0.0f, 0.0f };
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
@@ -476,7 +477,7 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.emissiveIntensity = emissiveIntensity;
     mc.emissiveColor  = emissiveColor;
-    mc.receiveShadows = 1.0f; // slot transforms, occlusion and detail flags keep their neutral defaults
+    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail and vertex tint keep their neutral defaults
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }

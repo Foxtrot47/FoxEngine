@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 5;
+constexpr uint32_t k_meshCacheVersion = 6;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -76,7 +76,7 @@ struct SubMeshRecord
     SlotRecord slots[k_slotCount];
     float alphaCutoff, roughnessFactor, glossinessFactor;
     float occlusionStrength, detailNormalStrength;
-    uint8_t alphaMode, workflow, occlusionChannel, pad;
+    uint8_t alphaMode, workflow, occlusionChannel, vertexTint;
 };
 
 static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
@@ -351,6 +351,7 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.alphaMode = static_cast<uint8_t>(sub.material.alphaMode);
         record.workflow = static_cast<uint8_t>(sub.material.workflow);
         record.occlusionChannel = sub.material.occlusionChannel;
+        record.vertexTint = static_cast<uint8_t>(sub.material.vertexTint);
         subMeshes.push_back(record);
     }
     header.stringBytes = static_cast<uint32_t>(strings.size());
@@ -519,7 +520,8 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         }
         if (uint64_t(sub.firstVertex) + sub.vertexCount > header.vertexCount ||
             uint64_t(sub.firstIndex) + sub.indexCount > header.indexCount ||
-            sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1)
+            sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1 ||
+            sub.vertexTint > 2)
             return miss("corrupt submesh table");
     }
     if (text(header.sourceKey) != key) return miss("key collision");
@@ -588,6 +590,7 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         sub.material.workflow = static_cast<MaterialWorkflow>(record.workflow);
         sub.material.roughnessFactor = record.roughnessFactor;
         sub.material.glossinessFactor = record.glossinessFactor;
+        sub.material.vertexTint = static_cast<VertexTint>(record.vertexTint);
         out->subMeshes.push_back(std::move(sub));
     }
     out->sourceFiles.reserve(dependencies.size());
