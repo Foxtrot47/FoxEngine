@@ -494,6 +494,7 @@ void ForwardPipeline::BuildMaterialBinding(const SubMat& mat, MaterialBinding& o
                           mat.clearcoatRoughnessSlot.offset[0], mat.clearcoatRoughnessSlot.offset[1] };
     mc.clearcoatUV = { static_cast<float>(mat.clearcoatSlot.uvSet),
                        static_cast<float>(mat.clearcoatRoughnessSlot.uvSet), 0.0f, 0.0f };
+    mc.billboardParams = { mat.billboard ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f };
 
     // In k_materialTextureSlots order; null leaves the register unbound.
     const Texture2D** t = out.textures;
@@ -520,12 +521,18 @@ void ForwardPipeline::BuildMaterialBinding(const SubMat& mat, MaterialBinding& o
     out.kind = mat.kind;
 }
 
+void ForwardPipeline::UploadMaterialCB(ID3D11DeviceContext* ctx, const MaterialParamsCBData& data)
+{
+    m_materialCB.Update(ctx, data);
+    m_materialCB.BindVS(ctx, 3);
+    m_materialCB.BindPS(ctx, 3);
+}
+
 void ForwardPipeline::BindMaterial(ID3D11DeviceContext* ctx, const MaterialBinding& binding)
 {
     static_assert(std::size(k_materialTextureSlots) == k_materialTextureCount,
                   "k_materialTextureSlots must list every MaterialBinding texture");
-    m_materialCB.Update(ctx, binding.cb);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, binding.cb);
     for (uint32_t i = 0; i < k_materialTextureCount; ++i)
     {
         const Texture2D* texture = binding.textures[i];
@@ -776,9 +783,8 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.emissiveIntensity = emissiveIntensity;
     mc.emissiveColor  = emissiveColor;
-    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail, vertex tint, terrain and clearcoat keep their neutral defaults
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail, vertex tint, terrain, clearcoat and billboard keep their neutral defaults
+    UploadMaterialCB(ctx, mc);
 }
 
 void ForwardPipeline::SetGlobalMaterialParams(DirectX::XMFLOAT3 tint, float roughnessScale,
@@ -822,8 +828,7 @@ void ForwardPipeline::DrawWireSphere(ID3D11DeviceContext* ctx,
 
     MaterialParamsCBData mc = {};
     mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, mc);
 
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
@@ -848,8 +853,7 @@ void ForwardPipeline::DrawWireAABB(ID3D11DeviceContext* ctx,
 
     MaterialParamsCBData mc = {};
     mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, mc);
 
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
@@ -876,8 +880,7 @@ void ForwardPipeline::DrawWireBox(ID3D11DeviceContext* ctx,
 
     MaterialParamsCBData mc = {};
     mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, mc);
 
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
@@ -897,8 +900,7 @@ void ForwardPipeline::DrawWireMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
 {
     MaterialParamsCBData mc = {};
     mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, mc);
 
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
@@ -923,8 +925,7 @@ void ForwardPipeline::DrawLine(ID3D11DeviceContext* ctx,
 
     MaterialParamsCBData mc = {};
     mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, mc);
 
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);
@@ -957,8 +958,7 @@ void ForwardPipeline::DrawWireDisc(ID3D11DeviceContext* ctx,
 
     MaterialParamsCBData mc = {};
     mc.albedoTint = color; mc.roughnessScale = 1.0f; mc.unlit = 1.0f;
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
+    UploadMaterialCB(ctx, mc);
 
     m_defaultWhite->BindPSSrgb(ctx, 0);
     m_defaultWhite->BindPS(ctx, 1);

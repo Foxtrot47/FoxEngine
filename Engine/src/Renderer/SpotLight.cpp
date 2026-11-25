@@ -151,13 +151,19 @@ uint32_t SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRI
             continue;
 
         ShadowMaterialCBData material = {};
+        material.facing[0] = position.x;
+        material.facing[1] = position.y;
+        material.facing[2] = position.z;
+        material.facing[3] = 1.0f;
         if (i < subMeshes.size())
         {
             material.alphaCutoff = subMeshes[i].alphaCutoff;
+            material.billboard = subMeshes[i].billboard ? 1.0f : 0.0f;
             ID3D11ShaderResourceView* albedo = subMeshes[i].albedo;
             ctx->PSSetShaderResources(0, 1, &albedo);
         }
         m_materialCB.Update(ctx, material);
+        m_materialCB.BindVS(ctx, 1);
         m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
         ++draws;

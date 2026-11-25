@@ -177,7 +177,8 @@ TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, co
 }
 
 // materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength/neutral), detailNormal (+ strength),
-// worldUV, vertexTint, clearcoatMask, material (.foxmat sidecar path relative to the glTF file, returned in `foxmat`).
+// worldUV, vertexTint, clearcoatMask, billboard, material (.foxmat sidecar path relative to the glTF file,
+// returned in `foxmat`).
 void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
                    SubMeshInfo& out, std::string& foxmat)
 {
@@ -332,6 +333,16 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
             SE_LOG_WARN("glTF material '%s': unknown clearcoatMask '%s'",
                         material->name ? material->name : "", raw.c_str());
         }
+    }
+    const auto billboard = fox->find("billboard");
+    if (billboard != fox->end())
+    {
+        const std::string mode = billboard->is_string() ? billboard->get<std::string>() : billboard->dump();
+        if (mode == "cylindrical")
+            out.billboard = true;
+        else
+            SE_LOG_WARN("glTF material '%s': unknown billboard '%s'",
+                        material->name ? material->name : "", mode.c_str());
     }
     const auto sidecar = fox->find("material");
     if (sidecar != fox->end() && sidecar->is_string())
@@ -546,6 +557,22 @@ SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material,
         else
             SE_LOG_ERROR("foxmat '%s': %s", sidecar.generic_string().c_str(), error.c_str());
     }
+    if (out.billboard)
+    {
+        // TEXCOORD2 carries the billboard offset (Basic.hlsl VS_Main).
+        bool movedSlot = false;
+        for (TextureSlot* slot : { &out.albedo, &out.normal, &out.roughness, &out.emissive, &out.occlusion,
+                                   &out.detailAlbedo, &out.detailNormal, &out.clearcoatTex,
+                                   &out.clearcoatRoughnessTex, &out.terrain.splat, &out.terrain.overlay })
+            if (!slot->path.empty() && slot->uvSet == 2)
+            {
+                slot->uvSet = 0;
+                movedSlot = true;
+            }
+        if (movedSlot)
+            SE_LOG_WARN("glTF material '%s': uv set 2 is the billboard offset",
+                        material->name ? material->name : "");
+    }
 
     if (material->alpha_mode == cgltf_alpha_mode_mask)
         out.alphaMode = AlphaMode::Cutout;
@@ -603,6 +630,7 @@ struct PrimitiveGeometry
     std::vector<float> uvs1;      // 2 per vertex; empty when TEXCOORD_1 is absent
     std::vector<float> uvs2;      // 2 per vertex; empty when TEXCOORD_2 is absent
     std::vector<uint32_t> colors; // 1 per vertex (RGBA8 UNORM); empty when COLOR_0 is absent
+    std::vector<float> billboard; // 2 per vertex (_BILLBOARD side, up); billboard materials only
     std::vector<uint32_t> indices; // triangle list, glTF (counter-clockwise) winding
 };
 
@@ -774,7 +802,8 @@ void GenerateTangents(PrimitiveGeometry& geometry)
     }
 }
 
-bool ReadGeometry(const cgltf_primitive& primitive, PrimitiveGeometry& geometry)
+// `billboard`: also read the `_BILLBOARD` offsets (empty when the primitive lacks them).
+bool ReadGeometry(const cgltf_primitive& primitive, bool billboard, PrimitiveGeometry& geometry)
 {
     const cgltf_accessor* position = FindAttribute(primitive, cgltf_attribute_type_position, 3);
     if (!position)
@@ -835,6 +864,19 @@ bool ReadGeometry(const cgltf_primitive& primitive, PrimitiveGeometry& geometry)
             }
         }
     }
+    if (billboard)
+        for (cgltf_size i = 0; i < primitive.attributes_count; ++i)
+        {
+            const cgltf_attribute& attribute = primitive.attributes[i];
+            if (attribute.type != cgltf_attribute_type_custom || !attribute.name ||
+                std::strcmp(attribute.name, "_BILLBOARD") != 0 || !attribute.data ||
+                attribute.data->count != vertexCount || cgltf_num_components(attribute.data->type) != 2)
+                continue;
+            geometry.billboard = Unpack(attribute.data);
+            if (geometry.billboard.size() != vertexCount * 2)
+                geometry.billboard.clear();
+            break;
+        }
 
     const cgltf_accessor* tangent = FindAttribute(primitive, cgltf_attribute_type_tangent, 4);
     std::vector<float> tangents;
@@ -911,6 +953,7 @@ void AppendInstance(const PrimitiveGeometry& geometry, const Mat4& world, const 
     const bool hasUV1   = !geometry.uvs1.empty();
     const bool hasUV2   = !geometry.uvs2.empty();
     const bool hasColor = !geometry.colors.empty();
+    const bool billboard = material.billboard;
     for (size_t v = 0; v < geometry.positions.size(); ++v, ++vertex)
     {
         Vec3 p = geometry.positions[v], n = geometry.normals[v];
@@ -935,6 +978,21 @@ void AppendInstance(const PrimitiveGeometry& geometry, const Mat4& world, const 
         vertex->color = hasColor ? geometry.colors[v]  : 0xFFFFFFFFu;
         output.bounds.Expand({ vertex->x, vertex->y, vertex->z });
         record.bounds.Expand({ vertex->x, vertex->y, vertex->z });
+        if (billboard)
+        {
+            // World-unit (side, up) offsets, expanded in VS_Main about +Y; the bounds
+            // enclose the card at every facing.
+            vertex->u2 = geometry.billboard[v * 2];
+            vertex->v2 = geometry.billboard[v * 2 + 1];
+            const float side = std::fabs(vertex->u2);
+            for (const Vec3& corner : { Vec3 { vertex->x - side, vertex->y, vertex->z - side },
+                                        Vec3 { vertex->x + side, vertex->y, vertex->z + side },
+                                        Vec3 { vertex->x, vertex->y + vertex->v2, vertex->z } })
+            {
+                output.bounds.Expand({ corner.x, corner.y, corner.z });
+                record.bounds.Expand({ corner.x, corner.y, corner.z });
+            }
+        }
     }
 
     // The Z mirror reverses winding; a mirroring node transform reverses it back.
@@ -1076,20 +1134,28 @@ bool ImportGltf(const char* path, MeshSourceData& output,
                 SE_LOG_WARN("glTF '%s': skipped primitive without POSITION", path);
                 continue;
             }
+            const SubMeshInfo* material = primitive.material
+                ? &materials[size_t(primitive.material - data->materials)] : &defaultMaterial;
             PrimitiveGeometry geometry;
-            if (!ReadGeometry(primitive, geometry))
+            if (!ReadGeometry(primitive, material->billboard, geometry))
                 return Fail(path, std::string("glTF: unreadable primitive ") + std::to_string(p) +
                                   " of mesh " + std::to_string(m), error);
             if (geometry.indices.empty())
                 continue;
 
-            const SubMeshInfo& material = primitive.material
-                ? materials[size_t(primitive.material - data->materials)] : defaultMaterial;
+            SubMeshInfo degenerate;
+            if (material->billboard && geometry.billboard.empty())
+            {
+                SE_LOG_WARN("glTF '%s': billboard primitive without _BILLBOARD", path);
+                degenerate = *material;
+                degenerate.billboard = false;
+                material = &degenerate;
+            }
             for (const Mat4& world : instances[m])
             {
                 if (cancelled(0.5f + 0.5f * static_cast<float>(emitted) / total))
                     return false;
-                AppendInstance(geometry, world, material, output);
+                AppendInstance(geometry, world, *material, output);
                 ++emitted;
             }
         }

@@ -157,6 +157,7 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
     }
 
     XMVECTOR dir = XMVector3Normalize(XMLoadFloat3(&lightDir));
+    XMStoreFloat3(&m_toLight, dir);
     XMVECTOR up  = XMVectorSet(0, 1, 0, 0);
     if (fabsf(XMVectorGetY(dir)) > 0.99f)
         up = XMVectorSet(0, 0, 1, 0);
@@ -323,13 +324,18 @@ uint32_t CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
             continue;
 
         ShadowMaterialCBData material = {};
+        material.facing[0] = m_toLight.x;
+        material.facing[1] = m_toLight.y;
+        material.facing[2] = m_toLight.z;
         if (i < subMeshes.size())
         {
             material.alphaCutoff = subMeshes[i].alphaCutoff;
+            material.billboard = subMeshes[i].billboard ? 1.0f : 0.0f;
             ID3D11ShaderResourceView* albedo = subMeshes[i].albedo;
             ctx->PSSetShaderResources(0, 1, &albedo);
         }
         m_materialCB.Update(ctx, material);
+        m_materialCB.BindVS(ctx, 1);
         m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
         ++draws;
@@ -346,6 +352,11 @@ void CascadedShadowMap::DrawSphere(ID3D11DeviceContext* ctx, XMFLOAT3 position, 
     XMStoreFloat4x4(&cb.viewProj, m_cascadeVP[m_currentCascade]);
     m_cb.Update(ctx, cb);
     m_cb.BindVS(ctx, 0);
+    // No alpha test or billboard expansion left over from the last DrawMesh.
+    const ShadowMaterialCBData material = {};
+    m_materialCB.Update(ctx, material);
+    m_materialCB.BindVS(ctx, 1);
+    m_materialCB.BindPS(ctx, 1);
 
     m_sphereVB.Bind(ctx);
     m_sphereIB.Bind(ctx);

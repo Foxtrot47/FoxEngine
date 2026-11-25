@@ -91,6 +91,9 @@ struct SubMeshInfo
     float       clearcoatRoughness = 0.0f;
     TextureSlot clearcoatTex, clearcoatRoughnessTex;
     bool        clearcoatMaskFromAlbedoAlpha = false;
+    // Cylindrical billboard (glTF extras.fox.billboard): vertices sit at the card's base
+    // point, (u2, v2) hold the (side, up) offset in metres and UV set 2 is unavailable.
+    bool        billboard = false;
 };
 
 // Calls fn(const std::string&) for every non-empty texture path of the material.

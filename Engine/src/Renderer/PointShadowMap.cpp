@@ -179,7 +179,7 @@ uint32_t PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
         return 0;
 
     CBData cb;
-    XMStoreFloat4x4(&cb.worldViewProj, model * m_faceViewProj);
+    XMStoreFloat4x4(&cb.viewProj,      m_faceViewProj);
     XMStoreFloat4x4(&cb.world,         model);
     cb.lightPos = m_lightPos;
     cb.lightFar = m_lightFar;
@@ -197,13 +197,19 @@ uint32_t PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
             continue;
 
         ShadowMaterialCBData material = {};
+        material.facing[0] = m_lightPos.x;
+        material.facing[1] = m_lightPos.y;
+        material.facing[2] = m_lightPos.z;
+        material.facing[3] = 1.0f;
         if (i < subMeshes.size())
         {
             material.alphaCutoff = subMeshes[i].alphaCutoff;
+            material.billboard = subMeshes[i].billboard ? 1.0f : 0.0f;
             ID3D11ShaderResourceView* albedo = subMeshes[i].albedo;
             ctx->PSSetShaderResources(0, 1, &albedo);
         }
         m_materialCB.Update(ctx, material);
+        m_materialCB.BindVS(ctx, 1);
         m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
         ++draws;

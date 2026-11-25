@@ -133,6 +133,7 @@ std::vector<ShadowSubMesh> SceneRuntime::BuildShadowSubMeshes(
     {
         ShadowSubMesh subMesh;
         subMesh.cast = material.alphaMode != AlphaMode::Transparent;
+        subMesh.billboard = material.billboard;
         if (material.alphaMode == AlphaMode::Cutout &&
             material.albedo && material.albedo->HasAlpha())
         {
@@ -1605,8 +1606,8 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
     m_planarReflectionRT.Begin(ctx, reflectionClear);
     skybox.Draw(ctx, reflectedView, m_cachedProj);
     shadowMap.BindForLitPass(ctx);
-    lights.BindPS(ctx, reflectedEye, shadowMap.GetLightViewProj(),
-                  m_actorLights.data(), static_cast<int>(m_actorLights.size()));
+    lights.Bind(ctx, reflectedEye, shadowMap.GetLightViewProj(),
+                m_actorLights.data(), static_cast<int>(m_actorLights.size()));
     pipeline.Begin(ctx, reflectedView, m_cachedProj);
     pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
 
@@ -1805,8 +1806,8 @@ void SceneRuntime::RenderSceneToTarget(ID3D11DeviceContext* ctx, XMMATRIX view, 
         ptSRVs[i] = pointShadowMaps[i].GetSRV();
 
     shadowMap.BindForLitPass(ctx);
-    lights.BindPS(ctx, eye, shadowMap.GetLightViewProj(),
-                  m_actorLights.data(), static_cast<int>(m_actorLights.size()));
+    lights.Bind(ctx, eye, shadowMap.GetLightViewProj(),
+                m_actorLights.data(), static_cast<int>(m_actorLights.size()));
     pipeline.Begin(ctx, view, proj);
     if (mainView)
         pipeline.SetTemporalMatrices(m_prevViewProjNoJitter, m_viewProjNoJitter);

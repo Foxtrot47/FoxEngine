@@ -7,10 +7,13 @@
 //            t26=clearcoat, t27=clearcoat roughness, t28=reflection probe array
 //            s0=sampler, s1=shadowSampler(cmp), s2=cubeSampler
 // FOX_TERRAIN=1 (layered terrain permutation) replaces albedo, roughness and normal sampling.
+// VS reads b1 (CameraPos) and b3 (BillboardParams) for cylindrical billboards.
 
 #ifndef FOX_TERRAIN
 #define FOX_TERRAIN 0
 #endif
+
+#include "Billboard.hlsli"
 
 cbuffer TransformCB : register(b0)
 {
@@ -72,6 +75,7 @@ cbuffer MaterialCB : register(b3)
     float4 Clearcoat;      // x factor, y roughness, z maskFromAlbedoAlpha, w hasTextures bitmask (1 coat, 2 rough)
     float4 ClearcoatST[2]; // 0 coat, 1 coat roughness: xy scale, zw offset
     float4 ClearcoatUV;    // x coat uv set, y coat-roughness uv set
+    float4 BillboardParams; // x = 1 cylindrical billboard (VS: TexCoord2 is the card offset), yzw unused
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -189,21 +193,38 @@ PSIn VS_Main(VSIn input)
         model     = instance.Model;
         prevModel = instance.PrevModel;
     }
-    float4 world = mul(float4(input.Position, 1.0f), model);
+    float4 world     = mul(float4(input.Position, 1.0f), model);
+    float4 prevWorld = mul(float4(input.Position, 1.0f), prevModel);
+    float3x3 m3      = (float3x3)model;
+    if (BillboardParams.x > 0.5f)
+    {
+        // Turn the card about +Y toward the camera; last frame's base uses this frame's facing.
+        const BillboardFrame frame = BillboardFacing(CameraPos - world.xyz);
+        const float2 offset = input.TexCoord2;
+        world.xyz     = BillboardExpand(world.xyz, frame.right, offset);
+        prevWorld.xyz = BillboardExpand(prevWorld.xyz, frame.right, offset);
+        o.T = frame.right;
+        o.B = float3(0.0f, 1.0f, 0.0f);
+        // Rounded canopy normal, so cards facing away from the sun are not black.
+        o.N = normalize(frame.f + 0.6f * (frame.right * sign(offset.x) +
+                                          float3(0.0f, offset.y > 0.0f ? 1.0f : -1.0f, 0.0f)));
+    }
+    else
+    {
+        o.T = normalize(mul(input.Tangent,   m3));
+        o.B = normalize(mul(input.Bitangent, m3));
+        o.N = normalize(mul(input.Normal,    m3));
+    }
     o.WorldPos   = world.xyz;
     float4 viewPos = mul(world, View);
     o.ViewZ      = viewPos.z;
     o.Position   = mul(viewPos, Projection);
     o.CurrClip   = mul(world, ViewProjNoJitter);
-    o.PrevClip   = mul(mul(float4(input.Position, 1.0f), prevModel), PrevViewProj);
+    o.PrevClip   = mul(prevWorld, PrevViewProj);
     o.TexCoord   = input.TexCoord;
     o.TexCoord1  = input.TexCoord1;
     o.TexCoord2  = input.TexCoord2;
     o.Color      = input.Color;
-    float3x3 m3  = (float3x3)model;
-    o.T = normalize(mul(input.Tangent,   m3));
-    o.B = normalize(mul(input.Bitangent, m3));
-    o.N = normalize(mul(input.Normal,    m3));
     return o;
 }
 
@@ -721,6 +742,14 @@ PSOut PS_Main(PSIn input)
         color += shadow * LightColor * (sunBase * baseAtten + coat * ClearcoatSpecular(Nv, V, L, coatRough));
     else
         color += shadow * LightColor * sunBase;
+    // Billboard foliage: wrapped (half-Lambert) diffuse stands in for sunlight
+    // passing through the leaves, so cards facing away from the sun are not
+    // black. Equal to Lambert when the card faces the sun; never below it.
+    if (BillboardParams.x > 0.5f)
+    {
+        float wrap = saturate(dot(N, L) * 0.5f + 0.5f);
+        color += shadow * LightColor * albedo.rgb * (1.0f - metallic) / PI * (wrap - NdotL);
+    }
 
     // Point lights
     for (int i = 0; i < NumPointLights; ++i)

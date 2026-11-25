@@ -781,7 +781,7 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, boo
          a.detailAlbedoNeutral != b.detailAlbedoNeutral ||
          a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint ||
          a.clearcoat != b.clearcoat || a.clearcoatRoughness != b.clearcoatRoughness ||
-         a.clearcoatMaskFromAlbedoAlpha != b.clearcoatMaskFromAlbedoAlpha))
+         a.clearcoatMaskFromAlbedoAlpha != b.clearcoatMaskFromAlbedoAlpha || a.billboard != b.billboard))
         return false;
     if (gltfExtras)
     {
@@ -1387,6 +1387,73 @@ static void TestClearcoat()
     for (size_t i = 0; i < imported.subMeshes.size(); ++i)
         Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
                 "clearcoat.gltf MeshCache round trip altered clearcoat material");
+    std::filesystem::remove_all(cacheDir);
+}
+
+// Cylindrical billboards (extras.fox.billboard, _BILLBOARD offsets in UV2, bounds grown to
+// every facing), through import and a MeshCache round trip. The fixture's base point (1, 2, 3)
+// is glTF space; the engine's Z mirror puts it at (1, 2, -3).
+static void TestBillboardMaterial()
+{
+    const float offsets[4][2] = { { -2.0f, 0.0f }, { -2.0f, 5.0f }, { 2.0f, 5.0f }, { 2.0f, 0.0f } };
+    const auto approx = [](float a, float b) { return std::fabs(a - b) < 1e-5f; };
+    const auto checkSource = [&](const SE::MeshSourceData& data, const char* label) {
+        const auto check = [label](bool ok, const char* msg) {
+            if (!ok)
+                throw std::runtime_error(std::string("billboard.gltf ") + label + ": " + msg);
+        };
+        check(data.subMeshes.size() == 3, "submesh count mismatch");
+
+        const SE::MeshSubMeshSource& tree = data.subMeshes[0];
+        check(tree.material.billboard, "cylindrical material is not a billboard");
+        check(tree.material.alphaMode == SE::AlphaMode::Cutout, "billboard material is not MASK");
+        check(tree.material.albedo.path == "tree.png" && tree.material.albedo.uvSet == 0,
+              "albedo on uv set 2 did not fall back to set 0");
+        check(tree.vertexCount == 4, "billboard quad vertex count mismatch");
+        for (uint32_t i = 0; i < 4; ++i)
+        {
+            const SE::MeshVertex& v = data.vertices[tree.firstVertex + i];
+            check(v.x == 1.0f && v.y == 2.0f && v.z == -3.0f, "billboard corner left the base point");
+            check(v.u2 == offsets[i][0] && v.v2 == offsets[i][1], "UV2 does not hold the _BILLBOARD offset");
+        }
+        const SE::AABB& bounds = tree.bounds;
+        check(approx(bounds.min.x, -1.0f) && approx(bounds.max.x, 3.0f) &&
+              approx(bounds.min.y, 2.0f) && approx(bounds.max.y, 7.0f) &&
+              approx(bounds.min.z, -5.0f) && approx(bounds.max.z, -1.0f),
+              "submesh bounds do not enclose every facing");
+        check(data.bounds.min.x <= bounds.min.x && data.bounds.min.y <= bounds.min.y &&
+              data.bounds.min.z <= bounds.min.z && data.bounds.max.x >= bounds.max.x &&
+              data.bounds.max.y >= bounds.max.y && data.bounds.max.z >= bounds.max.z,
+              "mesh bounds do not enclose the billboard bounds");
+
+        check(!data.subMeshes[1].material.billboard, "material without the key is a billboard");
+
+        const SE::MeshSubMeshSource& missing = data.subMeshes[2];
+        check(!missing.material.billboard, "billboard primitive without _BILLBOARD stayed a billboard");
+        for (uint32_t i = 0; i < missing.vertexCount; ++i)
+        {
+            const SE::MeshVertex& v = data.vertices[missing.firstVertex + i];
+            check(v.u2 == v.u && v.v2 == v.v, "missing _BILLBOARD did not default UV2 to UV0");
+        }
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/billboard.gltf", imported), "failed to import billboard.gltf");
+    checkSource(imported, "import");
+
+    const std::filesystem::path cacheDir = std::filesystem::temp_directory_path() / "FoxEngineBillboardCache";
+    std::filesystem::remove_all(cacheDir);
+    const SE::MeshCache cache(cacheDir.string());
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load("Assets/TestFixtures/billboard.gltf", firstLoad, {}, nullptr, &hit) && !hit,
+            "billboard.gltf first cache load did not import");
+    Require(cache.Load("Assets/TestFixtures/billboard.gltf", cachedLoad, {}, nullptr, &hit) && hit,
+            "billboard.gltf second cache load missed");
+    checkSource(cachedLoad, "cache");
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+        Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
+                "billboard.gltf MeshCache round trip altered the material");
     std::filesystem::remove_all(cacheDir);
 }
 
@@ -2061,6 +2128,7 @@ static void RunTests()
     TestVertexTint();
     TestTerrainMaterial();
     TestClearcoat();
+    TestBillboardMaterial();
     TestWorldUVAndDetailNeutral();
     std::cout << "LevelAssetTests: all tests passed\n";
 }

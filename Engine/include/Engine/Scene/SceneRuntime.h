@@ -467,7 +467,7 @@ private:
     // same shape and size for the session.
     void LoadActorPrimitive(ActorPart& part);
     std::unordered_map<std::string, AssetHandle<Mesh>> m_primitiveMeshes;
-    // Point lights of enabled actor parts, packed for LightEnvironment::BindPS.
+    // Point lights of enabled actor parts, packed for LightEnvironment::Bind.
     std::vector<LightEnvironment::PointLight> m_actorLights;
 
     // One drawable mesh (a level/actor mesh or vehicle part) with the data

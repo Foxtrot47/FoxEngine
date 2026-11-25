@@ -88,6 +88,7 @@ public:
         float     clearcoat = 0.0f;
         float     clearcoatRoughness = 0.0f;
         bool      clearcoatMaskFromAlbedoAlpha = false;
+        bool      billboard = false; // cylindrical billboard: VS turns the card about +Y to the camera
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -248,8 +249,9 @@ private:
         DirectX::XMFLOAT4 clearcoat = { 0.0f, 0.0f, 0.0f, 0.0f }; // x factor, y roughness, z maskFromAlbedoAlpha, w hasTextures (1 coat, 2 rough)
         DirectX::XMFLOAT4 clearcoatST[2] = { { 1, 1, 0, 0 }, { 1, 1, 0, 0 } }; // 0 coat, 1 coat roughness: xy scale, zw offset
         DirectX::XMFLOAT4 clearcoatUV = { 0.0f, 0.0f, 0.0f, 0.0f }; // x coat uv set, y coat-roughness uv set
+        DirectX::XMFLOAT4 billboardParams = { 0.0f, 0.0f, 0.0f, 0.0f }; // x = 1 cylindrical billboard (VS)
     };
-    static_assert(sizeof(MaterialParamsCBData) == 368, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
+    static_assert(sizeof(MaterialParamsCBData) == 384, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
     struct PlanarReflectionCBData
     {
         DirectX::XMFLOAT4X4 reflectionViewProj;
@@ -308,6 +310,8 @@ private:
     void ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mode);
     void BuildMaterialBinding(const SubMat& mat, MaterialBinding& out) const;
     void BindMaterial(ID3D11DeviceContext* ctx, const MaterialBinding& binding);
+    // Uploads MaterialCB and binds it at b3 for the VS (billboards) and the PS.
+    void UploadMaterialCB(ID3D11DeviceContext* ctx, const MaterialParamsCBData& data);
     void BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat);
     void UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model);
     void UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model,

@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 11;
+constexpr uint32_t k_meshCacheVersion = 12;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -84,7 +84,7 @@ struct SubMeshRecord
     float terrainOverlayStrength, terrainRoughnessScale;
     SlotRecord terrainSlots[k_terrainSlotCount];
     float clearcoat, clearcoatRoughness;
-    uint8_t clearcoatMaskFromAlbedoAlpha, clearcoatPad[3];
+    uint8_t clearcoatMaskFromAlbedoAlpha, billboard, clearcoatPad[2];
     SlotRecord clearcoatSlots[2];
     float boundsMin[3], boundsMax[3]; // mesh space, this submesh only
 };
@@ -400,6 +400,7 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.clearcoat = sub.material.clearcoat;
         record.clearcoatRoughness = sub.material.clearcoatRoughness;
         record.clearcoatMaskFromAlbedoAlpha = sub.material.clearcoatMaskFromAlbedoAlpha ? 1 : 0;
+        record.billboard = sub.material.billboard ? 1 : 0;
         WriteSlot(record.clearcoatSlots[0], sub.material.clearcoatTex, addString(sub.material.clearcoatTex.path));
         WriteSlot(record.clearcoatSlots[1], sub.material.clearcoatRoughnessTex,
                   addString(sub.material.clearcoatRoughnessTex.path));
@@ -590,7 +591,7 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
             sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1 ||
             sub.vertexTint > 2 || sub.detailAlbedoBlend > 2 || sub.kind > 1 ||
             sub.terrainLayerCount > k_maxTerrainLayers || sub.terrainAlbedoAlphaIsRoughness > 1 ||
-            sub.clearcoatMaskFromAlbedoAlpha > 1 ||
+            sub.clearcoatMaskFromAlbedoAlpha > 1 || sub.billboard > 1 ||
             !(sub.detailAlbedoNeutral > 0.0f && sub.detailAlbedoNeutral <= 1.0f))
             return miss("corrupt submesh table");
     }
@@ -670,6 +671,7 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         sub.material.clearcoat = record.clearcoat;
         sub.material.clearcoatRoughness = record.clearcoatRoughness;
         sub.material.clearcoatMaskFromAlbedoAlpha = record.clearcoatMaskFromAlbedoAlpha != 0;
+        sub.material.billboard = record.billboard != 0;
         ReadSlot(record.clearcoatSlots[0], sub.material.clearcoatTex, text(record.clearcoatSlots[0].path));
         ReadSlot(record.clearcoatSlots[1], sub.material.clearcoatRoughnessTex,
                  text(record.clearcoatSlots[1].path));

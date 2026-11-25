@@ -72,6 +72,7 @@ private:
     DirectX::XMMATRIX m_cascadeVP[CSM_NUM_CASCADES] = {};
     float             m_splits[CSM_NUM_CASCADES + 1] = {};
     float             m_texelWorld[CSM_NUM_CASCADES] = {};
+    DirectX::XMFLOAT3 m_toLight = { 0.0f, 1.0f, 0.0f }; // normalised Update lightDir (toward the sun)
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D>           m_depthTex;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView>    m_dsv[CSM_NUM_CASCADES];

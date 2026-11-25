@@ -125,6 +125,7 @@ std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
         material.clearcoat = info.clearcoat;
         material.clearcoatRoughness = info.clearcoatRoughness;
         material.clearcoatMaskFromAlbedoAlpha = info.clearcoatMaskFromAlbedoAlpha;
+        material.billboard = info.billboard;
         material.clearcoatTex = resolve(info.clearcoatTex);
         material.clearcoatRoughnessTex = resolve(info.clearcoatRoughnessTex);
         const auto copySlot = [](const TextureSlot& src, ForwardPipeline::SlotTransform& dst) {

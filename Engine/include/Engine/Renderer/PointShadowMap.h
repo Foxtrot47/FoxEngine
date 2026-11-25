@@ -40,7 +40,7 @@ public:
 private:
     struct CBData
     {
-        DirectX::XMFLOAT4X4 worldViewProj;
+        DirectX::XMFLOAT4X4 viewProj; // face view-projection; the VS transforms world positions
         DirectX::XMFLOAT4X4 world;
         DirectX::XMFLOAT3   lightPos;
         float               lightFar;
