@@ -61,10 +61,10 @@ cbuffer MaterialCB : register(b3)
     // Per-slot UV set and tiling, slots: 0 albedo, 1 normal, 2 roughness (and t7 metallic),
     // 3 emissive, 4 occlusion, 5 detail albedo, 6 detail normal.
     float4 SlotST[7];   // xy scale, zw offset: uv * scale + offset
-    float4 SlotUVA;     // UV set (0..2) of slots 0-3
+    float4 SlotUVA;     // UV set (0..2 = TEXCOORD0..2, 3 = world X/Z) of slots 0-3
     float4 SlotUVB;     // UV set of slots 4-6, w = DetailNormalStrength
     float4 SlotFlags;   // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel (0 R, 1 G)
-    float4 TintParams;  // x = vertex tint mode (0 none, 1 multiply, 2 albedoAlphaMask), y = detail albedo mode (0 overlay, 1 multiply, 2 alphaBlend), z = detail albedo strength
+    float4 TintParams;  // x = vertex tint mode (0 none, 1 multiply, 2 albedoAlphaMask), y = detail albedo mode (0 overlay, 1 multiply, 2 alphaBlend), z = detail albedo strength, w = overlay neutral scale (1 / neutral)
     float4 TerrainScale;   // world X/Z scale of terrain layers A-D
     float4 TerrainParams;  // x layerCount, y albedoAlphaIsRoughness, z overlayStrength, w overlay uvSet
     float4 TerrainParams2; // x splat uvSet
@@ -419,10 +419,11 @@ static const int SLOT_OCCLUSION     = 4;
 static const int SLOT_DETAIL_ALBEDO = 5;
 static const int SLOT_DETAIL_NORMAL = 6;
 
-// Vertex UV set 0..2 (TEXCOORD0..2).
+// Vertex UV set 0..2 (TEXCOORD0..2), or 3 = world planar (WorldPos.xz).
 float2 SetUV(float set, PSIn i)
 {
-    return set > 1.5f ? i.TexCoord2 : (set > 0.5f ? i.TexCoord1 : i.TexCoord);
+    return set > 2.5f ? i.WorldPos.xz
+         : (set > 1.5f ? i.TexCoord2 : (set > 0.5f ? i.TexCoord1 : i.TexCoord));
 }
 
 // Texture coordinate of one material slot: its UV set, then uv * scale + offset.
@@ -516,6 +517,24 @@ PSOut PS_Main(PSIn input)
         tbn_n = normalize(float3(tbn_n.xy + detailN.xy * SlotUVB.w, tbn_n.z));
     }
     float3x3 TBN  = float3x3(normalize(input.T), normalize(input.B), normalize(input.N));
+#if !FOX_TERRAIN
+    // World-planar normal maps (UV set 3) align T with +world X (+u) and B with +world Z (+v).
+    if (SlotUVA.y > 2.5f)
+    {
+        float3 N0 = normalize(input.N);
+        float3 rawT = float3(1.0f, 0.0f, 0.0f) - N0 * N0.x;
+        float  lenSqT = dot(rawT, rawT);
+        if (lenSqT >= 1e-4f)
+        {
+            float3 T = rawT * rsqrt(lenSqT);
+            float3 rawB = float3(0.0f, 0.0f, 1.0f) - N0 * N0.z;
+            rawB -= T * dot(T, rawB);
+            float lenSqB = dot(rawB, rawB);
+            if (lenSqB >= 1e-4f)
+                TBN = float3x3(T, rawB * rsqrt(lenSqB), N0);
+        }
+    }
+#endif
     float3 N      = normalize(mul(tbn_n, TBN));
 
     float3 V        = normalize(CameraPos - input.WorldPos);
@@ -534,7 +553,7 @@ PSOut PS_Main(PSIn input)
         albedo.rgb *= input.Color.rgb;
     }
     // Detail albedo (sRGB rgb, linear alpha):
-    // 0 = overlay (sRGB 0.5 neutral -> linear 1 / 4.59479), 1 = multiply, 2 = alphaBlend.
+    // 0 = overlay (scaled by TintParams.w = 1 / neutral), 1 = multiply, 2 = alphaBlend.
     // Albedo alpha is never changed by detail.
     if (SlotFlags.y > 0.5f)
     {
@@ -545,7 +564,7 @@ PSOut PS_Main(PSIn input)
         else if (TintParams.y > 0.5f)
             albedo.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), detail.rgb, s);
         else
-            albedo.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), detail.rgb * 4.59479f, s);
+            albedo.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), detail.rgb * TintParams.w, s);
     }
     albedo.rgb     *= AlbedoTint;
 

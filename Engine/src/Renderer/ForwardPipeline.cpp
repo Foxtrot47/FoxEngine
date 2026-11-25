@@ -463,9 +463,13 @@ void ForwardPipeline::BuildMaterialBinding(const SubMat& mat, MaterialBinding& o
     mc.slotUVB   = { uvSets[4], uvSets[5], uvSets[6], mat.detailNormalStrength };
     mc.slotFlags = { mat.occlusion ? 1.0f : 0.0f, mat.detailAlbedo ? 1.0f : 0.0f,
                      mat.detailNormal ? 1.0f : 0.0f, static_cast<float>(mat.occlusionChannel) };
+    const float detailNeutral = (mat.detailAlbedoNeutral > 0.0f && mat.detailAlbedoNeutral <= 1.0f)
+                                    ? mat.detailAlbedoNeutral
+                                    : k_defaultDetailAlbedoNeutral;
     mc.tintParams = { static_cast<float>(mat.vertexTint),
                       static_cast<float>(mat.detailAlbedoBlend),
-                      mat.detailAlbedoStrength, 0.0f };
+                      mat.detailAlbedoStrength,
+                      1.0f / detailNeutral };
     const TerrainMat& terrain = mat.terrain;
     const bool isTerrain = mat.kind == MaterialKind::Terrain;
     if (isTerrain)

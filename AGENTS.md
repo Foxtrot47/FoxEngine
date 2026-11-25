@@ -75,7 +75,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | b0 | TransformCB | Model, View, Projection, PrevModel, ViewProjNoJitter, PrevViewProj (row_major), InstanceBase, UseInstances (1: Model/PrevModel from the t29 instance buffer at `InstanceBase + SV_InstanceID`) |
 | b1 | LightCB | LightDir, IBLIntensity, LightColor, CameraPos, LightViewProj |
 | b2 | PointLightCB | PointLight[8] (pos, radius, color), NumPointLights |
-| b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags, tint/detail params, terrain layer scales and params (`TerrainScale`, `TerrainParams`, `TerrainParams2`, `TerrainST`), clearcoat params (`Clearcoat`, `ClearcoatST`, `ClearcoatUV`) (`MaterialParamsCBData` mirrors it, size asserted) |
+| b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`, UV set 3 = world X/Z), slot flags, tint/detail params (`TintParams.w` = `1 / detailAlbedoNeutral` overlay neutral), terrain layer scales and params (`TerrainScale`, `TerrainParams`, `TerrainParams2`, `TerrainST`), clearcoat params (`Clearcoat`, `ClearcoatST`, `ClearcoatUV`) (`MaterialParamsCBData` mirrors it, size asserted) |
 | b4 | ForwardShadowCB | NumPointShadowCasters, PointShadowBias, FrameIndex, CutoutDitherWidth (temporal cutout dither) |
 | b9 | ReflectionProbeCB | ProbeCenter[8], ProbeExtents[8] (xyz half extents, w blendDistance), ProbeInfo (x count, y mip count) |
 
@@ -95,7 +95,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t11 | BRDF integration LUT |
 | t12 | Optional planar reflection |
 | t13 | Occlusion (glTF `occlusionTexture`; multiplies IBL ambient only) |
-| t14 | Detail albedo (`extras.fox.detailAlbedo`, ×4.59 around sRGB mid-grey) |
+| t14 | Detail albedo (`extras.fox.detailAlbedo`, overlay scaled by `1 / neutral`, default ×4.59 around sRGB mid-grey) |
 | t15 | Detail normal (`extras.fox.detailNormal`, UDN blend) |
 | t16–t19 | Terrain layer albedo A–D (`FOX_TERRAIN` permutation; alpha = roughness when `albedoAlphaIsRoughness`) |
 | t20 | Terrain splat (layers B, C, D lerp over A by R, G, B) |
@@ -249,6 +249,7 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 - glTF (`.gltf`/`.glb`) is read natively with cgltf (`Renderer/GltfImport.cpp`; MikkTSpace tangents when the file has none; Draco/meshopt compression is rejected); Assimp imports FBX, OBJ and everything else. `Mesh::Import` takes an optional `MeshImporter` to force either path; both produce the same left-handed output (Z mirrored, node transforms baked, one submesh per primitive instance in mesh order). `MeshCache` cooks imported meshes to `Cache/Meshes/*.fxmesh` (zstd, 256 KiB blocks) on first load or via `FoxCook` (`Tools/FoxCook`).
 - Cooked entries invalidate when the source or any side file the importer read (`.bin`, `.mtl`, `.foxmat`, ...) changes, when the importer (cgltf or Assimp) or its version changes, or when `k_meshCacheVersion` is bumped; a missing source loads its cooked entry.
 - Layered terrain: a glTF material whose `extras.fox.material` names a `.foxmat` sidecar (JSON, path relative to the glTF; `format` `"FoxMaterial"`, `version` 1, `type` `"terrain"`, 1–4 `layers` of `albedo`/optional `normal`/`worldScale`, `albedoAlphaIsRoughness`, `splat {texture, uvSet, uvScale}`, optional `overlay {texture, uvSet, uvScale, strength}`, `roughnessScale`; `uvScale` is an optional `[sx, sy]`; texture paths relative to the sidecar) becomes `MaterialKind::Terrain`. Layers tile world X/Z × `worldScale` and are drawn by `Basic.hlsl` compiled with `FOX_TERRAIN=1`; an invalid sidecar logs `foxmat '<path>': <reason>` and keeps the glTF's own material.
+- World-planar slots & detail neutral: glTF `extras.fox.worldUV` maps named texture slots to UV set 3 (world X/Z × scale, zero offset; normal maps on world UVs use a world-aligned tangent frame), and `extras.fox.detailAlbedo.neutral` sets the linear neutral value for overlay blending (default `0.2176376`).
 - Textures still use offline BC DDS from `Tools/ConvertTextures.ps1`.
 
 ## Current Milestone Roadmap

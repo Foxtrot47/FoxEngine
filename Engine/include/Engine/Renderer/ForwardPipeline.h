@@ -68,6 +68,7 @@ public:
         uint8_t   occlusionChannel = 0;      // 0 = R, 1 = G
         DetailBlend detailAlbedoBlend = DetailBlend::Overlay;
         float     detailAlbedoStrength = 1.0f;
+        float     detailAlbedoNeutral = k_defaultDetailAlbedoNeutral;
         float     detailNormalStrength = 1.0f;
         AlphaMode alphaMode  = AlphaMode::Opaque;
         float     alphaCutoff = 0.5f;
@@ -239,7 +240,7 @@ private:
         DirectX::XMFLOAT4 slotUVA;   // UV set of slots 0-3
         DirectX::XMFLOAT4 slotUVB;   // UV set of slots 4-6, w = detail normal strength
         DirectX::XMFLOAT4 slotFlags; // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel
-        DirectX::XMFLOAT4 tintParams = { 0.0f, 0.0f, 1.0f, 0.0f }; // x = VertexTint (0..2), y = DetailBlend (0..2), z = detailAlbedoStrength
+        DirectX::XMFLOAT4 tintParams = { 0.0f, 0.0f, 1.0f, 4.59479f }; // x = VertexTint (0..2), y = DetailBlend (0..2), z = detailAlbedoStrength, w = 1 / detailAlbedoNeutral
         DirectX::XMFLOAT4 terrainScale = { 1.0f, 1.0f, 1.0f, 1.0f }; // world X/Z scale of layers A-D
         DirectX::XMFLOAT4 terrainParams;  // x layerCount, y albedoAlphaIsRoughness, z overlayStrength, w overlay uvSet
         DirectX::XMFLOAT4 terrainParams2; // x splat uvSet

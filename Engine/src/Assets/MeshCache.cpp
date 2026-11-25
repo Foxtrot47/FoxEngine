@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 10;
+constexpr uint32_t k_meshCacheVersion = 11;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -77,7 +77,7 @@ struct SubMeshRecord
     uint32_t firstVertex, vertexCount, firstIndex, indexCount;
     SlotRecord slots[k_slotCount];
     float alphaCutoff, roughnessFactor, glossinessFactor;
-    float occlusionStrength, detailAlbedoStrength, detailNormalStrength;
+    float occlusionStrength, detailAlbedoStrength, detailAlbedoNeutral, detailNormalStrength;
     uint8_t alphaMode, workflow, occlusionChannel, vertexTint;
     uint8_t detailAlbedoBlend, kind, terrainLayerCount, terrainAlbedoAlphaIsRoughness;
     float terrainLayerScale[k_maxTerrainLayers];
@@ -93,7 +93,7 @@ static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
 static_assert(sizeof(FileHeader) == 96, ".fxmesh FileHeader size");
 static_assert(sizeof(DependencyRecord) == 24, ".fxmesh DependencyRecord size");
 static_assert(sizeof(SlotRecord) == 28, ".fxmesh SlotRecord size");
-static_assert(sizeof(SubMeshRecord) == 640, ".fxmesh SubMeshRecord size");
+static_assert(sizeof(SubMeshRecord) == 644, ".fxmesh SubMeshRecord size");
 
 // SubMeshInfo slots in SubMeshRecord::slots order (const or mutable pointers).
 template <typename Info>
@@ -379,6 +379,7 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.glossinessFactor = sub.material.glossinessFactor;
         record.occlusionStrength = sub.material.occlusionStrength;
         record.detailAlbedoStrength = sub.material.detailAlbedoStrength;
+        record.detailAlbedoNeutral = sub.material.detailAlbedoNeutral;
         record.detailNormalStrength = sub.material.detailNormalStrength;
         record.alphaMode = static_cast<uint8_t>(sub.material.alphaMode);
         record.workflow = static_cast<uint8_t>(sub.material.workflow);
@@ -572,24 +573,25 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         for (const SlotRecord& slot : sub.slots)
         {
             if (!validRef(slot.path)) return miss("corrupt string table");
-            if (slot.uvSet > 2) return miss("corrupt submesh table");
+            if (slot.uvSet > 3) return miss("corrupt submesh table");
         }
         for (const SlotRecord& slot : sub.terrainSlots)
         {
             if (!validRef(slot.path)) return miss("corrupt string table");
-            if (slot.uvSet > 2) return miss("corrupt submesh table");
+            if (slot.uvSet > 3) return miss("corrupt submesh table");
         }
         for (const SlotRecord& slot : sub.clearcoatSlots)
         {
             if (!validRef(slot.path)) return miss("corrupt string table");
-            if (slot.uvSet > 2) return miss("corrupt submesh table");
+            if (slot.uvSet > 3) return miss("corrupt submesh table");
         }
         if (uint64_t(sub.firstVertex) + sub.vertexCount > header.vertexCount ||
             uint64_t(sub.firstIndex) + sub.indexCount > header.indexCount ||
             sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1 ||
             sub.vertexTint > 2 || sub.detailAlbedoBlend > 2 || sub.kind > 1 ||
             sub.terrainLayerCount > k_maxTerrainLayers || sub.terrainAlbedoAlphaIsRoughness > 1 ||
-            sub.clearcoatMaskFromAlbedoAlpha > 1)
+            sub.clearcoatMaskFromAlbedoAlpha > 1 ||
+            !(sub.detailAlbedoNeutral > 0.0f && sub.detailAlbedoNeutral <= 1.0f))
             return miss("corrupt submesh table");
     }
     if (text(header.sourceKey) != key) return miss("key collision");
@@ -646,6 +648,7 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         sub.material.occlusionChannel = record.occlusionChannel;
         sub.material.detailAlbedoBlend = static_cast<DetailBlend>(record.detailAlbedoBlend);
         sub.material.detailAlbedoStrength = record.detailAlbedoStrength;
+        sub.material.detailAlbedoNeutral = record.detailAlbedoNeutral;
         sub.material.detailNormalStrength = record.detailNormalStrength;
         sub.material.alphaMode = static_cast<AlphaMode>(record.alphaMode);
         sub.material.alphaCutoff = record.alphaCutoff;

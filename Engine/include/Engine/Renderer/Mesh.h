@@ -41,7 +41,7 @@ enum class DetailBlend : uint8_t { Overlay, Multiply, AlphaBlend };
 enum class MaterialKind : uint8_t { Standard, Terrain };
 
 // One material texture: path relative to GetDirectory() (empty = no texture), the UV
-// set it samples (0..2 = TEXCOORD_0..2) and its tiling, applied as uv * scale + offset.
+// set it samples (0..2 = TEXCOORD_0..2, 3 = world X/Z) and its tiling, applied as uv * scale + offset.
 struct TextureSlot
 {
     std::string path;
@@ -51,6 +51,8 @@ struct TextureSlot
 };
 
 constexpr uint32_t k_maxTerrainLayers = 4;
+// Linear neutral value of an sRGB 0.5 mid-grey detail overlay texture (1 / 4.59479).
+constexpr float k_defaultDetailAlbedoNeutral = 0.2176376f;
 
 // Layered terrain from a .foxmat sidecar (glTF extras.fox.material). Layer i samples
 // world X/Z * layerScale[i]; layers B..D lerp over A by splat R, G, B; the overlay
@@ -75,6 +77,7 @@ struct SubMeshInfo
     uint8_t     occlusionChannel = 0;        // 0 = R, 1 = G
     DetailBlend detailAlbedoBlend = DetailBlend::Overlay;
     float       detailAlbedoStrength = 1.0f;
+    float       detailAlbedoNeutral = k_defaultDetailAlbedoNeutral;
     float       detailNormalStrength = 1.0f;
     AlphaMode   alphaMode = AlphaMode::Opaque;
     float       alphaCutoff = 0.5f;

@@ -176,8 +176,8 @@ TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, co
     return slot;
 }
 
-// materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength), detailNormal (+ strength),
-// vertexTint, clearcoatMask, material (.foxmat sidecar path relative to the glTF file, returned in `foxmat`).
+// materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength/neutral), detailNormal (+ strength),
+// worldUV, vertexTint, clearcoatMask, material (.foxmat sidecar path relative to the glTF file, returned in `foxmat`).
 void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
                    SubMeshInfo& out, std::string& foxmat)
 {
@@ -233,6 +233,18 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
         const auto strength = detailAlbedo->find("strength");
         if (strength != detailAlbedo->end() && strength->is_number())
             out.detailAlbedoStrength = strength->get<float>();
+        const auto neutral = detailAlbedo->find("neutral");
+        if (neutral != detailAlbedo->end())
+        {
+            float value = 0.0f;
+            if (neutral->is_number())
+                value = neutral->get<float>();
+            if (neutral->is_number() && std::isfinite(value) && value > 0.0f && value <= 1.0f)
+                out.detailAlbedoNeutral = value;
+            else
+                SE_LOG_WARN("glTF material '%s': invalid detailAlbedo neutral",
+                            material->name ? material->name : "");
+        }
     }
     const auto detailNormal = fox->find("detailNormal");
     if (detailNormal != fox->end() && detailNormal->is_object())
@@ -241,6 +253,45 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
         const auto strength = detailNormal->find("strength");
         if (strength != detailNormal->end() && strength->is_number())
             out.detailNormalStrength = strength->get<float>();
+    }
+    const auto worldUV = fox->find("worldUV");
+    if (worldUV != fox->end() && worldUV->is_object())
+    {
+        const auto slotByName = [&out](const std::string& name) -> TextureSlot* {
+            if (name == "baseColor")         return &out.albedo;
+            if (name == "normal")            return &out.normal;
+            if (name == "metallicRoughness") return &out.roughness;
+            if (name == "emissive")          return &out.emissive;
+            if (name == "occlusion")         return &out.occlusion;
+            if (name == "detailAlbedo")      return &out.detailAlbedo;
+            if (name == "detailNormal")      return &out.detailNormal;
+            return nullptr;
+        };
+        for (const auto& entry : worldUV->items())
+        {
+            TextureSlot* slot = slotByName(entry.key());
+            const nlohmann::json& value = entry.value();
+            bool valid = slot != nullptr && value.is_array() && value.size() == 2 &&
+                         value[0].is_number() && value[1].is_number();
+            float sx = 0.0f, sy = 0.0f;
+            if (valid)
+            {
+                sx = value[0].get<float>();
+                sy = value[1].get<float>();
+                valid = std::isfinite(sx) && sx > 0.0f && std::isfinite(sy) && sy > 0.0f;
+            }
+            if (!valid)
+            {
+                SE_LOG_WARN("glTF material '%s': invalid worldUV entry '%s'",
+                            material->name ? material->name : "", entry.key().c_str());
+                continue;
+            }
+            slot->uvSet = 3;
+            slot->scale[0] = sx;
+            slot->scale[1] = sy;
+            slot->offset[0] = 0.0f;
+            slot->offset[1] = 0.0f;
+        }
     }
     const auto vertexTint = fox->find("vertexTint");
     if (vertexTint != fox->end())

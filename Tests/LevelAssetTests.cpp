@@ -778,6 +778,7 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, boo
          !SameSlot(a.clearcoatRoughnessTex, b.clearcoatRoughnessTex, true) ||
          a.occlusionStrength != b.occlusionStrength || a.occlusionChannel != b.occlusionChannel ||
          a.detailAlbedoBlend != b.detailAlbedoBlend || a.detailAlbedoStrength != b.detailAlbedoStrength ||
+         a.detailAlbedoNeutral != b.detailAlbedoNeutral ||
          a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint ||
          a.clearcoat != b.clearcoat || a.clearcoatRoughness != b.clearcoatRoughness ||
          a.clearcoatMaskFromAlbedoAlpha != b.clearcoatMaskFromAlbedoAlpha))
@@ -1386,6 +1387,64 @@ static void TestClearcoat()
     for (size_t i = 0; i < imported.subMeshes.size(); ++i)
         Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
                 "clearcoat.gltf MeshCache round trip altered clearcoat material");
+    std::filesystem::remove_all(cacheDir);
+}
+
+// World-planar slots (extras.fox.worldUV -> uvSet 3, zero offset) and detail albedo
+// overlay neutral (extras.fox.detailAlbedo.neutral), through import and MeshCache round trip.
+static void TestWorldUVAndDetailNeutral()
+{
+    const auto same = [](float a, float b) { return std::fabs(a - b) < 1e-6f; };
+    const auto checkSlot = [&](const SE::TextureSlot& slot, const char* path, uint8_t uvSet,
+                               float sx, float sy, float ox, float oy, const char* label) {
+        if (slot.path != path || slot.uvSet != uvSet || !same(slot.scale[0], sx) || !same(slot.scale[1], sy) ||
+            !same(slot.offset[0], ox) || !same(slot.offset[1], oy))
+            throw std::runtime_error(std::string("world_uv.gltf: ") + label + " slot mismatch");
+    };
+    const auto checkSource = [&](const SE::MeshSourceData& data) {
+        Require(data.subMeshes.size() == 3, "world_uv.gltf submesh count mismatch");
+
+        const SE::SubMeshInfo& world = data.subMeshes[0].material;
+        checkSlot(world.albedo, "albedo.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "albedo");
+        checkSlot(world.normal, "normal.png", 3, 0.2f, 0.2f, 0.0f, 0.0f, "world normal");
+        checkSlot(world.detailAlbedo, "detail.png", 3, 0.25f, 0.5f, 0.0f, 0.0f, "world detail albedo");
+        checkSlot(world.roughness, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "roughness");
+        checkSlot(world.emissive, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "emissive");
+        checkSlot(world.occlusion, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "occlusion");
+        checkSlot(world.detailNormal, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "detail normal");
+        Require(same(world.detailAlbedoNeutral, 0.47f), "world_uv.gltf detailAlbedoNeutral mismatch");
+
+        const SE::SubMeshInfo& defaults = data.subMeshes[1].material;
+        checkSlot(defaults.albedo, "albedo.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default albedo");
+        checkSlot(defaults.detailAlbedo, "detail.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default detail albedo");
+        Require(same(defaults.detailAlbedoNeutral, 0.2176376f),
+                "world_uv.gltf absent detailAlbedo.neutral did not default to 0.2176376");
+
+        const SE::SubMeshInfo& invalid = data.subMeshes[2].material;
+        checkSlot(invalid.albedo, "albedo.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "invalid worldUV albedo");
+        checkSlot(invalid.normal, "normal.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "invalid worldUV normal");
+        checkSlot(invalid.detailAlbedo, "detail.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "invalid neutral detail");
+        Require(same(invalid.detailAlbedoNeutral, 0.2176376f),
+                "world_uv.gltf invalid detailAlbedo.neutral did not fall back to default");
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/world_uv.gltf", imported), "failed to import world_uv.gltf");
+    checkSource(imported);
+
+    const std::filesystem::path cacheDir = std::filesystem::temp_directory_path() / "FoxEngineWorldUVCache";
+    std::filesystem::remove_all(cacheDir);
+    const SE::MeshCache cache(cacheDir.string());
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load("Assets/TestFixtures/world_uv.gltf", firstLoad, {}, nullptr, &hit) && !hit,
+            "world_uv.gltf first cache load did not import");
+    Require(cache.Load("Assets/TestFixtures/world_uv.gltf", cachedLoad, {}, nullptr, &hit) && hit,
+            "world_uv.gltf second cache load missed");
+    checkSource(cachedLoad);
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+        Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
+                "world_uv.gltf MeshCache round trip altered material");
     std::filesystem::remove_all(cacheDir);
 }
 
@@ -2002,6 +2061,7 @@ static void RunTests()
     TestVertexTint();
     TestTerrainMaterial();
     TestClearcoat();
+    TestWorldUVAndDetailNeutral();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 
