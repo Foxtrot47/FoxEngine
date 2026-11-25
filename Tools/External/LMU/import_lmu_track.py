@@ -298,9 +298,9 @@ class TrackMaterialBuilder(MaterialBuilder):
 
         albedo, mr, normal = first(r"_ALB[A-Z]?$"), first(r"_MR$"), first(r"_NM$")
         if albedo:
-            mat.base_color = self.textures.copy(albedo)
             if cutout_alpha(albedo):
                 mat.alpha_mode = "MASK"
+            mat.base_color = self.textures.copy(albedo, self._mask_cutoff(mat))
         else:
             self._solid_color(mat, self._mean_color(None))
         if normal:

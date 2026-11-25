@@ -295,9 +295,12 @@ class TextureWriter:
         self.written = set()
         self.tmp = Path(tempfile.mkdtemp(prefix="lmu_import_"))
 
-    def _texconv(self, src, fmt, width, height):
+    def _texconv(self, src, fmt, width, height, cutoff=None):
         cmd = [str(TEXCONV), "-nologo", "-y", "-m", "0", "-f", fmt, "-w", str(width),
-               "-h", str(height), "-o", str(self.dir), str(src)]
+               "-h", str(height), "-o", str(self.dir)]
+        if cutoff is not None:
+            cmd += ["-keepcoverage", f"{cutoff:g}"]
+        cmd.append(str(src))
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"texconv failed for {src}:\n{result.stdout}{result.stderr}")
@@ -306,28 +309,32 @@ class TextureWriter:
         scale = min(1.0, self.max_size / max(width, height))
         return max(4, int(width * scale)), max(4, int(height * scale))
 
-    def copy(self, src):
-        """Source DDS as-is (or downscaled to max_size in its own format)."""
+    def copy(self, src, cutoff=None):
+        """Source DDS as-is (or downscaled to max_size in its own format).
+
+        `cutoff` (a MASK albedo's alpha cutoff) recompresses through texconv with
+        -keepcoverage even when the size is unchanged, so a cutout keeps its
+        coverage once the block compressor has run over its alpha."""
         name = src.stem.lower() + ".dds"
         if name not in self.written:
             width, height, mips, fmt = dds_info(src)
             w, h = self._fit(width, height)
-            if (w, h) == (width, height) and mips > 1:
+            if cutoff is None and (w, h) == (width, height) and mips > 1:
                 shutil.copyfile(src, self.dir / name)
             else:
                 staged = self.tmp / name
                 shutil.copyfile(src, staged)
-                self._texconv(staged, DXGI_TEXCONV[fmt], w, h)
+                self._texconv(staged, DXGI_TEXCONV[fmt], w, h, cutoff)
             self.written.add(name)
         return "textures/" + name
 
-    def encode(self, name, rgba, fmt="BC7_UNORM"):
-        """Float RGBA image -> compressed DDS with mips."""
+    def encode(self, name, rgba, fmt="BC7_UNORM", cutoff=None):
+        """Float RGBA image -> compressed DDS with mips (see `copy` for `cutoff`)."""
         name = name.lower()
         png = self.tmp / (Path(name).stem + ".png")
         Image.fromarray((np.clip(rgba, 0, 1) * 255 + 0.5).astype(np.uint8), "RGBA").save(png)
         w, h = self._fit(rgba.shape[1], rgba.shape[0])
-        self._texconv(png, fmt, w, h)
+        self._texconv(png, fmt, w, h, cutoff)
         self.written.add(name)
         return "textures/" + name
 
@@ -617,9 +624,16 @@ class MaterialBuilder:
         packed = np.stack([np.ones_like(metal), rough, metal, np.ones_like(metal)], axis=-1)
         mat.metal_rough = TextureSlot(self.textures.encode(f"{mat.name}_mr.dds", packed))
 
-    def _copy_slot(self, mat, attribute, slot):
+    def _copy_slot(self, mat, attribute, slot, cutoff=None):
         """Stores a stage slot's texture, TEXCOORD set and tiling on the material."""
-        setattr(mat, attribute, TextureSlot(self.textures.copy(slot.path), slot.uv_set, slot.scale))
+        setattr(mat, attribute,
+                TextureSlot(self.textures.copy(slot.path, cutoff), slot.uv_set, slot.scale))
+
+    @staticmethod
+    def _mask_cutoff(mat):
+        """texconv -keepcoverage value of an albedo whose alpha is a cutout
+        (only MASK materials sample the albedo alpha)."""
+        return 0.5 if mat.alpha_mode == "MASK" else None
 
     def _override_texture(self, name):
         """Replacement base color for a named material (vehicle liveries)."""
@@ -658,7 +672,6 @@ class MaterialBuilder:
         self._json_occlusion(mat, lmu)
         self._json_detail(mat, lmu, name)
         self._json_clearcoat(mat, lmu)
-        mat.alpha_mode = self._alpha_mode(lmu, albedo)
         mapping = "" if (mat.uv_source, mat.uv_scale) == ("UV_A", (1.0, 1.0)) else \
             f" {mat.uv_source}*{list(mat.uv_scale)}"
         detail = [label for label, attribute in (("alb", "detail_albedo"), ("nrm", "detail_normal"))
@@ -688,14 +701,19 @@ class MaterialBuilder:
 
     def _json_base_color(self, mat, name, lmu):
         """Override, else the albedo map with its mapping, else its mean color.
-        Returns the texture used, if any."""
+        Also decides the alpha mode from the albedo's source texture, so a MASK
+        albedo is written with its cutout coverage kept. Returns the texture
+        used, if any."""
         override = self._override_texture(name)
+        slot = None if override else lmu.slot("albedo")
+        albedo = override or (slot.path if slot else None)
+        mat.alpha_mode = self._alpha_mode(lmu, albedo)
+        cutoff = self._mask_cutoff(mat)
         if override:
-            mat.base_color = TextureSlot(self.textures.copy(override))
+            mat.base_color = TextureSlot(self.textures.copy(override, cutoff))
             return override
-        slot = lmu.slot("albedo")
         if slot:
-            self._copy_slot(mat, "base_color", slot)
+            self._copy_slot(mat, "base_color", slot, cutoff)
             return slot.path
         found = lmu.stage("albedo")
         self._solid_color(mat, self._mean_color(found[0] if found else None))
