@@ -38,7 +38,9 @@ Pipeline:
              except Moveable instances (ground ad and speed-limit signs): their
              vertices are rotated in place but centred on the origin, and the
              game puts them at the GMT header pivot, so the pivot is added.
-             Every other track mesh has a zero pivot.
+             Every other track mesh has a zero pivot. Billboards (trees,
+             bushes, crowds) are expanded from their UV_D corner offsets,
+             see expand_billboards.
     material .json -> glTF metallic-roughness (lmu_assets.MaterialBuilder),
              plus what track shaders need: the albedo stage's UV scale or
              WorldPlanar mapping is baked into TEXCOORD_0, other WorldPlanar
@@ -284,6 +286,11 @@ class TrackMaterialBuilder(MaterialBuilder):
         definition = self.raw.json(name)
         return bool(definition and SKIP_SHADERS.search(definition.get("shader", "")))
 
+    def camera_facing(self, name):
+        """True for materials whose billboards LMU turns toward the camera."""
+        definition = self.raw.json(name)
+        return bool(definition) and definition.get("shader", "").startswith("L2IBLVEGETATION")
+
     def _alpha_mode(self, lmu, albedo):
         mode = super()._alpha_mode(lmu, albedo)
         if mode == "OPAQUE" and albedo and not self._alpha_is_data(lmu) and cutout_alpha(albedo):
@@ -473,6 +480,47 @@ class TerrainMaterials:
 
 
 # --------------------------------------------------------------------------- geometry
+
+UP = np.array([0.0, 1.0, 0.0])
+
+
+def expand_billboards(gmt, builder):
+    """Expand an LMU mesh's billboard quads in place; returns how many.
+
+    LMU stores all four corners of a billboard at its base point, with each
+    corner's offset (side, up) in metres in UV_D, and its shader spreads them:
+    along the stored tangent for crowd cards, which keep their authored facing,
+    and toward the camera for L2IBLVEGETATION trees and bushes, whose tangents
+    are all +X. The engine has no camera-facing quads, so those become two
+    cards crossed at right angles (cutout materials draw both sides)."""
+    a, b, c = (gmt.pos[gmt.tris[:, k]] for k in range(3))
+    flat = np.linalg.norm(np.cross(b - a, c - a), axis=1) <= 1e-12
+    corners = np.unique(gmt.tris[flat])
+    corners = corners[np.abs(gmt.uv_d[corners]).max(axis=1) > 1e-6]
+    if not len(corners):
+        return 0
+    base = gmt.pos.copy()
+    gmt.pos[corners] += gmt.tangent[corners] * gmt.uv_d[corners, :1] + UP * gmt.uv_d[corners, 1:]
+    quads = flat & np.isin(gmt.tris, corners).all(axis=1)
+    sprites = [i for i, (name, _) in enumerate(gmt.materials) if builder.camera_facing(name)]
+    crossed = quads & np.isin(gmt.face_mat, sprites)
+    if crossed.any():
+        src = np.unique(gmt.tris[crossed])
+        remap = np.full(len(gmt.pos), -1, dtype=np.int64)
+        remap[src] = len(gmt.pos) + np.arange(len(src))
+        turn = lambda v: np.stack([-v[:, 2], v[:, 1], v[:, 0]], axis=1)  # 90 degrees about +Y
+        tangent = turn(gmt.tangent[src])
+        added = {
+            "pos": base[src] + tangent * gmt.uv_d[src, :1] + UP * gmt.uv_d[src, 1:],
+            "nrm": turn(gmt.nrm[src]), "tangent": tangent, "bitangent": gmt.bitangent[src],
+            "uv": gmt.uv[src], "uv_b": gmt.uv_b[src], "uv_c": gmt.uv_c[src], "uv_d": gmt.uv_d[src],
+        }
+        for key, values in added.items():
+            setattr(gmt, key, np.concatenate([getattr(gmt, key), values]))
+        gmt.tris = np.concatenate([gmt.tris, remap[gmt.tris[crossed]]])
+        gmt.face_mat = np.concatenate([gmt.face_mat, gmt.face_mat[crossed]])
+    return int(quads.sum()) // 2
+
 
 class CellGrid:
     """Output files: {stem: (kind, {material name: Primitive})} in glTF space.
@@ -693,7 +741,7 @@ def main():
     grid = CellGrid(args.cell_size)
     terrain = TerrainMaterials(raw, textures, builder)
 
-    gmts, surfaces, counts = {}, [], defaultdict(int)
+    gmts, surfaces, counts, billboards = {}, [], defaultdict(int), 0
     instances, shadow_distance = read_scn(scn)
     probes = read_probes(instances, raw)
     for instance in instances:
@@ -710,6 +758,8 @@ def main():
                     continue
                 gmt = Gmt(path, with_materials=kind != "collision")
                 gmt.pos = gmt.pos + gmt.pivot
+                if kind != "collision":
+                    billboards += expand_billboards(gmt, builder)
                 gmts[key] = gmt
             counts[kind] += grid.add(kind, gmts[key], builder, terrain)
             if kind == "surface":
@@ -736,7 +786,7 @@ def main():
     print(f"Output: {args.out}  scene: {args.scene}")
     print("Triangles: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     print(f"  {len(mesh_entries)} meshes, {len(builder.cache)} materials, {len(textures.written)} textures")
-    print(f"  {len(probes)} reflection probes")
+    print(f"  {len(probes)} reflection probes, {billboards} billboards")
     print(f"  pole {rounded(pole, 3)} yaw {yaw:.2f} (surface {'found' if ground is not None else 'missing'})")
     print("Materials:")
     for line in builder.report + terrain.report:

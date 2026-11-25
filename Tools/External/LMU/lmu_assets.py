@@ -121,6 +121,9 @@ class Gmt:
         self.bitangent = raw[:, 52:64].copy().view("<f4").astype(np.float64)
         self.uv_b = raw[:, 72:80].copy().view("<f4").astype(np.float64)  # LMU UV_B
         self.uv_c = raw[:, 80:88].copy().view("<f4").astype(np.float64)  # LMU UV_C
+        # LMU UV_D; on billboard quads (all four corners at one point) it is the
+        # corner offset (side, up) in metres, see import_lmu_track.expand_billboards.
+        self.uv_d = raw[:, 88:96].copy().view("<f4").astype(np.float64)
         if with_materials:
             self.materials = self._materials(d)
             self.face_mat = self._face_materials(faces["mat"])
