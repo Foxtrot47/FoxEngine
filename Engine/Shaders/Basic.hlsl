@@ -96,19 +96,25 @@ struct VSIn
     float2 TexCoord  : TEXCOORD;
     float3 Tangent   : TANGENT;
     float3 Bitangent : BINORMAL;
+    float2 TexCoord1 : TEXCOORD1;
+    float2 TexCoord2 : TEXCOORD2;
+    float4 Color     : COLOR0;
 };
 
 struct PSIn
 {
-    float4 Position : SV_POSITION;
-    float3 WorldPos : TEXCOORD1;
-    float2 TexCoord : TEXCOORD0;
-    float3 T        : TEXCOORD2;
-    float3 B        : TEXCOORD3;
-    float3 N        : TEXCOORD4;
-    float  ViewZ    : TEXCOORD5;
-    float4 CurrClip : TEXCOORD6;  // jitter-free clip pos, current frame
-    float4 PrevClip : TEXCOORD7;  // jitter-free clip pos, last frame
+    float4 Position  : SV_POSITION;
+    float3 WorldPos  : TEXCOORD1;
+    float2 TexCoord  : TEXCOORD0;
+    float3 T         : TEXCOORD2;
+    float3 B         : TEXCOORD3;
+    float3 N         : TEXCOORD4;
+    float  ViewZ     : TEXCOORD5;
+    float4 CurrClip  : TEXCOORD6;  // jitter-free clip pos, current frame
+    float4 PrevClip  : TEXCOORD7;  // jitter-free clip pos, last frame
+    float2 TexCoord1 : TEXCOORD8;
+    float2 TexCoord2 : TEXCOORD9;
+    float4 Color     : COLOR0;
 };
 
 PSIn VS_Main(VSIn input)
@@ -122,6 +128,9 @@ PSIn VS_Main(VSIn input)
     o.CurrClip   = mul(world, ViewProjNoJitter);
     o.PrevClip   = mul(mul(float4(input.Position, 1.0f), PrevModel), PrevViewProj);
     o.TexCoord   = input.TexCoord;
+    o.TexCoord1  = input.TexCoord1;
+    o.TexCoord2  = input.TexCoord2;
+    o.Color      = input.Color;
     float3x3 m3  = (float3x3)Model;
     o.T = normalize(mul(input.Tangent,   m3));
     o.B = normalize(mul(input.Bitangent, m3));

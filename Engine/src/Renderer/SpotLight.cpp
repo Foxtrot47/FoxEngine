@@ -1,6 +1,8 @@
 #include "Engine/Renderer/SpotLight.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/MeshVertexLayout.h"
 #include <cmath>
+#include <iterator>
 
 using namespace DirectX;
 
@@ -52,15 +54,8 @@ bool SpotLight::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t reso
     if (!m_shadowPerm) { SE_LOG_ERROR("SpotLight: ShadowDepth.hlsl not found"); return false; }
 
     // Create input layout for shadow pass (must match MeshVertex stride)
-    D3D11_INPUT_ELEMENT_DESC layoutDesc[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
     hr = device->CreateInputLayout(
-        layoutDesc, 5,
+        k_meshInputLayout, static_cast<UINT>(std::size(k_meshInputLayout)),
         m_shadowPerm->vsBlob->GetBufferPointer(),
         m_shadowPerm->vsBlob->GetBufferSize(),
         m_inputLayout.GetAddressOf());

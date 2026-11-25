@@ -178,6 +178,15 @@ static void CollectNodeTransforms(const aiNode* node, const aiMatrix4x4& parent,
         CollectNodeTransforms(node->mChildren[i], world, out);
 }
 
+static uint32_t PackColorRGBA8(float r, float g, float b, float a)
+{
+    const auto toByte = [](float x) -> uint32_t {
+        const float clamped = x > 0.0f ? (x < 1.0f ? x : 1.0f) : 0.0f;
+        return static_cast<uint32_t>(clamped * 255.0f + 0.5f);
+    };
+    return toByte(r) | (toByte(g) << 8) | (toByte(b) << 16) | (toByte(a) << 24);
+}
+
 static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v,
                              const aiMatrix4x4& world, const aiMatrix3x3& normalMat,
                              bool applyTransform)
@@ -188,6 +197,8 @@ static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v,
     aiVector3D b   = mesh->mBitangents ? mesh->mBitangents[v] : aiVector3D(0, 1, 0);
     const aiVector3D uv  = mesh->mTextureCoords[0] ? mesh->mTextureCoords[0][v]
                                                    : aiVector3D(0, 0, 0);
+    const aiVector3D uv1 = mesh->mTextureCoords[1] ? mesh->mTextureCoords[1][v] : uv;
+    const aiVector3D uv2 = mesh->mTextureCoords[2] ? mesh->mTextureCoords[2][v] : uv;
     if (applyTransform)
     {
         pos = world * pos;
@@ -201,6 +212,13 @@ static MeshVertex ReadVertex(const aiMesh* mesh, uint32_t v,
     vtx.u = uv.x;   vtx.v = uv.y;
     vtx.tx = t.x;   vtx.ty = t.y;   vtx.tz = t.z;
     vtx.bx = b.x;   vtx.by = b.y;   vtx.bz = b.z;
+    vtx.u1 = uv1.x; vtx.v1 = uv1.y;
+    vtx.u2 = uv2.x; vtx.v2 = uv2.y;
+    if (mesh->mColors[0])
+    {
+        const aiColor4D& c = mesh->mColors[0][v];
+        vtx.color = PackColorRGBA8(c.r, c.g, c.b, c.a);
+    }
     return vtx;
 }
 

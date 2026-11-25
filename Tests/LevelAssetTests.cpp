@@ -779,6 +779,86 @@ static void TestMeshCache()
     fs::remove_all(root);
 }
 
+static void TestVertexStreams()
+{
+    const auto checkStreamsQuad = [](const SE::MeshSourceData& data, const char* label) {
+        const auto check = [label](bool ok, const char* msg) {
+            if (!ok)
+                throw std::runtime_error(std::string(label) + ": " + msg);
+        };
+        check(data.subMeshes.size() == 1 && data.vertices.size() == 4 && data.indices.size() == 6,
+              "unexpected quad topology");
+        const float expectedColors[4][4] = {
+            { 1.0f, 0.0f, 0.0f, 1.0f }, // (0, 0) red
+            { 0.0f, 1.0f, 0.0f, 1.0f }, // (1, 0) green
+            { 0.0f, 0.0f, 1.0f, 1.0f }, // (1, 1) blue
+            { 1.0f, 1.0f, 1.0f, 1.0f }, // (0, 1) white
+        };
+        bool seenCorner[4] = {};
+        for (const SE::MeshVertex& v : data.vertices)
+        {
+            check(std::fabs(v.u1 - 2.0f * v.u) < 1e-5f && std::fabs(v.v1 - 2.0f * v.v) < 1e-5f,
+                  "UV1 does not match 2*UV0");
+            check(v.u2 == v.u && v.v2 == v.v,
+                  "missing UV2 did not default to UV0");
+            const int ix = v.x > 0.5f ? 1 : 0;
+            const int iy = v.y > 0.5f ? 1 : 0;
+            const int corner = iy == 0 ? (ix == 0 ? 0 : 1) : (ix == 1 ? 2 : 3);
+            seenCorner[corner] = true;
+            const float rgba[4] = {
+                static_cast<float>(v.color & 0xFFu) / 255.0f,
+                static_cast<float>((v.color >> 8) & 0xFFu) / 255.0f,
+                static_cast<float>((v.color >> 16) & 0xFFu) / 255.0f,
+                static_cast<float>((v.color >> 24) & 0xFFu) / 255.0f,
+            };
+            for (int c = 0; c < 4; ++c)
+                check(std::fabs(rgba[c] - expectedColors[corner][c]) <= 1.0f / 255.0f,
+                      "vertex color channel mismatch");
+        }
+        check(seenCorner[0] && seenCorner[1] && seenCorner[2] && seenCorner[3],
+              "missing quad corner");
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/streams.gltf", imported),
+            "failed to import streams.gltf");
+    checkStreamsQuad(imported, "streams.gltf (Auto/cgltf)");
+
+    SE::MeshSourceData assimpQuad;
+    Require(SE::Mesh::Import("Assets/TestFixtures/streams.gltf", assimpQuad, {}, nullptr,
+                             SE::MeshImporter::Assimp),
+            "failed to import streams.gltf via Assimp");
+    checkStreamsQuad(assimpQuad, "streams.gltf (Assimp)");
+
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "FoxEngineVertexStreamsCacheTest";
+    fs::remove_all(root);
+    const SE::MeshCache cache((root / "cache").string());
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load("Assets/TestFixtures/streams.gltf", firstLoad, {}, nullptr, &hit) && !hit,
+            "streams.gltf first cache load did not import");
+    Require(cache.Load("Assets/TestFixtures/streams.gltf", cachedLoad, {}, nullptr, &hit) && hit,
+            "streams.gltf second cache load missed");
+    Require(cachedLoad.vertices.size() == firstLoad.vertices.size() &&
+            std::memcmp(cachedLoad.vertices.data(), firstLoad.vertices.data(),
+                        firstLoad.vertices.size() * sizeof(SE::MeshVertex)) == 0,
+            "streams.gltf MeshCache round trip altered vertex streams");
+    fs::remove_all(root);
+
+    SE::MeshSourceData obj;
+    Require(SE::Mesh::Import("Assets/TestFixtures/tiny.obj", obj),
+            "failed to import tiny.obj");
+    Require(!obj.vertices.empty(), "tiny.obj produced no vertices");
+    for (const SE::MeshVertex& v : obj.vertices)
+    {
+        Require(v.u1 == v.u && v.v1 == v.v && v.u2 == v.u && v.v2 == v.v,
+                "tiny.obj missing UV1/UV2 did not default to UV0");
+        Require(v.color == 0xFFFFFFFFu,
+                "tiny.obj missing vertex color did not default to white");
+    }
+}
+
 // glTF image URIs are relative to the mesh file; the converted DDS sits beside
 // the authored image, and the Textures/ convention still wins when present.
 static void TestMaterialTexturePath()
@@ -1383,6 +1463,7 @@ static void RunTests()
     TestGltfSpecGlossDetection();
     TestGltfImporterParity({ "Assets/TestFixtures/packed_mr.gltf", "Assets/TestFixtures/spec_gloss.gltf" });
     TestMeshCache();
+    TestVertexStreams();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 

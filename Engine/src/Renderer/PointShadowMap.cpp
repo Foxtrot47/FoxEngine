@@ -1,5 +1,7 @@
 #include "Engine/Renderer/PointShadowMap.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/MeshVertexLayout.h"
+#include <iterator>
 
 using namespace DirectX;
 
@@ -35,15 +37,7 @@ bool PointShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t
     m_perm = shaders.Get(L"Engine/Shaders/PointShadowDepth.hlsl");
     if (!m_perm) { SE_LOG_ERROR("PointShadowMap: PointShadowDepth.hlsl failed"); return false; }
 
-    D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
-    SE_HR(device->CreateInputLayout(layoutDesc, 5,
+    SE_HR(device->CreateInputLayout(k_meshInputLayout, static_cast<UINT>(std::size(k_meshInputLayout)),
         m_perm->vsBlob->GetBufferPointer(), m_perm->vsBlob->GetBufferSize(),
         m_layout.GetAddressOf()));
 

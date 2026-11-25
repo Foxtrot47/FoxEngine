@@ -23,6 +23,8 @@ void BuildSphereGeometry(float radius, int rings, int segments,
             v.nx = cp * ct;          v.ny = sp;          v.nz = cp * st;
             v.u  = static_cast<float>(s) / segments;
             v.v  = static_cast<float>(r) / rings;
+            v.u1 = v.u2 = v.u;
+            v.v1 = v.v2 = v.v;
             v.tx = -st;      v.ty = 0.0f; v.tz = ct;
             v.bx = -sp * ct; v.by = cp;   v.bz = -sp * st;
             vertices.push_back(v);
@@ -69,6 +71,8 @@ void BuildBoxGeometry(XMFLOAT3 size, std::vector<MeshVertex>& vertices, std::vec
             XMStoreFloat3(reinterpret_cast<XMFLOAT3*>(&v.bx), b);
             v.u = (su + 1.0f) * 0.5f;
             v.v = (sv + 1.0f) * 0.5f;
+            v.u1 = v.u2 = v.u;
+            v.v1 = v.v2 = v.v;
             vertices.push_back(v);
         }
         // Corners 0..3 run (-t,-b), (+t,-b), (+t,+b), (-t,+b). With b = n x t,

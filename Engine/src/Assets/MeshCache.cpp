@@ -23,13 +23,13 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 3;
+constexpr uint32_t k_meshCacheVersion = 4;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
 constexpr char k_magic[4] = { 'F', 'X', 'M', 'C' };
 
-static_assert(sizeof(MeshVertex) == 56, "MeshVertex layout is part of the .fxmesh format");
+static_assert(sizeof(MeshVertex) == 76, "MeshVertex layout is part of the .fxmesh format");
 
 // On-disk layout (little-endian): FileHeader, DependencyRecord[dependencyCount],
 // SubMeshRecord[subMeshCount], uint32_t storedSize[vertexBlockCount + indexBlockCount],

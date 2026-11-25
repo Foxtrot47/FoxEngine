@@ -1,7 +1,9 @@
 #include "Engine/Renderer/ShadowMap.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/MeshVertexLayout.h"
 #include <cfloat>
 #include <cmath>
+#include <iterator>
 
 namespace SE {
 
@@ -21,6 +23,8 @@ static void BuildShadowSphere(float radius, int rings, int segs,
             MeshVertex v = {};
             v.x = cp * ct * radius; v.y = sp * radius; v.z = cp * st * radius;
             v.nx = cp * ct;         v.ny = sp;          v.nz = cp * st;
+            v.u1 = v.u2 = v.u;
+            v.v1 = v.v2 = v.v;
             verts.push_back(v);
         }
     }
@@ -49,15 +53,7 @@ bool ShadowMap::Init(ID3D11Device* device, ShaderLibrary& shaders, uint32_t reso
         return false;
     }
 
-    D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
-    SE_HR(device->CreateInputLayout(layoutDesc, 5,
+    SE_HR(device->CreateInputLayout(k_meshInputLayout, static_cast<UINT>(std::size(k_meshInputLayout)),
         m_perm->vsBlob->GetBufferPointer(), m_perm->vsBlob->GetBufferSize(), &m_layout));
 
     // Depth texture

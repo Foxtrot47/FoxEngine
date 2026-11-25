@@ -164,13 +164,22 @@ bool IsTriangles(const cgltf_primitive& primitive)
            primitive.type == cgltf_primitive_type_triangle_fan;
 }
 
+uint32_t PackColorRGBA8(float r, float g, float b, float a)
+{
+    const auto toByte = [](float x) -> uint32_t {
+        const float clamped = x > 0.0f ? (x < 1.0f ? x : 1.0f) : 0.0f;
+        return static_cast<uint32_t>(clamped * 255.0f + 0.5f);
+    };
+    return toByte(r) | (toByte(g) << 8) | (toByte(b) << 16) | (toByte(a) << 24);
+}
+
 const cgltf_accessor* FindAttribute(const cgltf_primitive& primitive, cgltf_attribute_type type,
-                                    cgltf_size components)
+                                    cgltf_size components, cgltf_int index = 0)
 {
     for (cgltf_size i = 0; i < primitive.attributes_count; ++i)
     {
         const cgltf_attribute& attribute = primitive.attributes[i];
-        if (attribute.type == type && attribute.index == 0 && attribute.data &&
+        if (attribute.type == type && attribute.index == index && attribute.data &&
             cgltf_num_components(attribute.data->type) == components)
             return attribute.data;
     }
@@ -189,7 +198,10 @@ std::vector<float> Unpack(const cgltf_accessor* accessor)
 struct PrimitiveGeometry
 {
     std::vector<Vec3> positions, normals, tangents, bitangents;
-    std::vector<float> uvs; // 2 per vertex; empty when TEXCOORD_0 is absent
+    std::vector<float> uvs;       // 2 per vertex; empty when TEXCOORD_0 is absent
+    std::vector<float> uvs1;      // 2 per vertex; empty when TEXCOORD_1 is absent
+    std::vector<float> uvs2;      // 2 per vertex; empty when TEXCOORD_2 is absent
+    std::vector<uint32_t> colors; // 1 per vertex (RGBA8 UNORM); empty when COLOR_0 is absent
     std::vector<uint32_t> indices; // triangle list, glTF (counter-clockwise) winding
 };
 
@@ -389,12 +401,38 @@ bool ReadGeometry(const cgltf_primitive& primitive, PrimitiveGeometry& geometry)
     if (!readVec3(FindAttribute(primitive, cgltf_attribute_type_normal, 3), geometry.normals))
         GenerateNormals(geometry);
 
-    if (const cgltf_accessor* uv = FindAttribute(primitive, cgltf_attribute_type_texcoord, 2))
+    const auto readUV = [&](cgltf_int index, std::vector<float>& out) {
+        if (const cgltf_accessor* uv = FindAttribute(primitive, cgltf_attribute_type_texcoord, 2, index))
+        {
+            if (uv->count == vertexCount)
+                out = Unpack(uv);
+            if (out.size() != vertexCount * 2)
+                out.clear();
+        }
+    };
+    readUV(0, geometry.uvs);
+    readUV(1, geometry.uvs1);
+    readUV(2, geometry.uvs2);
+
+    const cgltf_accessor* color = FindAttribute(primitive, cgltf_attribute_type_color, 4, 0);
+    cgltf_size colorComponents = 4;
+    if (!color)
     {
-        if (uv->count == vertexCount)
-            geometry.uvs = Unpack(uv);
-        if (geometry.uvs.size() != vertexCount * 2)
-            geometry.uvs.clear();
+        color = FindAttribute(primitive, cgltf_attribute_type_color, 3, 0);
+        colorComponents = 3;
+    }
+    if (color && color->count == vertexCount)
+    {
+        const std::vector<float> values = Unpack(color);
+        if (values.size() == vertexCount * colorComponents)
+        {
+            geometry.colors.resize(vertexCount);
+            for (size_t v = 0; v < vertexCount; ++v)
+            {
+                const float* c = values.data() + v * colorComponents;
+                geometry.colors[v] = PackColorRGBA8(c[0], c[1], c[2], colorComponents == 4 ? c[3] : 1.0f);
+            }
+        }
     }
 
     const cgltf_accessor* tangent = FindAttribute(primitive, cgltf_attribute_type_tangent, 4);
@@ -468,7 +506,10 @@ void AppendInstance(const PrimitiveGeometry& geometry, const Mat4& world, const 
     record.vertexCount = static_cast<uint32_t>(geometry.positions.size());
     output.vertices.resize(output.vertices.size() + geometry.positions.size());
     MeshVertex* vertex = output.vertices.data() + record.firstVertex;
-    const bool hasUV = !geometry.uvs.empty();
+    const bool hasUV    = !geometry.uvs.empty();
+    const bool hasUV1   = !geometry.uvs1.empty();
+    const bool hasUV2   = !geometry.uvs2.empty();
+    const bool hasColor = !geometry.colors.empty();
     for (size_t v = 0; v < geometry.positions.size(); ++v, ++vertex)
     {
         Vec3 p = geometry.positions[v], n = geometry.normals[v];
@@ -484,8 +525,13 @@ void AppendInstance(const PrimitiveGeometry& geometry, const Mat4& world, const 
         vertex->nx = n.x;  vertex->ny = n.y;  vertex->nz = -n.z;
         vertex->tx = t.x;  vertex->ty = t.y;  vertex->tz = -t.z;
         vertex->bx = b.x;  vertex->by = b.y;  vertex->bz = -b.z;
-        vertex->u = hasUV ? geometry.uvs[v * 2] : 0.0f;
-        vertex->v = hasUV ? geometry.uvs[v * 2 + 1] : 0.0f;
+        vertex->u  = hasUV  ? geometry.uvs[v * 2]      : 0.0f;
+        vertex->v  = hasUV  ? geometry.uvs[v * 2 + 1]  : 0.0f;
+        vertex->u1 = hasUV1 ? geometry.uvs1[v * 2]     : vertex->u;
+        vertex->v1 = hasUV1 ? geometry.uvs1[v * 2 + 1] : vertex->v;
+        vertex->u2 = hasUV2 ? geometry.uvs2[v * 2]     : vertex->u;
+        vertex->v2 = hasUV2 ? geometry.uvs2[v * 2 + 1] : vertex->v;
+        vertex->color = hasColor ? geometry.colors[v]  : 0xFFFFFFFFu;
         output.bounds.Expand({ vertex->x, vertex->y, vertex->z });
     }
 

@@ -1,9 +1,11 @@
 #include "Engine/Renderer/ForwardPipeline.h"
 #include "Engine/Core/Logger.h"
+#include "Engine/Renderer/MeshVertexLayout.h"
 #include "Engine/Renderer/PrimitiveMesh.h"
 #include <windows.h>
 #include <d3dcompiler.h>
 #include <cmath>
+#include <iterator>
 
 namespace SE {
 
@@ -40,6 +42,8 @@ void BuildPlaneMesh(float uvScale, std::vector<MeshVertex>& verts, std::vector<u
         v[i].x = xs[i]; v[i].y = 0.0f; v[i].z = zs[i];
         v[i].nx = 0.0f; v[i].ny = 1.0f; v[i].nz = 0.0f;
         v[i].u  = uvs[i][0]; v[i].v = uvs[i][1];
+        v[i].u1 = v[i].u2 = v[i].u;
+        v[i].v1 = v[i].v2 = v[i].v;
         v[i].tx = 1.0f; v[i].ty = 0.0f; v[i].tz = 0.0f;  // tangent = +X
         v[i].bx = 0.0f; v[i].by = 0.0f; v[i].bz = 1.0f;  // bitangent = +Z
         verts.push_back(v[i]);
@@ -86,15 +90,7 @@ bool ForwardPipeline::Init(ID3D11Device* device, AssetManager& assets, ShaderLib
     m_vs = perm->vs;
     m_ps = perm->ps;
 
-    D3D11_INPUT_ELEMENT_DESC layoutDesc[] =
-    {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0,  0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "TANGENT",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 32, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 44, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
-    SE_HR(device->CreateInputLayout(layoutDesc, 5,
+    SE_HR(device->CreateInputLayout(k_meshInputLayout, static_cast<UINT>(std::size(k_meshInputLayout)),
         perm->vsBlob->GetBufferPointer(), perm->vsBlob->GetBufferSize(), &m_layout));
 
     if (!m_transformCB.Create(device)) return false;

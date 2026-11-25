@@ -11,14 +11,17 @@
 namespace SE {
 
 // Vertex layout used for all mesh geometry.
-// Matches the POSITION/NORMAL/TEXCOORD input layout in Basic.hlsl.
+// Matches k_meshInputLayout (MeshVertexLayout.h) and Basic.hlsl VSIn.
 struct MeshVertex
 {
-    float x,  y,  z;    // POSITION
-    float nx, ny, nz;   // NORMAL
-    float u,  v;        // TEXCOORD
-    float tx, ty, tz;   // TANGENT
-    float bx, by, bz;   // BINORMAL (bitangent)
+    float x = 0.0f,  y = 0.0f,  z = 0.0f;    // POSITION
+    float nx = 0.0f, ny = 0.0f, nz = 0.0f;   // NORMAL
+    float u = 0.0f,  v = 0.0f;               // TEXCOORD0
+    float tx = 0.0f, ty = 0.0f, tz = 0.0f;   // TANGENT
+    float bx = 0.0f, by = 0.0f, bz = 0.0f;   // BINORMAL (bitangent)
+    float u1 = 0.0f, v1 = 0.0f;              // TEXCOORD1
+    float u2 = 0.0f, v2 = 0.0f;              // TEXCOORD2
+    uint32_t color = 0xFFFFFFFFu;            // COLOR0 (RGBA8 UNORM, R in low byte)
 };
 
 // Per-submesh texture paths as extracted from the source file's material.
