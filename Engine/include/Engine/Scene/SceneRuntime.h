@@ -25,6 +25,7 @@
 #include "Engine/Renderer/ParticleSystem.h"
 #include "Engine/Renderer/PointShadowMap.h"
 #include "Engine/Renderer/ShadowMaterial.h"
+#include "Engine/Renderer/ReflectionProbes.h"
 #include "Engine/Renderer/RenderTarget.h"
 #include "Engine/Renderer/SSAO.h"
 #include "Engine/Renderer/SkyboxRenderer.h"
@@ -333,6 +334,10 @@ public:
     float& ShadowDistance() { return m_shadowDistance; }
     float  ShadowDistance() const { return m_shadowDistance; }
 
+    // Re-renders every level reflection probe at the start of the next Render
+    // (also done automatically after a level loads).
+    void RecaptureReflectionProbes() { m_probesDirty = true; }
+
     // --- Rendering subsystems ---
     SkyboxRenderer         skybox;
     AssetHandle<Texture2D> environmentTexture;
@@ -476,7 +481,9 @@ private:
 
     // Render phases
     int  CountPointShadowCasters() const;
-    void RenderShadowMaps(ID3D11DeviceContext* ctx);
+    void RenderShadowMaps(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view,
+                          DirectX::XMMATRIX proj, float nearZ, float farZ);
+    void RenderLocalShadowMaps(ID3D11DeviceContext* ctx);
     void RenderPlanarReflection(ID3D11DeviceContext* ctx,
                                 ID3D11ShaderResourceView* irradianceSRV,
                                 ID3D11ShaderResourceView* specularSRV,
@@ -485,6 +492,18 @@ private:
                            ID3D11ShaderResourceView* irradianceSRV,
                            ID3D11ShaderResourceView* specularSRV,
                            ID3D11ShaderResourceView* brdfLutSRV);
+    // Lit scene (skybox, meshes, balls, scene objects) into the bound target.
+    // mainView also sets the motion-vector matrices, records previous transforms
+    // and binds the planar reflector; probe captures pass false.
+    void RenderSceneToTarget(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view,
+                             DirectX::XMMATRIX proj, DirectX::XMFLOAT3 eye,
+                             ID3D11ShaderResourceView* irradianceSRV,
+                             ID3D11ShaderResourceView* specularSRV,
+                             ID3D11ShaderResourceView* brdfLutSRV, bool mainView);
+    void CaptureReflectionProbes(ID3D11DeviceContext* ctx,
+                                 ID3D11ShaderResourceView* irradianceSRV,
+                                 ID3D11ShaderResourceView* specularSRV,
+                                 ID3D11ShaderResourceView* brdfLutSRV);
     void SubmitMeshInstances(ID3D11DeviceContext* ctx);
     void DrawBalls(ID3D11DeviceContext* ctx);
     void RecordPrevTransforms();
@@ -531,6 +550,9 @@ private:
     uint32_t          m_cutoutFrameIndex      = 0;    // cutout dither animation step
     MotionBlur        m_motionBlur;
     float             m_lastUpdateDt          = 0.0f;
+    ReflectionProbes  m_reflectionProbes;
+    std::vector<SceneDescriptor::ReflectionProbeDesc> m_reflectionProbeDescs;
+    bool              m_probesDirty           = false;
 
     LevelLoadOperation m_levelLoad;
     std::string        m_pendingSceneLoad;

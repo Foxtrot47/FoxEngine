@@ -32,6 +32,9 @@ public:
 
     ID3D11ShaderResourceView* GetSRV() const { return m_srv.Get(); }
 
+    // Left-handed view matrix for one cube face from pos (D3D11 TextureCube face order).
+    static DirectX::XMMATRIX FaceView(DirectX::XMFLOAT3 pos, int face);
+
 private:
     struct CBData
     {
@@ -66,9 +69,6 @@ private:
     ID3D11RenderTargetView* m_savedRTV = nullptr;
     ID3D11DepthStencilView* m_savedDSV = nullptr;
     ID3D11RasterizerState*  m_savedRS  = nullptr;
-
-    // Build a left-handed view matrix for the given cube face from lightPos.
-    static DirectX::XMMATRIX FaceView(DirectX::XMFLOAT3 lightPos, int face);
 };
 
 } // namespace SE

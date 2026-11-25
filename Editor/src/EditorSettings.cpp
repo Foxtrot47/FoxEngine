@@ -155,6 +155,8 @@ void DrawWorldLightingSection(SE::SceneRuntime& scene)
     ImGui::RadioButton("NdotL",     &dlm, 2); ImGui::SameLine();
     ImGui::RadioButton("Roughness", &dlm, 3);
     scene.lights.debugLightMode = (float)dlm;
+    if (ImGui::Button("Recapture Reflection Probes"))
+        scene.RecaptureReflectionProbes();
 }
 
 void DrawRaycastReadout(SE::SceneRuntime& scene)
@@ -214,7 +216,7 @@ void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeig
     struct Section { const char* name; const char* keywords; void (*draw)(SE::SceneRuntime&); };
     static const Section sections[] = {
         { "Materials", "Materials Tint Roughness Metallic", DrawWorldMaterialSection },
-        { "Lighting", "Lighting Sun IBL Shadow Debug", DrawWorldLightingSection },
+        { "Lighting", "Lighting Sun IBL Shadow Debug Reflection Probes", DrawWorldLightingSection },
         { "Shadows", "Shadows Distance Shadow", DrawShadowsSection },
         { "Physics", "Physics Gravity Floor Colliders Raycast", DrawWorldPhysicsSection },
         { "Tone Mapping", "Tone Mapping Exposure", DrawToneMapSection },

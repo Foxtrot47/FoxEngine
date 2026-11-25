@@ -69,7 +69,8 @@ static json BuildSettingsJson(const LevelAsset& asset)
             if (environment.contains(field))
                 root[field] = environment[field];
     }
-    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog", "shadows", "motionBlur" })
+    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog", "shadows", "motionBlur",
+                               "reflectionProbes" })
         if (asset.settings.contains(field))
             root[field] = asset.settings[field];
 
@@ -311,6 +312,21 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
         if (mb.contains("shutterAngle"))  out.motionBlur.shutterAngle  = mb["shutterAngle"].get<float>();
         if (mb.contains("maxBlurPixels")) out.motionBlur.maxBlurPixels = mb["maxBlurPixels"].get<float>();
         if (mb.contains("samples"))       out.motionBlur.samples       = mb["samples"].get<int>();
+    }
+    // Reflection probes (validated by LevelAssetLoader)
+    if (root.contains("reflectionProbes") && root["reflectionProbes"].is_array())
+    {
+        for (const auto& p : root["reflectionProbes"])
+        {
+            SceneDescriptor::ReflectionProbeDesc probe;
+            for (int i = 0; i < 3; ++i)
+            {
+                probe.position[i] = p["position"][i].get<float>();
+                probe.extents[i]  = p["extents"][i].get<float>();
+            }
+            if (p.contains("blendDistance")) probe.blendDistance = p["blendDistance"].get<float>();
+            out.reflectionProbes.push_back(probe);
+        }
     }
 
     return true;

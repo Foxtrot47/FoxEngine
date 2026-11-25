@@ -129,13 +129,7 @@ bool EnvironmentLighting::Build(ID3D11Device* device, ID3D11DeviceContext* ctx,
     const float sourceMips = static_cast<float>((std::max)(1u, sourceDesc.Texture2D.MipLevels));
     DrawFilter(ctx, m_irradianceRTVs[0].Get(), 64, 32, panorama,
                { 1.0f, 1, 128, sourceMips });
-    for (uint32_t mip = 0; mip < specMips; ++mip)
-    {
-        const float roughness = static_cast<float>(mip) / static_cast<float>(specMips - 1);
-        DrawFilter(ctx, m_specularRTVs[mip].Get(),
-                   (std::max)(1u, specWidth >> mip), (std::max)(1u, specHeight >> mip),
-                   panorama, { roughness, 0, mip == 0 ? 1 : 96, sourceMips });
-    }
+    FilterSpecular(ctx, panorama, m_specularRTVs.data(), specWidth, specHeight, specMips);
     DrawFilter(ctx, m_brdfLutRTV.Get(), 128, 128, nullptr, { 0.0f, 2, 128, 1.0f });
 
     ctx->OMSetRenderTargets(1, &savedRTV, savedDSV);
@@ -144,6 +138,23 @@ bool EnvironmentLighting::Build(ID3D11Device* device, ID3D11DeviceContext* ctx,
     if (savedDSV) savedDSV->Release();
     SE_LOG_INFO("EnvironmentLighting: generated irradiance, GGX specular, and BRDF LUT");
     return true;
+}
+
+void EnvironmentLighting::FilterSpecular(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* source,
+                                         const Microsoft::WRL::ComPtr<ID3D11RenderTargetView>* mipRTVs,
+                                         uint32_t width, uint32_t height, uint32_t mipCount)
+{
+    D3D11_SHADER_RESOURCE_VIEW_DESC sourceDesc = {};
+    source->GetDesc(&sourceDesc);
+    const float sourceMips = static_cast<float>((std::max)(1u, sourceDesc.Texture2D.MipLevels));
+    for (uint32_t mip = 0; mip < mipCount; ++mip)
+    {
+        const float roughness = mipCount > 1
+            ? static_cast<float>(mip) / static_cast<float>(mipCount - 1) : 0.0f;
+        DrawFilter(ctx, mipRTVs[mip].Get(),
+                   (std::max)(1u, width >> mip), (std::max)(1u, height >> mip),
+                   source, { roughness, 0, mip == 0 ? 1 : 96, sourceMips });
+    }
 }
 
 void EnvironmentLighting::Clear()

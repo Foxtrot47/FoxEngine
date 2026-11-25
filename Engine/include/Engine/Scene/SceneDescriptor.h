@@ -121,6 +121,13 @@ struct SceneDescriptor
         int   samples       = 12;
     };
     MotionBlurDesc motionBlur;
+    // Box-projected reflection probes (settings.reflectionProbes); the first 8 are used.
+    struct ReflectionProbeDesc {
+        std::array<float, 3> position = { 0.0f, 0.0f, 0.0f };
+        std::array<float, 3> extents  = { 1.0f, 1.0f, 1.0f }; // half extents, > 0
+        float                blendDistance = 5.0f;            // >= 0
+    };
+    std::vector<ReflectionProbeDesc> reflectionProbes;
 
     // Optional array of scene objects with explicit geometry and PBR material paths.
     // Rendered in addition to the main mesh. Enables a fully JSON-driven PBR showcase.

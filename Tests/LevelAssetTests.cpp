@@ -554,6 +554,81 @@ static void TestMotionBlurRoundTrip()
             "default disabled motion blur must not be serialized");
 }
 
+// settings.reflectionProbes parses, round-trips through the saver, and rejects
+// non-positive extents and negative blend distances with the documented errors.
+static void TestReflectionProbeSchema()
+{
+    const json level = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "ReflectionProbes" },
+        { "settings", { { "reflectionProbes", json::array({
+            { { "position", { 10.0f, 2.0f, -4.0f } }, { "extents", { 20.0f, 6.0f, 8.0f } },
+              { "blendDistance", 3.0f } },
+            { { "position", { -1.0f, 0.5f, 0.0f } }, { "extents", { 1.0f, 1.0f, 1.0f } } }
+        }) } } },
+        { "entities", json::array() }
+    };
+    const auto parsed = LevelAssetLoader::Parse(level, "reflectionProbes");
+    Require(parsed.Succeeded(), "valid reflection probes failed to parse");
+
+    SE::SceneDescriptor descriptor;
+    Require(SE::SceneLoader::BuildDescriptor(parsed.asset, descriptor),
+            "reflection probe descriptor build failed");
+    auto checkProbes = [](const SE::SceneDescriptor& desc, const char* message) {
+        Require(desc.reflectionProbes.size() == 2, message);
+        const auto& a = desc.reflectionProbes[0];
+        const auto& b = desc.reflectionProbes[1];
+        Require(a.position == std::array<float, 3>{ 10.0f, 2.0f, -4.0f } &&
+                a.extents == std::array<float, 3>{ 20.0f, 6.0f, 8.0f } &&
+                a.blendDistance == 3.0f, message);
+        Require(b.position == std::array<float, 3>{ -1.0f, 0.5f, 0.0f } &&
+                b.extents == std::array<float, 3>{ 1.0f, 1.0f, 1.0f } &&
+                b.blendDistance == 5.0f, message);
+    };
+    checkProbes(descriptor, "reflection probes were not propagated to the descriptor");
+
+    const std::string text = SE::SceneSaver::ToJson(descriptor);
+    const auto reparsed = LevelAssetLoader::Parse(json::parse(text), "reflectionProbes");
+    Require(reparsed.Succeeded(), "saved reflection probes failed validation");
+    SE::SceneDescriptor loaded;
+    Require(SE::SceneLoader::BuildDescriptor(reparsed.asset, loaded),
+            "saved reflection probes failed to rebuild a descriptor");
+    checkProbes(loaded, "reflection probes did not survive the round trip");
+    Require(SE::SceneSaver::ToJson(loaded) == text, "reflection probe serialization is not stable");
+
+    SE::SceneDescriptor unset;
+    Require(SE::SceneSaver::ToJson(unset).find("\"reflectionProbes\"") == std::string::npos,
+            "an empty probe list must not be serialized");
+
+    // The bad probe follows a valid one, so the diagnostics name index 1.
+    auto parseProbe = [](const json& probe) {
+        const json valid = { { "position", { 0.0f, 0.0f, 0.0f } }, { "extents", { 1.0f, 1.0f, 1.0f } } };
+        const json bad = {
+            { "format", "FoxLevel" },
+            { "version", 2 },
+            { "name", "BadReflectionProbe" },
+            { "settings", { { "reflectionProbes", json::array({ valid, probe }) } } },
+            { "entities", json::array() }
+        };
+        return LevelAssetLoader::Parse(bad, "badReflectionProbe");
+    };
+    const auto zeroExtent = parseProbe({ { "position", { 0.0f, 0.0f, 0.0f } },
+                                         { "extents", { 4.0f, 0.0f, 4.0f } } });
+    Require(!zeroExtent.Succeeded(), "a zero probe extent unexpectedly succeeded");
+    Require(HasErrorContaining(zeroExtent,
+                "settings.reflectionProbes[1].extents must be an array of 3 numbers greater than 0"),
+            "zero probe extent was not diagnosed");
+
+    const auto negativeBlend = parseProbe({ { "position", { 0.0f, 0.0f, 0.0f } },
+                                            { "extents", { 4.0f, 4.0f, 4.0f } },
+                                            { "blendDistance", -1.0f } });
+    Require(!negativeBlend.Succeeded(), "a negative probe blend distance unexpectedly succeeded");
+    Require(HasErrorContaining(negativeBlend,
+                "settings.reflectionProbes[1].blendDistance must be a number greater than or equal to 0"),
+            "negative probe blend distance was not diagnosed");
+}
+
 static void TestBistroRuntimeDescriptor()
 {
     SE::SceneDescriptor descriptor;
@@ -1846,6 +1921,7 @@ static void RunTests()
     TestSaveRoundTrip();
     TestShadowDistanceRoundTrip();
     TestMotionBlurRoundTrip();
+    TestReflectionProbeSchema();
     TestBistroRuntimeDescriptor();
     TestScriptParsing();
     TestDescriptorStamping();

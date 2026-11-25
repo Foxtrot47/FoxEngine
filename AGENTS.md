@@ -56,6 +56,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `Bloom` | Dual Kawase blur chain |
 | `ToneMap` | Reinhard/ACES, auto-exposure |
 | `EnvironmentLighting` | Irradiance, GGX-prefiltered specular IBL, BRDF LUT |
+| `ReflectionProbes` | Box-projected reflection probes from level `settings.reflectionProbes` (max 8): 128² HDR cube capture at load or on editor Recapture, equirect + GGX prefilter into a probe array (b9, t28) |
 | `SSAO` | Hemisphere sampling, bilateral blur, multiply composite |
 | `FXAA` | Post-process anti-aliasing |
 | `ParticleSystem` | GPU compute emit/update, billboard render, flipbook atlas, soft particles |
@@ -75,6 +76,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | b2 | PointLightCB | PointLight[8] (pos, radius, color), NumPointLights |
 | b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags, tint/detail params, terrain layer scales and params (`TerrainScale`, `TerrainParams`, `TerrainParams2`, `TerrainST`), clearcoat params (`Clearcoat`, `ClearcoatST`, `ClearcoatUV`) (`MaterialParamsCBData` mirrors it, size asserted) |
 | b4 | ForwardShadowCB | NumPointShadowCasters, PointShadowBias, FrameIndex, CutoutDitherWidth (temporal cutout dither) |
+| b9 | ReflectionProbeCB | ProbeCenter[8], ProbeExtents[8] (xyz half extents, w blendDistance), ProbeInfo (x count, y mip count) |
 
 ### Texture Slots (Basic.hlsl)
 
@@ -100,6 +102,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t22–t25 | Terrain layer normal A–D |
 | t26 | Clearcoat factor (`KHR_materials_clearcoat` `clearcoatTexture`, R channel) |
 | t27 | Clearcoat roughness (`KHR_materials_clearcoat` `clearcoatRoughnessTexture`, G channel) |
+| t28 | Reflection probe array (Texture2DArray, 8 slices of 256×128 equirect, 8 GGX mips; box-projected, weighted over t10) |
 
 ## Scripting
 
@@ -211,6 +214,7 @@ No deferred pass. All geometry in a single HDR forward pass into `m_forwardHDR_R
 - Cook-Torrance BRDF: GGX NDF, Smith-Schlick geometry, Schlick Fresnel
 - IBL from equirectangular panorama: cosine-weighted irradiance, GGX-prefiltered specular, and BRDF LUT
 - One authored horizontal planar reflector can supplement IBL without screen-space reflection artifacts
+- Reflection probes (`settings.reflectionProbes`: `[{ "position": [x,y,z], "extents": [hx,hy,hz], "blendDistance": 5 }]`, first 8 used): captured once after a level loads (sun CSM refit per face, current point/spot shadows, global IBL only, no probe recursion) and blended in `IBL()` specular by `saturate(distance inside the box / blendDistance)`, the remainder from the global map; diffuse irradiance stays global and the planar reflector still overrides on its plane
 - Panorama loaded as R16G16B16A16_FLOAT and filtered on the GPU during level preparation
 
 ### Depth Buffer

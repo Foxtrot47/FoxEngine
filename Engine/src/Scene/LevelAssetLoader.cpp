@@ -482,6 +482,49 @@ void ParseLevelHeader(LevelAssetLoadResult& result, const json& root)
         AddDiagnostic(result, Severity::Error, "/name", "expected a string");
 }
 
+// settings.reflectionProbes: [{ position: [x,y,z], extents: [hx,hy,hz] (> 0), blendDistance (>= 0) }]
+void ValidateReflectionProbes(LevelAssetLoadResult& result)
+{
+    if (!result.asset.settings.contains("reflectionProbes"))
+        return;
+    const auto& probes = result.asset.settings["reflectionProbes"];
+    if (!probes.is_array())
+    {
+        AddDiagnostic(result, Severity::Error, "/settings/reflectionProbes",
+                      "settings.reflectionProbes must be an array");
+        return;
+    }
+    auto isVec3 = [](const json& value, bool positive) {
+        if (!value.is_array() || value.size() != 3)
+            return false;
+        for (const auto& component : value)
+            if (!component.is_number() || (positive && component.get<float>() <= 0.0f))
+                return false;
+        return true;
+    };
+    for (size_t i = 0; i < probes.size(); ++i)
+    {
+        const std::string path = "/settings/reflectionProbes/" + std::to_string(i);
+        const std::string name = "settings.reflectionProbes[" + std::to_string(i) + "]";
+        const auto& probe = probes[i];
+        if (!probe.is_object())
+        {
+            AddDiagnostic(result, Severity::Error, path, name + " must be an object");
+            continue;
+        }
+        if (!probe.contains("position") || !isVec3(probe["position"], false))
+            AddDiagnostic(result, Severity::Error, path + "/position",
+                          name + ".position must be an array of 3 numbers");
+        if (!probe.contains("extents") || !isVec3(probe["extents"], true))
+            AddDiagnostic(result, Severity::Error, path + "/extents",
+                          name + ".extents must be an array of 3 numbers greater than 0");
+        if (probe.contains("blendDistance") &&
+            (!probe["blendDistance"].is_number() || probe["blendDistance"].get<float>() < 0.0f))
+            AddDiagnostic(result, Severity::Error, path + "/blendDistance",
+                          name + ".blendDistance must be a number greater than or equal to 0");
+    }
+}
+
 void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
 {
     if (root.contains("settings"))
@@ -568,6 +611,7 @@ void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
             }
         }
     }
+    ValidateReflectionProbes(result);
 }
 
 // Validates a project-relative .lua path, normalizing separators.
@@ -769,7 +813,8 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
             environment[field] = root[field];
     if (!environment.empty())
         settings["environment"] = std::move(environment);
-    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "shadows", "motionBlur", "physics" })
+    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "shadows", "motionBlur",
+                               "reflectionProbes", "physics" })
         if (root.contains(field))
             settings[field] = root[field];
 

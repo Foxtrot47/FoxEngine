@@ -21,6 +21,13 @@ public:
     ID3D11ShaderResourceView* GetSpecularSRV() const { return m_specularSRV.Get(); }
     ID3D11ShaderResourceView* GetBRDFLutSRV() const { return m_brdfLutSRV.Get(); }
 
+    // GGX-prefilters an equirectangular source into mipRTVs[0..mipCount-1] of a
+    // width x height target (mip m at roughness m / (mipCount - 1); mip 0 is a copy).
+    // Leaves the last mip bound; callers restore their own render targets.
+    void FilterSpecular(ID3D11DeviceContext* ctx, ID3D11ShaderResourceView* source,
+                        const Microsoft::WRL::ComPtr<ID3D11RenderTargetView>* mipRTVs,
+                        uint32_t width, uint32_t height, uint32_t mipCount);
+
 private:
     struct FilterCB
     {

@@ -185,6 +185,7 @@ bool SceneRuntime::Init(Renderer& renderer, ShaderLibrary& shaders, AssetManager
 
     if (!bloom.Init(device, shaders, width, height)) return false;
     if (!m_motionBlur.Init(device, shaders, width, height)) return false;
+    if (!m_reflectionProbes.Init(device, shaders)) return false;
     if (!ssao.Init(device, shaders, width, height)) return false;
     if (!volFog.Init(device, shaders, width, height)) return false;
     if (!fxaa.Init(device, shaders)) return false;
@@ -469,6 +470,7 @@ void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
     motionBlur.shutterAngle = desc.motionBlur.shutterAngle;
     motionBlur.maxBlurPixels = desc.motionBlur.maxBlurPixels;
     motionBlur.samples = desc.motionBlur.samples;
+    m_reflectionProbeDescs = desc.reflectionProbes;
 }
 
 bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prepared,
@@ -649,6 +651,7 @@ bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prep
 
     SetupPlanarReflection(device);
     ApplySceneSettings(desc);
+    m_probesDirty = true;
 
     currentScenePath = scenePath;
     currentDesc      = desc;
@@ -842,6 +845,7 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     desc.motionBlur.shutterAngle = motionBlur.shutterAngle;
     desc.motionBlur.maxBlurPixels = motionBlur.maxBlurPixels;
     desc.motionBlur.samples = motionBlur.samples;
+    desc.reflectionProbes = m_reflectionProbeDescs;
 }
 
 bool SceneRuntime::AddPointLight(const XMFLOAT3& position)
@@ -1363,15 +1367,6 @@ void SceneRuntime::Render(float aspect)
         }
     }
 
-    // Staggered cutout coverage: dither the alpha-test threshold only while a
-    // temporal resolve (TAA or FSR) accumulates the noise into stable coverage.
-    const bool temporalResolve = taa.enabled ||
-        (fsrEnabled && !camera->orthographic && fsr.IsInitialized());
-    pipeline.SetCutoutDither(m_cutoutFrameIndex++, temporalResolve ? 0.2f : 0.0f);
-
-    const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
-    if (litView) RenderShadowMaps(ctx);
-
     ID3D11ShaderResourceView* fallbackEnvironment = m_assets->GetDefaultBlack()->GetSRV();
     ID3D11ShaderResourceView* irradianceSRV = environmentLighting.GetIrradianceSRV();
     ID3D11ShaderResourceView* specularSRV = environmentLighting.GetSpecularSRV();
@@ -1380,6 +1375,23 @@ void SceneRuntime::Render(float aspect)
     if (!specularSRV) specularSRV = fallbackEnvironment;
     if (!brdfLutSRV) brdfLutSRV = fallbackEnvironment;
 
+    if (m_probesDirty)
+        CaptureReflectionProbes(ctx, irradianceSRV, specularSRV, brdfLutSRV);
+
+    // Staggered cutout coverage: dither the alpha-test threshold only while a
+    // temporal resolve (TAA or FSR) accumulates the noise into stable coverage.
+    const bool temporalResolve = taa.enabled ||
+        (fsrEnabled && !camera->orthographic && fsr.IsInitialized());
+    pipeline.SetCutoutDither(m_cutoutFrameIndex++, temporalResolve ? 0.2f : 0.0f);
+
+    const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
+    if (litView)
+    {
+        RenderShadowMaps(ctx, m_cachedView, m_cachedProjNoJitter, camera->nearZ, camera->farZ);
+        RenderLocalShadowMaps(ctx);
+    }
+
+    m_reflectionProbes.Bind(ctx, true);
     if (litView) RenderPlanarReflection(ctx, irradianceSRV, specularSRV, brdfLutSRV);
     RenderForwardPass(ctx, irradianceSRV, specularSRV, brdfLutSRV);
     if (drawDebugHelpers) RenderDebugShapes(ctx);
@@ -1483,17 +1495,18 @@ void SceneRuntime::ForEachVehicleMeshInstance(Fn& fn) const
     }
 }
 
-void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
+// Cascaded sun shadows fitted to one view (the camera, or a probe cube face);
+// the level shadow distance clamps the far plane.
+void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx, XMMATRIX view, XMMATRIX proj,
+                                    float nearZ, float farZ)
 {
-    // Cascaded shadow pass
     {
         float er = XMConvertToRadians(lights.elevDeg);
         float ar = XMConvertToRadians(lights.azimDeg);
         XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
         const float shadowFar = m_shadowDistance > 0.0f
-            ? (std::min)(camera->farZ, m_shadowDistance) : camera->farZ;
-        shadowMap.Update(lightDir, m_cachedView, m_cachedProjNoJitter,
-                         camera->nearZ, shadowFar);
+            ? (std::min)(farZ, m_shadowDistance) : farZ;
+        shadowMap.Update(lightDir, view, proj, nearZ, shadowFar);
         for (int c = 0; c < CSM_NUM_CASCADES; ++c)
         {
             shadowMap.BeginCascade(ctx, c);
@@ -1515,7 +1528,11 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx)
             shadowMap.EndCascade(ctx);
         }
     }
+}
 
+// Point and spot light shadows (view independent).
+void SceneRuntime::RenderLocalShadowMaps(ID3D11DeviceContext* ctx)
+{
     // Point shadow passes
     {
         const int numCasters = CountPointShadowCasters();
@@ -1751,8 +1768,19 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
         ctx->RSSetViewports(1, &vp);
     }
 
+    RenderSceneToTarget(ctx, m_cachedView, m_cachedProj, camera->eye,
+                        irradianceSRV, specularSRV, brdfLutSRV, true);
+    ctx->RSSetState(nullptr); // do not leak viewport wireframe into fullscreen post-processing
+}
+
+void SceneRuntime::RenderSceneToTarget(ID3D11DeviceContext* ctx, XMMATRIX view, XMMATRIX proj,
+                                       XMFLOAT3 eye,
+                                       ID3D11ShaderResourceView* irradianceSRV,
+                                       ID3D11ShaderResourceView* specularSRV,
+                                       ID3D11ShaderResourceView* brdfLutSRV, bool mainView)
+{
     if (pipeline.viewShading != ForwardPipeline::ViewShading::Wireframe)
-        skybox.Draw(ctx, m_cachedView, m_cachedProj);
+        skybox.Draw(ctx, view, proj);
 
     // Collect point shadow SRVs
     const int numPtShadows = CountPointShadowCasters();
@@ -1761,19 +1789,21 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
         ptSRVs[i] = pointShadowMaps[i].GetSRV();
 
     shadowMap.BindForLitPass(ctx);
-    lights.BindPS(ctx, camera->eye, shadowMap.GetLightViewProj(),
+    lights.BindPS(ctx, eye, shadowMap.GetLightViewProj(),
                   m_actorLights.data(), static_cast<int>(m_actorLights.size()));
-    pipeline.Begin(ctx, m_cachedView, m_cachedProj);
-    pipeline.SetTemporalMatrices(m_prevViewProjNoJitter, m_viewProjNoJitter);
+    pipeline.Begin(ctx, view, proj);
+    if (mainView)
+        pipeline.SetTemporalMatrices(m_prevViewProjNoJitter, m_viewProjNoJitter);
     pipeline.BindEnvironment(ctx, irradianceSRV, specularSRV, brdfLutSRV);
     pipeline.BindPointShadows(ctx, ptSRVs[0], ptSRVs[1], numPtShadows, pointShadowBias);
     spotLight.BindForLitPass(ctx);
     pipeline.SetGlobalMaterialParams(
         { matTint[0], matTint[1], matTint[2] }, roughnessScale, metallic,
-        debugShadow ? 1.0f : 0.0f);
+        mainView && debugShadow ? 1.0f : 0.0f);
     SubmitMeshInstances(ctx);
     DrawBalls(ctx);
-    RecordPrevTransforms();
+    if (mainView)
+        RecordPrevTransforms();
 
     // JSON-driven scene objects — texture maps drive all PBR values (scalars = 1.0)
     for (size_t objectIndex = 0; objectIndex < sceneObjects.size(); ++objectIndex)
@@ -1795,7 +1825,9 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
                                        &objectPrev);
             else
             {
-                if (static_cast<int>(objectIndex) == m_planarObjectIndex)
+                const bool planar = mainView &&
+                    static_cast<int>(objectIndex) == m_planarObjectIndex;
+                if (planar)
                     pipeline.BindPlanarReflection(ctx, m_planarReflectionRT.GetSRV(),
                                                   m_planarReflectionViewProj,
                                                   m_planarReflectionY,
@@ -1804,12 +1836,15 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
                                       lo.mat, lo.def.metallicScale, lo.def.roughnessScale,
                                       tint, lo.def.emissiveIntensity, eCol,
                                       &objectPrev);
-                if (static_cast<int>(objectIndex) == m_planarObjectIndex)
+                if (planar)
                     pipeline.ClearPlanarReflection(ctx);
             }
         }
-        XMStoreFloat4x4(&lo.prevWorld, objectModel);
-        lo.prevWorldValid = true;
+        if (mainView)
+        {
+            XMStoreFloat4x4(&lo.prevWorld, objectModel);
+            lo.prevWorldValid = true;
+        }
     }
 
     shadowMap.Unbind(ctx);
@@ -1817,7 +1852,58 @@ void SceneRuntime::RenderForwardPass(ID3D11DeviceContext* ctx,
     // Unbind point shadow SRVs
     ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
     ctx->PSSetShaderResources(5, 2, nullSRVs);
-    ctx->RSSetState(nullptr); // do not leak viewport wireframe into fullscreen post-processing
+}
+
+// Renders every level reflection probe: six 90-degree faces per probe (the CSM is
+// refitted per face; point and spot shadow maps are shared), then the cube is
+// converted to equirect and GGX-prefiltered into the probe array. Captures sample
+// only the global environment, never other probes.
+void SceneRuntime::CaptureReflectionProbes(ID3D11DeviceContext* ctx,
+                                           ID3D11ShaderResourceView* irradianceSRV,
+                                           ID3D11ShaderResourceView* specularSRV,
+                                           ID3D11ShaderResourceView* brdfLutSRV)
+{
+    m_probesDirty = false;
+    std::vector<ReflectionProbes::Probe> probes;
+    probes.reserve(m_reflectionProbeDescs.size());
+    for (const auto& desc : m_reflectionProbeDescs)
+    {
+        ReflectionProbes::Probe probe;
+        probe.position      = { desc.position[0], desc.position[1], desc.position[2] };
+        probe.extents       = { desc.extents[0], desc.extents[1], desc.extents[2] };
+        probe.blendDistance = desc.blendDistance;
+        probes.push_back(probe);
+    }
+    m_reflectionProbes.SetProbes(probes);
+    const uint32_t count = m_reflectionProbes.GetCount();
+    if (count == 0)
+        return;
+
+    // Captures are always lit and never dithered (no temporal resolve).
+    const ForwardPipeline::ViewShading savedShading = pipeline.viewShading;
+    pipeline.viewShading = ForwardPipeline::ViewShading::Lit;
+    pipeline.SetCutoutDither(0, 0.0f);
+    m_reflectionProbes.Bind(ctx, false);
+    RenderLocalShadowMaps(ctx);
+
+    constexpr float nearZ = 0.1f;
+    const float farZ = camera->farZ;
+    const XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, nearZ, farZ);
+    for (uint32_t p = 0; p < count; ++p)
+    {
+        const XMFLOAT3 eye = m_reflectionProbes.GetProbe(p).position;
+        for (int face = 0; face < 6; ++face)
+        {
+            const XMMATRIX view = PointShadowMap::FaceView(eye, face);
+            RenderShadowMaps(ctx, view, proj, nearZ, farZ);
+            m_reflectionProbes.BeginFace(ctx, face);
+            RenderSceneToTarget(ctx, view, proj, eye, irradianceSRV, specularSRV, brdfLutSRV, false);
+        }
+        m_reflectionProbes.ResolveProbe(ctx, p, environmentLighting);
+    }
+    ctx->RSSetState(nullptr);
+    pipeline.viewShading = savedShading;
+    SE_LOG_INFO("Captured %u reflection probe(s)", count);
 }
 
 void SceneRuntime::RenderDebugShapes(ID3D11DeviceContext* ctx)

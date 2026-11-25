@@ -101,6 +101,17 @@ ojson WriteSettings(const SceneDescriptor& desc)
             { "samples", desc.motionBlur.samples }
         };
     }
+    if (!desc.reflectionProbes.empty())
+    {
+        ojson probes = ojson::array();
+        for (const auto& probe : desc.reflectionProbes)
+            probes.push_back(ojson{
+                { "position", probe.position },
+                { "extents", probe.extents },
+                { "blendDistance", probe.blendDistance }
+            });
+        settings["reflectionProbes"] = std::move(probes);
+    }
     return settings;
 }
 

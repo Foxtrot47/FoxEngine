@@ -1,9 +1,10 @@
 // Basic.hlsl — forward PBR + equirectangular IBL + directional/point shadows.
-// Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB
+// Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB,
+//            b9=ReflectionProbeCB
 //            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic,
 //            t13=occlusion, t14=detail albedo, t15=detail normal,
 //            FOX_TERRAIN only: t16-t19=layer albedo A-D, t20=splat, t21=overlay, t22-t25=layer normal A-D,
-//            t26=clearcoat, t27=clearcoat roughness
+//            t26=clearcoat, t27=clearcoat roughness, t28=reflection probe array
 //            s0=sampler, s1=shadowSampler(cmp), s2=cubeSampler
 // FOX_TERRAIN=1 (layered terrain permutation) replaces albedo, roughness and normal sampling.
 
@@ -95,6 +96,14 @@ cbuffer PlanarReflectionCB : register(b7)
     float ClipEnabled;
 };
 
+// Box-projected reflection probes (ReflectionProbes): GGX-prefiltered equirect slices.
+cbuffer ReflectionProbeCB : register(b9)
+{
+    float4 ProbeCenter[8];
+    float4 ProbeExtents[8];  // xyz half extents, w blendDistance
+    float4 ProbeInfo;        // x count, y mip count
+};
+
 Texture2D              g_albedo       : register(t0);
 Texture2D              g_roughness    : register(t1);
 Texture2D              g_normal       : register(t2);
@@ -125,6 +134,7 @@ Texture2D              g_terrainNormal3 : register(t25);
 #endif
 Texture2D              g_clearcoat          : register(t26);
 Texture2D              g_clearcoatRoughness : register(t27);
+Texture2DArray         g_reflectionProbes   : register(t28);
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -264,6 +274,10 @@ float2 DirToEnvUV(float3 dir)
                   0.5f - asin(clamp(dir.y, -1.0f, 1.0f)) / PI);
 }
 
+// Environment specular for reflection direction R at worldPos: probes whose box contains
+// the pixel are sampled with a box-projected (parallax-corrected) direction and weighted by
+// saturate(distance inside the box / blendDistance); weights above 1 are normalised and
+// the remainder (1 - sum) comes from the global prefiltered map.
 float3 SampleSpecularEnv(float3 R, float3 worldPos, float roughness)
 {
     float envW, envH, envMips;
@@ -271,6 +285,41 @@ float3 SampleSpecularEnv(float3 R, float3 worldPos, float roughness)
     float3 envColor = g_prefilteredEnv.SampleLevel(
         g_sampler, DirToEnvUV(R), roughness * (envMips - 1.0f)).rgb;
 
+    int probeCount = (int)ProbeInfo.x;
+    if (probeCount > 0)
+    {
+        float3 probeSum  = 0.0f;
+        float  weightSum = 0.0f;
+        float  probeLod  = roughness * (ProbeInfo.y - 1.0f);
+        float3 safeR     = float3(abs(R.x) > 1e-6f ? R.x : 1e-6f,
+                                  abs(R.y) > 1e-6f ? R.y : 1e-6f,
+                                  abs(R.z) > 1e-6f ? R.z : 1e-6f);
+        [loop] for (int p = 0; p < probeCount; ++p)
+        {
+            float3 center  = ProbeCenter[p].xyz;
+            float3 extents = ProbeExtents[p].xyz;
+            float3 inside  = extents - abs(worldPos - center);
+            float  margin  = min(inside.x, min(inside.y, inside.z));
+            if (margin <= 0.0f)
+                continue;
+            float w = saturate(margin / max(ProbeExtents[p].w, 1e-3f));
+            // Ray from worldPos along R to the probe box, then the direction from its centre.
+            float3 tA   = (center + extents - worldPos) / safeR;
+            float3 tB   = (center - extents - worldPos) / safeR;
+            float3 tFar = max(tA, tB);
+            float  t    = min(tFar.x, min(tFar.y, tFar.z));
+            float3 dir  = worldPos + R * t - center;
+            probeSum  += w * g_reflectionProbes.SampleLevel(
+                g_sampler, float3(DirToEnvUV(dir), (float)p), probeLod).rgb;
+            weightSum += w;
+        }
+        if (weightSum > 1.0f)
+        {
+            probeSum /= weightSum;
+            weightSum = 1.0f;
+        }
+        envColor = probeSum + (1.0f - weightSum) * envColor;
+    }
     if (PlanarEnabled > 0.5f)
     {
         float4 reflectedClip = mul(float4(worldPos, 1.0f), ReflectionViewProj);
