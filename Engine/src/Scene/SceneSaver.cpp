@@ -88,6 +88,19 @@ ojson WriteSettings(const SceneDescriptor& desc)
     };
     if (desc.shadows.distance > 0.0f)
         settings["shadows"] = { { "distance", desc.shadows.distance } };
+    const SceneDescriptor::MotionBlurDesc defaultMb;
+    if (desc.motionBlur.enabled ||
+        desc.motionBlur.shutterAngle != defaultMb.shutterAngle ||
+        desc.motionBlur.maxBlurPixels != defaultMb.maxBlurPixels ||
+        desc.motionBlur.samples != defaultMb.samples)
+    {
+        settings["motionBlur"] = {
+            { "enabled", desc.motionBlur.enabled },
+            { "shutterAngle", desc.motionBlur.shutterAngle },
+            { "maxBlurPixels", desc.motionBlur.maxBlurPixels },
+            { "samples", desc.motionBlur.samples }
+        };
+    }
     return settings;
 }
 

@@ -574,6 +574,7 @@ def write_scene(path, name, mesh_entries, pole, yaw, bounds_min, bounds_max, flo
             },
             "toneMapping": {"operator": "ACES", "exposure": 1.0},
             "bloom": {"enabled": True, "threshold": 1.0, "intensity": 0.12, "scatter": 0.6},
+            "motionBlur": {"enabled": True},
         },
         "entities": entities,
     }

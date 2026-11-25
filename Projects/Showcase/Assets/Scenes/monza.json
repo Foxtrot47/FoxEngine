@@ -38,6 +38,9 @@
       "threshold": 1.0,
       "intensity": 0.12,
       "scatter": 0.6
+    },
+    "motionBlur": {
+      "enabled": true
     }
   },
   "entities": [

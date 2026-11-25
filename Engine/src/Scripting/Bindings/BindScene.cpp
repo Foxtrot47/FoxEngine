@@ -1004,6 +1004,9 @@ void BindScene(ScriptApi& api, ScriptContext& ctx)
         .Property("bloom", "boolean", "Bloom (reset by scene loads).",
             [&ctx] { return RequireRuntime(ctx, "fox.graphics").bloom.enabled; },
             [&ctx](bool value) { RequireRuntime(ctx, "fox.graphics").bloom.enabled = value; })
+        .Property("motion_blur", "boolean", "Camera and per-object motion blur (reset by scene loads).",
+            [&ctx] { return RequireRuntime(ctx, "fox.graphics").motionBlur.enabled; },
+            [&ctx](bool value) { RequireRuntime(ctx, "fox.graphics").motionBlur.enabled = value; })
         .Property("ambient_occlusion", "boolean", "Screen-space ambient occlusion.",
             [&ctx] { return RequireRuntime(ctx, "fox.graphics").ssao.enabled; },
             [&ctx](bool value) { RequireRuntime(ctx, "fox.graphics").ssao.enabled = value; })

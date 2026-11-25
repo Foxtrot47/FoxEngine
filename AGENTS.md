@@ -38,7 +38,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 1. `ForwardPipeline::Begin()` → caches view/proj, extracts frustum
 2. `SubmitMesh()` → frustum cull, push to render queue
 3. `Flush()` → sort queue (opaque front-to-back, transparent back-to-front), bind per-draw state, draw
-4. Post-process chain: **SSAO → Volumetric Fog → Bloom → FXAA → ToneMap → Present**
+4. Post-process chain: **SSAO → Volumetric Fog → TAA/FSR → Motion Blur → Bloom → FXAA → ToneMap → Present**
 
 ### Key Classes
 
@@ -52,6 +52,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `CascadedShadowMap` | 4-cascade directional shadow mapping |
 | `SpotLight` | Spot light with cone angle + shadow map |
 | `VolumetricFog` | Single-scattering fog, god rays, IBL ambient |
+| `MotionBlur` | Velocity-buffer motion blur (tile/neighbour max, depth-aware gather); level `settings.motionBlur`, Lua `fox.graphics.motion_blur` |
 | `Bloom` | Dual Kawase blur chain |
 | `ToneMap` | Reinhard/ACES, auto-exposure |
 | `EnvironmentLighting` | Irradiance, GGX-prefiltered specular IBL, BRDF LUT |

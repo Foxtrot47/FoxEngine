@@ -184,6 +184,7 @@ bool SceneRuntime::Init(Renderer& renderer, ShaderLibrary& shaders, AssetManager
         if (!pointShadowMaps[i].Init(device, shaders, 256)) return false;
 
     if (!bloom.Init(device, shaders, width, height)) return false;
+    if (!m_motionBlur.Init(device, shaders, width, height)) return false;
     if (!ssao.Init(device, shaders, width, height)) return false;
     if (!volFog.Init(device, shaders, width, height)) return false;
     if (!fxaa.Init(device, shaders)) return false;
@@ -464,6 +465,10 @@ void SceneRuntime::ApplySceneSettings(const SceneDescriptor& desc)
     volFog.noiseSpeed = desc.fog.noiseSpeed;
     volFog.nearClearDistance = desc.fog.nearClearDistance;
     volFog.distanceDensity = desc.fog.distanceDensity;
+    motionBlur.enabled = desc.motionBlur.enabled;
+    motionBlur.shutterAngle = desc.motionBlur.shutterAngle;
+    motionBlur.maxBlurPixels = desc.motionBlur.maxBlurPixels;
+    motionBlur.samples = desc.motionBlur.samples;
 }
 
 bool SceneRuntime::ApplyScene(const std::string& scenePath, PreparedLevel&& prepared,
@@ -833,6 +838,10 @@ void SceneRuntime::SyncDescriptorFromRuntime()
     desc.fog.noiseSpeed = volFog.noiseSpeed;
     desc.fog.nearClearDistance = volFog.nearClearDistance;
     desc.fog.distanceDensity = volFog.distanceDensity;
+    desc.motionBlur.enabled = motionBlur.enabled;
+    desc.motionBlur.shutterAngle = motionBlur.shutterAngle;
+    desc.motionBlur.maxBlurPixels = motionBlur.maxBlurPixels;
+    desc.motionBlur.samples = motionBlur.samples;
 }
 
 bool SceneRuntime::AddPointLight(const XMFLOAT3& position)
@@ -1256,6 +1265,7 @@ void SceneRuntime::RefreshParticlePresets()
 void SceneRuntime::Update(float dt, float totalTime)
 {
     ID3D11DeviceContext* ctx = m_renderer->GetContext();
+    m_lastUpdateDt = dt;
 
     world.GetScene().Update(dt);
     UpdateActors();
@@ -1996,6 +2006,7 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
     const bool useFsr = fsrEnabled && !camera->orthographic && fsr.IsInitialized() &&
                         hdrRT.GetWidth() == fsr.RenderWidth() &&
                         hdrRT.GetHeight() == fsr.RenderHeight();
+    const XMMATRIX prevViewProj = m_prevViewProjNoJitter;
     if (useFsr)
     {
         DispatchFsr(ctx, frameDt);
@@ -2004,11 +2015,19 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
     {
         XMMATRIX invVP = XMMatrixInverse(nullptr, m_viewProjNoJitter);
         taa.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_velocityRT.GetSRV(),
-                  invVP, m_prevViewProjNoJitter);
+                  invVP, prevViewProj);
     }
     m_prevViewProjNoJitter = m_viewProjNoJitter;
 
     RenderTarget& outRT = useFsr ? m_fsrOutputRT : hdrRT;
+
+    if (motionBlur.enabled && litView && !camera->orthographic &&
+        frameDt > 0.0f && m_lastUpdateDt > 0.0f)
+    {
+        XMMATRIX invVP = XMMatrixInverse(nullptr, m_viewProjNoJitter);
+        m_motionBlur.Apply(ctx, outRT, m_velocityRT.GetSRV(), hdrRT.GetDepthSRV(),
+                           motionBlur, invVP, prevViewProj, camera->nearZ, camera->farZ);
+    }
 
     if (bloom.enabled && litView)
         bloom.Apply(ctx, outRT);
@@ -2055,6 +2074,7 @@ void SceneRuntime::ResizeRenderTargets(uint32_t rw, uint32_t rh, uint32_t w, uin
     m_velocityRT.Init(dev, rw, rh, DXGI_FORMAT_R16G16_FLOAT);
     taa.Resize(dev, rw, rh);
     bloom.Resize(dev, w, h);
+    m_motionBlur.Resize(dev, w, h);
     ssao.Resize(dev, rw, rh);
     volFog.Resize(dev, rw, rh);
     m_ldrRT.Shutdown();

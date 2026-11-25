@@ -114,6 +114,13 @@ struct SceneDescriptor
         float distanceDensity   = 0.0f;
     };
     FogDesc fog;
+    struct MotionBlurDesc {
+        bool  enabled       = false;
+        float shutterAngle  = 180.0f;
+        float maxBlurPixels = 32.0f;
+        int   samples       = 12;
+    };
+    MotionBlurDesc motionBlur;
 
     // Optional array of scene objects with explicit geometry and PBR material paths.
     // Rendered in addition to the main mesh. Enables a fully JSON-driven PBR showcase.

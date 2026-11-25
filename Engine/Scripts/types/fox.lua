@@ -848,6 +848,7 @@ function fox.physics.remove_balls() end
 ---@field fsr_sharpening boolean FSR sharpening pass.
 ---@field fsr_sharpness number FSR sharpening strength (0..1).
 ---@field bloom boolean Bloom (reset by scene loads).
+---@field motion_blur boolean Camera and per-object motion blur (reset by scene loads).
 ---@field ambient_occlusion boolean Screen-space ambient occlusion.
 ---@field volumetric_fog boolean Volumetric fog and light shafts (reset by scene loads).
 ---@field fog_density number Volumetric fog density (reset by scene loads).

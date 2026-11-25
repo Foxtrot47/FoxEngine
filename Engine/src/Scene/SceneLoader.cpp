@@ -69,7 +69,7 @@ static json BuildSettingsJson(const LevelAsset& asset)
             if (environment.contains(field))
                 root[field] = environment[field];
     }
-    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog", "shadows" })
+    for (const char* field : { "physics", "toneMapping", "colorGrading", "bloom", "fog", "shadows", "motionBlur" })
         if (asset.settings.contains(field))
             root[field] = asset.settings[field];
 
@@ -302,6 +302,15 @@ bool SceneLoader::BuildDescriptor(const LevelAsset& asset, SceneDescriptor& out)
     {
         auto& s = root["shadows"];
         if (s.contains("distance")) out.shadows.distance = s["distance"].get<float>();
+    }
+    // Motion blur
+    if (root.contains("motionBlur"))
+    {
+        auto& mb = root["motionBlur"];
+        if (mb.contains("enabled"))       out.motionBlur.enabled       = mb["enabled"].get<bool>();
+        if (mb.contains("shutterAngle"))  out.motionBlur.shutterAngle  = mb["shutterAngle"].get<float>();
+        if (mb.contains("maxBlurPixels")) out.motionBlur.maxBlurPixels = mb["maxBlurPixels"].get<float>();
+        if (mb.contains("samples"))       out.motionBlur.samples       = mb["samples"].get<int>();
     }
 
     return true;

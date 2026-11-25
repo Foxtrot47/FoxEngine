@@ -37,6 +37,16 @@ void DrawBloomSection(SE::SceneRuntime& scene)
     ImGui::SliderFloat("Strength",  &bloom.intensity, 0.0f, 0.5f,  "%.3f");
     ImGui::SliderFloat("Scatter",   &bloom.scatter,   0.0f, 1.0f,  "%.2f");
 }
+void DrawMotionBlurSection(SE::SceneRuntime& scene)
+{
+    auto& mb = scene.motionBlur;
+    ImGui::Checkbox("Enable Motion Blur", &mb.enabled);
+    if (!mb.enabled)
+        return;
+    ImGui::SliderFloat("Shutter Angle",   &mb.shutterAngle,  1.0f, 360.0f, "%.0f deg");
+    ImGui::SliderFloat("Max Blur Pixels", &mb.maxBlurPixels, 1.0f, 128.0f, "%.0f px");
+    ImGui::SliderInt("Samples",           &mb.samples,       4, 32);
+}
 
 void DrawShadowsSection(SE::SceneRuntime& scene)
 {
@@ -210,6 +220,7 @@ void DrawWorldProps(SE::SceneRuntime& scene, uint32_t outWidth, uint32_t outHeig
         { "Tone Mapping", "Tone Mapping Exposure", DrawToneMapSection },
         { "Color Grading", "Color Grading Temperature Tint Saturation Contrast Vignette", DrawColorGradingSection },
         { "Bloom", "Bloom Intensity Threshold", DrawBloomSection },
+        { "Motion Blur", "Motion Blur Shutter Angle Samples", DrawMotionBlurSection },
         { "SSAO", "SSAO Ambient Occlusion Radius Bias Power", DrawSsaoSection },
         { "Volumetric Fog", "Volumetric Fog Density Height Noise Distance Scattering", DrawFogSection },
         { "FXAA", "FXAA Anti Aliasing", DrawFxaaSection }

@@ -529,6 +529,45 @@ void ParseEnvironmentSettings(LevelAssetLoadResult& result, const json& root)
             AddDiagnostic(result, Severity::Error, "/settings/shadows/distance",
                           "settings.shadows.distance must be a number greater than 0");
     }
+    if (result.asset.settings.contains("motionBlur"))
+    {
+        const auto& mb = result.asset.settings["motionBlur"];
+        if (!mb.is_object())
+            AddDiagnostic(result, Severity::Error, "/settings/motionBlur", "expected an object");
+        else
+        {
+            if (mb.contains("enabled") && !mb["enabled"].is_boolean())
+                AddDiagnostic(result, Severity::Error, "/settings/motionBlur/enabled",
+                              "expected a boolean");
+            if (mb.contains("shutterAngle"))
+            {
+                if (!mb["shutterAngle"].is_number())
+                    AddDiagnostic(result, Severity::Error, "/settings/motionBlur/shutterAngle",
+                                  "expected a number");
+                else if (const float v = mb["shutterAngle"].get<float>(); v < 1.0f || v > 360.0f)
+                    AddDiagnostic(result, Severity::Error, "/settings/motionBlur/shutterAngle",
+                                  "settings.motionBlur.shutterAngle out of range");
+            }
+            if (mb.contains("maxBlurPixels"))
+            {
+                if (!mb["maxBlurPixels"].is_number())
+                    AddDiagnostic(result, Severity::Error, "/settings/motionBlur/maxBlurPixels",
+                                  "expected a number");
+                else if (const float v = mb["maxBlurPixels"].get<float>(); v < 1.0f || v > 128.0f)
+                    AddDiagnostic(result, Severity::Error, "/settings/motionBlur/maxBlurPixels",
+                                  "settings.motionBlur.maxBlurPixels out of range");
+            }
+            if (mb.contains("samples"))
+            {
+                if (!mb["samples"].is_number_integer())
+                    AddDiagnostic(result, Severity::Error, "/settings/motionBlur/samples",
+                                  "expected an integer");
+                else if (const int v = mb["samples"].get<int>(); v < 4 || v > 32)
+                    AddDiagnostic(result, Severity::Error, "/settings/motionBlur/samples",
+                                  "settings.motionBlur.samples out of range");
+            }
+        }
+    }
 }
 
 // Validates a project-relative .lua path, normalizing separators.
@@ -730,7 +769,7 @@ void ConvertLegacy(LevelAssetLoadResult& result, const json& root)
             environment[field] = root[field];
     if (!environment.empty())
         settings["environment"] = std::move(environment);
-    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "shadows", "physics" })
+    for (const char* field : { "toneMapping", "colorGrading", "bloom", "fog", "shadows", "motionBlur", "physics" })
         if (root.contains(field))
             settings[field] = root[field];
 

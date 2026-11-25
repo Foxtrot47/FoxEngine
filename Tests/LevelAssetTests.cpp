@@ -277,6 +277,41 @@ static void TestValidationFailures()
     Require(!shadows.Succeeded(), "a negative shadow distance unexpectedly succeeded");
     Require(HasErrorContaining(shadows, "settings.shadows.distance must be a number greater than 0"),
             "shadow distance range error was not diagnosed");
+    const json badShutter = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "BadMotionBlurShutter" },
+        { "settings", { { "motionBlur", { { "shutterAngle", 0.0f } } } } },
+        { "entities", json::array() }
+    };
+    const auto shutterRes = LevelAssetLoader::Parse(badShutter, "badShutter");
+    Require(!shutterRes.Succeeded(), "out-of-range shutterAngle unexpectedly succeeded");
+    Require(HasErrorContaining(shutterRes, "settings.motionBlur.shutterAngle out of range"),
+            "motionBlur.shutterAngle range error was not diagnosed");
+
+    const json badMaxPx = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "BadMotionBlurMaxPx" },
+        { "settings", { { "motionBlur", { { "maxBlurPixels", 256.0f } } } } },
+        { "entities", json::array() }
+    };
+    const auto maxPxRes = LevelAssetLoader::Parse(badMaxPx, "badMaxPx");
+    Require(!maxPxRes.Succeeded(), "out-of-range maxBlurPixels unexpectedly succeeded");
+    Require(HasErrorContaining(maxPxRes, "settings.motionBlur.maxBlurPixels out of range"),
+            "motionBlur.maxBlurPixels range error was not diagnosed");
+
+    const json badSamples = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "BadMotionBlurSamples" },
+        { "settings", { { "motionBlur", { { "samples", 64 } } } } },
+        { "entities", json::array() }
+    };
+    const auto samplesRes = LevelAssetLoader::Parse(badSamples, "badSamples");
+    Require(!samplesRes.Succeeded(), "out-of-range motionBlur samples unexpectedly succeeded");
+    Require(HasErrorContaining(samplesRes, "settings.motionBlur.samples out of range"),
+            "motionBlur.samples range error was not diagnosed");
 }
 
 static void TestLegacyConversion()
@@ -465,6 +500,58 @@ static void TestShadowDistanceRoundTrip()
     SE::SceneDescriptor unset;
     Require(SE::SceneSaver::ToJson(unset).find("\"shadows\"") == std::string::npos,
             "an unset shadow distance must not be serialized");
+}
+// Motion blur settings survive load -> save -> load, and default disabled
+// motion blur is omitted from saved JSON so existing scenes stay clean.
+static void TestMotionBlurRoundTrip()
+{
+    const json level = {
+        { "format", "FoxLevel" },
+        { "version", 2 },
+        { "name", "MotionBlur" },
+        { "settings", { { "motionBlur", {
+            { "enabled", true },
+            { "shutterAngle", 240.0f },
+            { "maxBlurPixels", 48.0f },
+            { "samples", 16 }
+        } } } },
+        { "entities", json::array() }
+    };
+    const auto parsed = LevelAssetLoader::Parse(level, "motionBlur");
+    Require(parsed.Succeeded(), "motion blur settings failed to parse");
+
+    SE::SceneDescriptor descriptor;
+    Require(SE::SceneLoader::BuildDescriptor(parsed.asset, descriptor),
+            "motion blur descriptor build failed");
+    Require(descriptor.motionBlur.enabled &&
+            descriptor.motionBlur.shutterAngle == 240.0f &&
+            descriptor.motionBlur.maxBlurPixels == 48.0f &&
+            descriptor.motionBlur.samples == 16,
+            "motion blur fields were not propagated to the descriptor");
+
+    const std::string text = SE::SceneSaver::ToJson(descriptor);
+    const auto reparsed = LevelAssetLoader::Parse(json::parse(text), "motionBlur");
+    Require(reparsed.Succeeded(), "saved motion blur failed validation");
+
+    SE::SceneDescriptor loaded;
+    Require(SE::SceneLoader::BuildDescriptor(reparsed.asset, loaded),
+            "saved motion blur failed to rebuild a descriptor");
+    Require(loaded.motionBlur.enabled &&
+            loaded.motionBlur.shutterAngle == 240.0f &&
+            loaded.motionBlur.maxBlurPixels == 48.0f &&
+            loaded.motionBlur.samples == 16,
+            "motion blur did not survive the round trip");
+    Require(SE::SceneSaver::ToJson(loaded) == text,
+            "motion blur serialization is not stable");
+
+    SE::SceneDescriptor nonDefaultDisabled;
+    nonDefaultDisabled.motionBlur.shutterAngle = 90.0f;
+    Require(SE::SceneSaver::ToJson(nonDefaultDisabled).find("\"motionBlur\"") != std::string::npos,
+            "non-default disabled motion blur must be serialized");
+
+    SE::SceneDescriptor unset;
+    Require(SE::SceneSaver::ToJson(unset).find("\"motionBlur\"") == std::string::npos,
+            "default disabled motion blur must not be serialized");
 }
 
 static void TestBistroRuntimeDescriptor()
@@ -1758,6 +1845,7 @@ static void RunTests()
     TestRepositoryScenes();
     TestSaveRoundTrip();
     TestShadowDistanceRoundTrip();
+    TestMotionBlurRoundTrip();
     TestBistroRuntimeDescriptor();
     TestScriptParsing();
     TestDescriptorStamping();

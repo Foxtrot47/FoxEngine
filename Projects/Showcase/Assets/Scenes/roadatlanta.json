@@ -39,6 +39,9 @@
       "intensity": 0.12,
       "scatter": 0.6
     },
+    "motionBlur": {
+      "enabled": true
+    },
     "shadows": {
       "distance": 950.0
     }
