@@ -78,21 +78,19 @@ void MeshAddOperation::Prepare()
 
     std::unordered_set<std::string> seen;
     for (const auto& subMesh : m_meshSource.subMeshes)
-        for (const auto& raw : { subMesh.material.albedoPath, subMesh.material.normalPath,
-                                 subMesh.material.roughnessPath, subMesh.material.emissivePath })
-        {
-            if (raw.empty()) continue;
+        ForEachTexturePath(subMesh.material, [&](const std::string& raw) {
+            if (m_cancelled.load()) return;
             const std::string path = MaterialTexturePath(m_meshSource.directory, raw);
-            if (!seen.insert(path).second) continue;
-            if (m_cache.textures.find(Wide(path)) != m_cache.textures.end()) continue;
+            if (!seen.insert(path).second) return;
+            if (m_cache.textures.find(Wide(path)) != m_cache.textures.end()) return;
             CpuTexture texture;
             texture.path = path;
             texture.decoded = Texture2D::Decode(Wide(path).c_str(), texture.source);
             if (!texture.decoded)
                 SE_LOG_WARN("MeshAdd: texture decode failed: %s", path.c_str());
             m_cpuTextures.push_back(std::move(texture));
-            if (m_cancelled.load()) return;
-        }
+        });
+    if (m_cancelled.load()) return;
 
     std::lock_guard lock(m_mutex);
     m_state = MeshAddState::Uploading;

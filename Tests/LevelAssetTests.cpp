@@ -523,7 +523,7 @@ static void TestCpuMeshImport()
         }), "tiny OBJ CPU import failed");
     Require(source.subMeshes.size() == 1, "tiny OBJ submesh count mismatch");
     Require(source.subMeshes[0].vertexCount == 3, "tiny OBJ vertex count mismatch");
-    Require(source.subMeshes[0].material.albedoPath == "missing_albedo.png",
+    Require(source.subMeshes[0].material.albedo.path == "missing_albedo.png",
             "material texture dependency was not discovered");
 
     SE::MeshSourceData cancelled;
@@ -540,16 +540,16 @@ static void TestGltfPackedMRDetection()
     Require(source.subMeshes.size() == 2, "packed MR glTF submesh count mismatch");
 
     const auto& packed = source.subMeshes[0].material;
-    Require(packed.albedoPath == "albedo.png", "glTF base color path mismatch");
-    Require(packed.roughnessPath == "packed_mr.png",
+    Require(packed.albedo.path == "albedo.png", "glTF base color path mismatch");
+    Require(packed.roughness.path == "packed_mr.png",
             "glTF metallic-roughness texture was not routed to the roughness slot");
     Require(packed.workflow == SE::MaterialWorkflow::PackedMR,
             "shared metallic-roughness texture was not flagged as packed");
-    Require(packed.normalPath == "normal.png", "glTF normal path mismatch");
+    Require(packed.normal.path == "normal.png", "glTF normal path mismatch");
     Require(packed.roughnessFactor == 1.0f, "textured material roughness factor should default to 1");
 
     const auto& scalar = source.subMeshes[1].material;
-    Require(scalar.roughnessPath.empty(), "texture-less material should have no roughness path");
+    Require(scalar.roughness.path.empty(), "texture-less material should have no roughness path");
     Require(scalar.workflow == SE::MaterialWorkflow::SeparateMR,
             "texture-less material must not be flagged as packed");
     Require(scalar.roughnessFactor > 0.34f && scalar.roughnessFactor < 0.36f,
@@ -565,8 +565,8 @@ static void TestGltfSpecGlossDetection()
     Require(source.subMeshes.size() == 3, "spec/gloss glTF submesh count mismatch");
 
     const auto& textured = source.subMeshes[0].material;
-    Require(textured.albedoPath == "diffuse.png", "spec/gloss diffuse path mismatch");
-    Require(textured.roughnessPath == "spec_gloss.png",
+    Require(textured.albedo.path == "diffuse.png", "spec/gloss diffuse path mismatch");
+    Require(textured.roughness.path == "spec_gloss.png",
             "specular-glossiness texture was not routed to the roughness slot");
     Require(textured.workflow == SE::MaterialWorkflow::SpecularGloss,
             "spec/gloss material was not detected");
@@ -576,7 +576,7 @@ static void TestGltfSpecGlossDetection()
     const auto& scalar = source.subMeshes[1].material;
     Require(scalar.workflow == SE::MaterialWorkflow::SeparateMR,
             "texture-less spec/gloss should fall back to the scalar MR path");
-    Require(scalar.roughnessPath.empty(), "texture-less spec/gloss should have no roughness path");
+    Require(scalar.roughness.path.empty(), "texture-less spec/gloss should have no roughness path");
     Require(scalar.roughnessFactor > 0.74f && scalar.roughnessFactor < 0.76f,
             "texture-less spec/gloss roughness was not derived from glossiness");
 
@@ -593,11 +593,29 @@ static void TestGltfSpecGlossDetection()
     Require(instanceMaxX < -3.5f, "instanced glTF mesh was not duplicated per node");
 }
 
-static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b)
+static bool SameSlot(const SE::TextureSlot& a, const SE::TextureSlot& b, bool compareTransform)
 {
-    return a.albedoPath == b.albedoPath && a.normalPath == b.normalPath &&
-           a.roughnessPath == b.roughnessPath && a.emissivePath == b.emissivePath &&
-           a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
+    return a.path == b.path && a.uvSet == b.uvSet &&
+           (!compareTransform || (a.scale[0] == b.scale[0] && a.scale[1] == b.scale[1] &&
+                                  a.offset[0] == b.offset[0] && a.offset[1] == b.offset[1]));
+}
+
+// gltfExtras = false for importer parity: the Assimp path reads standard texture paths and
+// UV sets only (texture transforms, occlusion strength and extras.fox are cgltf-only;
+// Assimp 6.0.4's glTF reader does not export the occlusion strength).
+static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, bool gltfExtras = true)
+{
+    const SE::TextureSlot* slotsA[] = { &a.albedo, &a.normal, &a.roughness, &a.emissive, &a.occlusion };
+    const SE::TextureSlot* slotsB[] = { &b.albedo, &b.normal, &b.roughness, &b.emissive, &b.occlusion };
+    for (size_t i = 0; i < std::size(slotsA); ++i)
+        if (!SameSlot(*slotsA[i], *slotsB[i], gltfExtras))
+            return false;
+    if (gltfExtras &&
+        (!SameSlot(a.detailAlbedo, b.detailAlbedo, true) || !SameSlot(a.detailNormal, b.detailNormal, true) ||
+         a.occlusionStrength != b.occlusionStrength || a.occlusionChannel != b.occlusionChannel ||
+         a.detailNormalStrength != b.detailNormalStrength))
+        return false;
+    return a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
            a.workflow == b.workflow && a.roughnessFactor == b.roughnessFactor &&
            a.glossinessFactor == b.glossinessFactor;
 }
@@ -669,7 +687,7 @@ static void TestGltfImporterParity(const std::vector<const char*>& paths)
         size_t corners = 0, normalAgree = 0, tangentAgree = 0, bitangentAgree = 0;
         for (size_t s = 0; s < assimp.subMeshes.size(); ++s)
         {
-            require(SameMaterial(gltf.subMeshes[s].material, assimp.subMeshes[s].material),
+            require(SameMaterial(gltf.subMeshes[s].material, assimp.subMeshes[s].material, false),
                     "importer submesh materials differ");
             const auto a = QuantizedTriangles(assimp, assimp.subMeshes[s]);
             const auto b = QuantizedTriangles(gltf, gltf.subMeshes[s]);
@@ -768,7 +786,7 @@ static void TestMeshCache()
     fs::remove(mtl);
     Require(cache.Load(source, cooked, {}, nullptr, &hit) && hit,
             "cooked entry was not used for a missing source");
-    Require(cooked.subMeshes.size() == 1 && cooked.subMeshes[0].material.albedoPath == "missing_albedo.png",
+    Require(cooked.subMeshes.size() == 1 && cooked.subMeshes[0].material.albedo.path == "missing_albedo.png",
             "cooked-only load lost material data");
     Require(cache.Cook(source, false) == SE::MeshCookResult::Failed, "cooking a missing source succeeded");
 
@@ -857,6 +875,64 @@ static void TestVertexStreams()
         Require(v.color == 0xFFFFFFFFu,
                 "tiny.obj missing vertex color did not default to white");
     }
+}
+
+// Per-slot UV sets and tiling (texCoord, KHR_texture_transform), occlusion and the
+// extras.fox detail slots, through import and a MeshCache round trip.
+static void TestTextureSlots()
+{
+    const auto checkSlot = [](const SE::TextureSlot& slot, const char* path, uint8_t uvSet,
+                              float sx, float sy, float ox, float oy, const char* label) {
+        const auto same = [](float a, float b) { return std::fabs(a - b) < 1e-6f; };
+        if (slot.path != path || slot.uvSet != uvSet || !same(slot.scale[0], sx) || !same(slot.scale[1], sy) ||
+            !same(slot.offset[0], ox) || !same(slot.offset[1], oy))
+            throw std::runtime_error(std::string("slots.gltf: ") + label + " slot mismatch");
+    };
+    const auto checkSource = [&](const SE::MeshSourceData& data) {
+        Require(data.subMeshes.size() == 2, "slots.gltf submesh count mismatch");
+        const SE::SubMeshInfo& slots = data.subMeshes[0].material;
+        checkSlot(slots.albedo, "albedo.png", 0, 4.0f, 4.0f, 0.5f, 0.0f, "albedo");
+        checkSlot(slots.normal, "normal.png", 0, 2.0f, 2.0f, 0.0f, 0.0f, "normal");
+        checkSlot(slots.roughness, "mr.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "roughness");
+        checkSlot(slots.emissive, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "emissive");
+        checkSlot(slots.occlusion, "ao.png", 1, 1.0f, 1.0f, 0.0f, 0.0f, "occlusion");
+        checkSlot(slots.detailAlbedo, "detail.png", 1, 8.0f, 8.0f, 0.25f, 0.5f, "detail albedo");
+        checkSlot(slots.detailNormal, "detail_normal.dds", 2, 16.0f, 16.0f, 0.0f, 0.0f, "detail normal");
+        Require(slots.occlusionStrength == 0.5f, "slots.gltf occlusion strength mismatch");
+        Require(slots.occlusionChannel == 1, "slots.gltf occlusion channel mismatch");
+        Require(slots.detailNormalStrength == 0.75f, "slots.gltf detail normal strength mismatch");
+        Require(slots.workflow == SE::MaterialWorkflow::PackedMR, "slots.gltf workflow mismatch");
+        size_t paths = 0;
+        SE::ForEachTexturePath(slots, [&paths](const std::string&) { ++paths; });
+        Require(paths == 6, "ForEachTexturePath did not enumerate every slot path");
+
+        const SE::SubMeshInfo& defaults = data.subMeshes[1].material;
+        checkSlot(defaults.occlusion, "ao.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default occlusion");
+        checkSlot(defaults.detailAlbedo, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default detail albedo");
+        checkSlot(defaults.detailNormal, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default detail normal");
+        Require(defaults.occlusionStrength == 1.0f && defaults.occlusionChannel == 0 &&
+                defaults.detailNormalStrength == 1.0f, "slots.gltf default scalars mismatch");
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/slots.gltf", imported), "failed to import slots.gltf");
+    checkSource(imported);
+
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "FoxEngineTextureSlotsCacheTest";
+    fs::remove_all(root);
+    const SE::MeshCache cache((root / "cache").string());
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load("Assets/TestFixtures/slots.gltf", firstLoad, {}, nullptr, &hit) && !hit,
+            "slots.gltf first cache load did not import");
+    Require(cache.Load("Assets/TestFixtures/slots.gltf", cachedLoad, {}, nullptr, &hit) && hit,
+            "slots.gltf second cache load missed");
+    checkSource(cachedLoad);
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+        Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
+                "slots.gltf MeshCache round trip altered material slots");
+    fs::remove_all(root);
 }
 
 // glTF image URIs are relative to the mesh file; the converted DDS sits beside
@@ -1461,9 +1537,11 @@ static void RunTests()
     TestCpuMeshImport();
     TestGltfPackedMRDetection();
     TestGltfSpecGlossDetection();
-    TestGltfImporterParity({ "Assets/TestFixtures/packed_mr.gltf", "Assets/TestFixtures/spec_gloss.gltf" });
+    TestGltfImporterParity({ "Assets/TestFixtures/packed_mr.gltf", "Assets/TestFixtures/spec_gloss.gltf",
+                             "Assets/TestFixtures/slots.gltf" });
     TestMeshCache();
     TestVertexStreams();
+    TestTextureSlots();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 

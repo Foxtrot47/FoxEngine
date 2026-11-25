@@ -96,13 +96,13 @@ const cgltf_image* DdsImage(const cgltf_data* data, const cgltf_texture* texture
 }
 
 // Image path relative to the glTF file, exactly as written (percent-decoded).
-std::string TexturePath(const cgltf_data* data, const cgltf_texture_view& view, const char* path)
+std::string TexturePath(const cgltf_data* data, const cgltf_texture* texture, const char* path)
 {
-    if (!view.texture)
+    if (!texture)
         return {};
-    const cgltf_image* image = DdsImage(data, view.texture);
+    const cgltf_image* image = DdsImage(data, texture);
     if (!image)
-        image = view.texture->image;
+        image = texture->image;
     if (!image)
         return {};
     if (image->buffer_view || !image->uri || std::strncmp(image->uri, "data:", 5) == 0)
@@ -111,6 +111,105 @@ std::string TexturePath(const cgltf_data* data, const cgltf_texture_view& view, 
         return {};
     }
     return DecodeUri(image->uri);
+}
+
+uint8_t ClampUVSet(cgltf_int texCoord)
+{
+    return static_cast<uint8_t>((std::clamp)(texCoord, cgltf_int(0), cgltf_int(2)));
+}
+
+// Standard texture view: texCoord plus KHR_texture_transform (offset, scale, texCoord
+// override). UVs are stored as written, so the transform applies as uv * scale + offset.
+TextureSlot ReadSlot(const cgltf_data* data, const cgltf_texture_view& view,
+                     const cgltf_material* material, const char* path)
+{
+    TextureSlot slot;
+    slot.path = TexturePath(data, view.texture, path);
+    if (slot.path.empty())
+        return slot;
+    slot.uvSet = ClampUVSet(view.texcoord);
+    if (view.has_transform)
+    {
+        const cgltf_texture_transform& transform = view.transform;
+        if (transform.has_texcoord)
+            slot.uvSet = ClampUVSet(transform.texcoord);
+        slot.scale[0] = transform.scale[0];
+        slot.scale[1] = transform.scale[1];
+        slot.offset[0] = transform.offset[0];
+        slot.offset[1] = transform.offset[1];
+        if (transform.rotation != 0.0f)
+            SE_LOG_WARN("glTF material '%s': texture transform rotation ignored",
+                        material->name ? material->name : "");
+    }
+    return slot;
+}
+
+// extras.fox texture reference: { index, texCoord, uvScale, uvOffset }.
+TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, const char* path)
+{
+    TextureSlot slot;
+    if (!ref.is_object())
+        return slot;
+    const auto index = ref.find("index");
+    if (index == ref.end() || !index->is_number_unsigned() || index->get<size_t>() >= data->textures_count)
+        return slot;
+    slot.path = TexturePath(data, &data->textures[index->get<size_t>()], path);
+    if (slot.path.empty())
+        return slot;
+    const auto texCoord = ref.find("texCoord");
+    if (texCoord != ref.end() && texCoord->is_number_integer())
+        slot.uvSet = ClampUVSet(texCoord->get<cgltf_int>());
+    const auto readPair = [&ref](const char* key, float (&out)[2]) {
+        const auto value = ref.find(key);
+        if (value != ref.end() && value->is_array() && value->size() == 2 &&
+            (*value)[0].is_number() && (*value)[1].is_number())
+        {
+            out[0] = (*value)[0].get<float>();
+            out[1] = (*value)[1].get<float>();
+        }
+    };
+    readPair("uvScale", slot.scale);
+    readPair("uvOffset", slot.offset);
+    return slot;
+}
+
+// materials[i].extras.fox: occlusionChannel, detailAlbedo, detailNormal (+ strength).
+void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
+                   SubMeshInfo& out)
+{
+    cgltf_size size = 0;
+    if (cgltf_copy_extras_json(data, &material->extras, nullptr, &size) != cgltf_result_success || size <= 1)
+        return;
+    std::string text(size, '\0'); // JSON plus its terminator
+    if (cgltf_copy_extras_json(data, &material->extras, text.data(), &size) != cgltf_result_success)
+        return;
+    text.resize(size - 1);
+    const nlohmann::json extras = nlohmann::json::parse(text, nullptr, false);
+    if (extras.is_discarded())
+    {
+        SE_LOG_WARN("glTF material '%s': invalid extras JSON", material->name ? material->name : "");
+        return;
+    }
+    if (!extras.is_object())
+        return;
+    const auto fox = extras.find("fox");
+    if (fox == extras.end() || !fox->is_object())
+        return;
+
+    const auto channel = fox->find("occlusionChannel");
+    if (channel != fox->end() && channel->is_number_integer())
+        out.occlusionChannel = channel->get<int>() == 1 ? uint8_t(1) : uint8_t(0);
+    const auto detailAlbedo = fox->find("detailAlbedo");
+    if (detailAlbedo != fox->end())
+        out.detailAlbedo = ReadExtrasSlot(data, *detailAlbedo, path);
+    const auto detailNormal = fox->find("detailNormal");
+    if (detailNormal != fox->end() && detailNormal->is_object())
+    {
+        out.detailNormal = ReadExtrasSlot(data, *detailNormal, path);
+        const auto strength = detailNormal->find("strength");
+        if (strength != detailNormal->end() && strength->is_number())
+            out.detailNormalStrength = strength->get<float>();
+    }
 }
 
 // Same semantics as the Assimp path's ExtractSubMeshMaterial / ResolveRoughnessWorkflow /
@@ -125,20 +224,20 @@ SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material,
     const cgltf_pbr_specular_glossiness& sg = material->pbr_specular_glossiness;
     const bool specGloss = material->has_pbr_specular_glossiness != 0;
 
-    out.albedoPath = TexturePath(data, mr.base_color_texture, path);
-    if (out.albedoPath.empty() && specGloss)
-        out.albedoPath = TexturePath(data, sg.diffuse_texture, path);
-    out.normalPath = TexturePath(data, material->normal_texture, path);
+    out.albedo = ReadSlot(data, mr.base_color_texture, material, path);
+    if (out.albedo.path.empty() && specGloss)
+        out.albedo = ReadSlot(data, sg.diffuse_texture, material, path);
+    out.normal = ReadSlot(data, material->normal_texture, material, path);
 
     if (specGloss)
         out.glossinessFactor = sg.glossiness_factor;
-    out.roughnessPath = TexturePath(data, mr.metallic_roughness_texture, path);
-    if (!out.roughnessPath.empty())
+    out.roughness = ReadSlot(data, mr.metallic_roughness_texture, material, path);
+    if (!out.roughness.path.empty())
         out.workflow = MaterialWorkflow::PackedMR;
     else if (specGloss)
     {
-        out.roughnessPath = TexturePath(data, sg.specular_glossiness_texture, path);
-        if (!out.roughnessPath.empty())
+        out.roughness = ReadSlot(data, sg.specular_glossiness_texture, material, path);
+        if (!out.roughness.path.empty())
             out.workflow = MaterialWorkflow::SpecularGloss;
         else
             // Texture-less spec/gloss: approximate with the scalar MR path.
@@ -147,7 +246,11 @@ SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material,
     if (!specGloss)
         out.roughnessFactor = mr.roughness_factor;
 
-    out.emissivePath = TexturePath(data, material->emissive_texture, path);
+    out.emissive = ReadSlot(data, material->emissive_texture, material, path);
+    out.occlusion = ReadSlot(data, material->occlusion_texture, material, path);
+    if (!out.occlusion.path.empty())
+        out.occlusionStrength = material->occlusion_texture.scale;
+    ReadFoxExtras(data, material, path, out);
 
     if (material->alpha_mode == cgltf_alpha_mode_mask)
         out.alphaMode = AlphaMode::Cutout;

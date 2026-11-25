@@ -356,10 +356,9 @@ public:
             std::string firstMissing;
             std::set<std::string> textures;
             for (const SE::MeshSubMeshSource& subMesh : data.subMeshes)
-                for (const std::string* raw : { &subMesh.material.albedoPath, &subMesh.material.normalPath,
-                                                &subMesh.material.roughnessPath, &subMesh.material.emissivePath })
-                    if (!raw->empty())
-                        textures.insert(SE::MaterialTexturePath(data.directory, *raw));
+                SE::ForEachTexturePath(subMesh.material, [&](const std::string& raw) {
+                    textures.insert(SE::MaterialTexturePath(data.directory, raw));
+                });
             for (const std::string& texture : textures)
             {
                 if (IsRegularFile(texture))

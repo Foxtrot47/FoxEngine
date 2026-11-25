@@ -24,8 +24,7 @@ struct MeshVertex
     uint32_t color = 0xFFFFFFFFu;            // COLOR0 (RGBA8 UNORM, R in low byte)
 };
 
-// Per-submesh texture paths as extracted from the source file's material.
-// Paths are relative to GetDirectory(). Empty string = no texture assigned.
+// Per-submesh material as extracted from the source file.
 enum class AlphaMode : uint8_t { Opaque, Cutout, Transparent };
 
 // How the roughness-slot texture (t1) is interpreted:
@@ -34,18 +33,38 @@ enum class AlphaMode : uint8_t { Opaque, Cutout, Transparent };
 //  SpecularGloss: t1.rgb = specular color (F0), t1.a = glossiness
 enum class MaterialWorkflow : uint8_t { SeparateMR, PackedMR, SpecularGloss };
 
+// One material texture: path relative to GetDirectory() (empty = no texture), the UV
+// set it samples (0..2 = TEXCOORD_0..2) and its tiling, applied as uv * scale + offset.
+struct TextureSlot
+{
+    std::string path;
+    uint8_t uvSet = 0;
+    float scale[2] = { 1, 1 };
+    float offset[2] = { 0, 0 };
+};
+
 struct SubMeshInfo
 {
-    std::string albedoPath;
-    std::string normalPath;
-    std::string roughnessPath;
-    std::string emissivePath;
+    TextureSlot albedo, normal, roughness, emissive, occlusion, detailAlbedo, detailNormal;
+    float       occlusionStrength = 1.0f;    // ao = lerp(1, occlusion, strength)
+    uint8_t     occlusionChannel = 0;        // 0 = R, 1 = G
+    float       detailNormalStrength = 1.0f;
     AlphaMode   alphaMode = AlphaMode::Opaque;
     float       alphaCutoff = 0.5f;
     MaterialWorkflow workflow = MaterialWorkflow::SeparateMR;
     float       roughnessFactor = 1.0f;   // scalar roughness for texture-less MR materials
     float       glossinessFactor = 1.0f;  // scalar glossiness for spec/gloss materials
 };
+
+// Calls fn(const std::string&) for every non-empty texture path of the material.
+template <typename Fn>
+void ForEachTexturePath(const SubMeshInfo& info, Fn&& fn)
+{
+    for (const TextureSlot* slot : { &info.albedo, &info.normal, &info.roughness, &info.emissive,
+                                     &info.occlusion, &info.detailAlbedo, &info.detailNormal })
+        if (!slot->path.empty())
+            fn(slot->path);
+}
 
 struct MeshSubMeshSource
 {
@@ -91,8 +110,8 @@ public:
     void DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const;
 
     uint32_t         GetSubMeshCount() const { return static_cast<uint32_t>(m_subMeshes.size()); }
-    SubMeshInfo      GetSubMeshInfo(uint32_t index) const;
-    AlphaMode        GetSubMeshAlphaMode(uint32_t index) const { return m_subMeshes[index].alphaMode; }
+    const SubMeshInfo& GetSubMeshInfo(uint32_t index) const { return m_subMeshes[index].info; }
+    AlphaMode        GetSubMeshAlphaMode(uint32_t index) const { return m_subMeshes[index].info.alphaMode; }
     const std::string& GetDirectory() const { return m_directory; }
     const AABB&      GetBounds() const { return m_bounds; }
 
@@ -101,15 +120,7 @@ private:
     {
         VertexBuffer vb;
         IndexBuffer  ib;
-        std::string  albedoPath;
-        std::string  normalPath;
-        std::string  roughnessPath;
-        std::string  emissivePath;
-        AlphaMode    alphaMode = AlphaMode::Opaque;
-        float        alphaCutoff = 0.5f;
-        MaterialWorkflow workflow = MaterialWorkflow::SeparateMR;
-        float        roughnessFactor = 1.0f;
-        float        glossinessFactor = 1.0f;
+        SubMeshInfo  info;
     };
     std::vector<SubMesh> m_subMeshes;
     std::string          m_directory;

@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 4;
+constexpr uint32_t k_meshCacheVersion = 5;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -59,18 +59,39 @@ struct DependencyRecord
     int64_t writeTime; // file_time_type::time_since_epoch().count()
 };
 
+// One material texture: path, its UV transform (uv * scale + offset) and UV set.
+struct SlotRecord
+{
+    StringRef path;
+    float scale[2], offset[2];
+    uint8_t uvSet, pad[3];
+};
+
+// Slot order: albedo, normal, roughness, emissive, occlusion, detail albedo, detail normal.
+constexpr size_t k_slotCount = 7;
+
 struct SubMeshRecord
 {
     uint32_t firstVertex, vertexCount, firstIndex, indexCount;
-    StringRef albedo, normal, roughness, emissive;
+    SlotRecord slots[k_slotCount];
     float alphaCutoff, roughnessFactor, glossinessFactor;
-    uint8_t alphaMode, workflow, pad[2];
+    float occlusionStrength, detailNormalStrength;
+    uint8_t alphaMode, workflow, occlusionChannel, pad;
 };
 
 static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
 static_assert(sizeof(FileHeader) == 96, ".fxmesh FileHeader size");
 static_assert(sizeof(DependencyRecord) == 24, ".fxmesh DependencyRecord size");
-static_assert(sizeof(SubMeshRecord) == 64, ".fxmesh SubMeshRecord size");
+static_assert(sizeof(SlotRecord) == 28, ".fxmesh SlotRecord size");
+static_assert(sizeof(SubMeshRecord) == 236, ".fxmesh SubMeshRecord size");
+
+// SubMeshInfo slots in SubMeshRecord::slots order (const or mutable pointers).
+template <typename Info>
+auto Slots(Info& info)
+{
+    return std::array { &info.albedo, &info.normal, &info.roughness, &info.emissive,
+                        &info.occlusion, &info.detailAlbedo, &info.detailNormal };
+}
 
 enum class ReadResult { Hit, Miss, Cancelled };
 
@@ -311,15 +332,25 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.vertexCount = sub.vertexCount;
         record.firstIndex = sub.firstIndex;
         record.indexCount = sub.indexCount;
-        record.albedo = addString(sub.material.albedoPath);
-        record.normal = addString(sub.material.normalPath);
-        record.roughness = addString(sub.material.roughnessPath);
-        record.emissive = addString(sub.material.emissivePath);
+        const auto slots = Slots(sub.material);
+        for (size_t s = 0; s < k_slotCount; ++s)
+        {
+            SlotRecord& slot = record.slots[s];
+            slot.path = addString(slots[s]->path);
+            slot.scale[0] = slots[s]->scale[0];
+            slot.scale[1] = slots[s]->scale[1];
+            slot.offset[0] = slots[s]->offset[0];
+            slot.offset[1] = slots[s]->offset[1];
+            slot.uvSet = slots[s]->uvSet;
+        }
         record.alphaCutoff = sub.material.alphaCutoff;
         record.roughnessFactor = sub.material.roughnessFactor;
         record.glossinessFactor = sub.material.glossinessFactor;
+        record.occlusionStrength = sub.material.occlusionStrength;
+        record.detailNormalStrength = sub.material.detailNormalStrength;
         record.alphaMode = static_cast<uint8_t>(sub.material.alphaMode);
         record.workflow = static_cast<uint8_t>(sub.material.workflow);
+        record.occlusionChannel = sub.material.occlusionChannel;
         subMeshes.push_back(record);
     }
     header.stringBytes = static_cast<uint32_t>(strings.size());
@@ -481,11 +512,14 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         if (!validRef(dependency.path)) return miss("corrupt string table");
     for (const SubMeshRecord& sub : subMeshes)
     {
-        if (!validRef(sub.albedo) || !validRef(sub.normal) || !validRef(sub.roughness) || !validRef(sub.emissive))
-            return miss("corrupt string table");
+        for (const SlotRecord& slot : sub.slots)
+        {
+            if (!validRef(slot.path)) return miss("corrupt string table");
+            if (slot.uvSet > 2) return miss("corrupt submesh table");
+        }
         if (uint64_t(sub.firstVertex) + sub.vertexCount > header.vertexCount ||
             uint64_t(sub.firstIndex) + sub.indexCount > header.indexCount ||
-            sub.alphaMode > 2 || sub.workflow > 2)
+            sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1)
             return miss("corrupt submesh table");
     }
     if (text(header.sourceKey) != key) return miss("key collision");
@@ -535,10 +569,20 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         sub.vertexCount = record.vertexCount;
         sub.firstIndex = record.firstIndex;
         sub.indexCount = record.indexCount;
-        sub.material.albedoPath = text(record.albedo);
-        sub.material.normalPath = text(record.normal);
-        sub.material.roughnessPath = text(record.roughness);
-        sub.material.emissivePath = text(record.emissive);
+        const auto slots = Slots(sub.material);
+        for (size_t s = 0; s < k_slotCount; ++s)
+        {
+            const SlotRecord& slot = record.slots[s];
+            slots[s]->path = text(slot.path);
+            slots[s]->scale[0] = slot.scale[0];
+            slots[s]->scale[1] = slot.scale[1];
+            slots[s]->offset[0] = slot.offset[0];
+            slots[s]->offset[1] = slot.offset[1];
+            slots[s]->uvSet = slot.uvSet;
+        }
+        sub.material.occlusionStrength = record.occlusionStrength;
+        sub.material.occlusionChannel = record.occlusionChannel;
+        sub.material.detailNormalStrength = record.detailNormalStrength;
         sub.material.alphaMode = static_cast<AlphaMode>(record.alphaMode);
         sub.material.alphaCutoff = record.alphaCutoff;
         sub.material.workflow = static_cast<MaterialWorkflow>(record.workflow);

@@ -108,10 +108,10 @@ bool SceneRuntime::LoadActorMesh(ActorPart& part, bool loadMissing)
             ID3D11Device* device = m_renderer->GetDevice();
             std::unordered_set<std::string> seen;
             for (const auto& subMesh : source.subMeshes)
-                for (const auto& raw : { subMesh.material.albedoPath, subMesh.material.normalPath,
-                                         subMesh.material.roughnessPath, subMesh.material.emissivePath })
-                    if (!raw.empty() && seen.insert(raw).second)
+                ForEachTexturePath(subMesh.material, [&](const std::string& raw) {
+                    if (seen.insert(raw).second)
                         LoadTextureNow(*m_assets, device, MaterialTexturePath(source.directory, raw));
+                });
             auto mesh = std::make_shared<Mesh>();
             if (!mesh->Upload(device, std::move(source)))
             {

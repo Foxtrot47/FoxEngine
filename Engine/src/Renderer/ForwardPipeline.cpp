@@ -404,6 +404,18 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.workflow         = static_cast<float>(mat.workflow);
     mc.glossinessFactor = mat.glossinessFactor;
     mc.receiveShadows   = mat.receiveShadows ? 1.0f : 0.0f;
+    mc.occlusionStrength = mat.occlusionStrength;
+    float uvSets[SlotCount];
+    for (uint32_t s = 0; s < SlotCount; ++s)
+    {
+        const SlotTransform& slot = mat.slots[s];
+        mc.slotST[s] = { slot.scale[0], slot.scale[1], slot.offset[0], slot.offset[1] };
+        uvSets[s] = static_cast<float>(slot.uvSet);
+    }
+    mc.slotUVA   = { uvSets[0], uvSets[1], uvSets[2], uvSets[3] };
+    mc.slotUVB   = { uvSets[4], uvSets[5], uvSets[6], mat.detailNormalStrength };
+    mc.slotFlags = { mat.occlusion ? 1.0f : 0.0f, mat.detailAlbedo ? 1.0f : 0.0f,
+                     mat.detailNormal ? 1.0f : 0.0f, static_cast<float>(mat.occlusionChannel) };
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
@@ -412,6 +424,11 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mat.normal->BindPS(ctx, 2);
     (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
     (mat.emissive ? mat.emissive : m_defaultBlack)->BindPSSrgb(ctx, 9);
+    (mat.occlusion ? mat.occlusion : m_defaultWhite)->BindPS(ctx, 13);
+    // Detail maps are sampled only when present (SlotFlags.y/z): a white default
+    // would brighten the albedo by the mid-grey normalisation factor.
+    if (mat.detailAlbedo) mat.detailAlbedo->BindPSSrgb(ctx, 14);
+    if (mat.detailNormal) mat.detailNormal->BindPS(ctx, 15);
 }
 
 void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
@@ -459,7 +476,7 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.emissiveIntensity = emissiveIntensity;
     mc.emissiveColor  = emissiveColor;
-    mc.receiveShadows = 1.0f;
+    mc.receiveShadows = 1.0f; // slot transforms, occlusion and detail flags keep their neutral defaults
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }

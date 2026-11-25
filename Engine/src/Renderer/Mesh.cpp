@@ -73,6 +73,17 @@ static std::string GetTexturePath(const aiMaterial* mat, aiTextureType type)
     return {};
 }
 
+// Texture path plus the UV channel it samples (clamped to the three engine UV sets).
+static TextureSlot GetTextureSlot(const aiMaterial* mat, aiTextureType type)
+{
+    TextureSlot slot;
+    slot.path = GetTexturePath(mat, type);
+    int uvSet = 0;
+    if (!slot.path.empty() && mat->Get(AI_MATKEY_UVWSRC(type, 0), uvSet) == AI_SUCCESS)
+        slot.uvSet = static_cast<uint8_t>((std::clamp)(uvSet, 0, 2));
+    return slot;
+}
+
 // Roughness / metallic / specular workflow detection from typed Assimp slots
 // only (never UNKNOWN or filename guesses):
 //  - glTF metallic-roughness: Assimp reports the packed texture as both
@@ -92,15 +103,15 @@ static void ResolveRoughnessWorkflow(const aiMaterial* mat, SubMeshInfo& out)
     if (specGloss)
         out.glossinessFactor = static_cast<float>(glossinessFactor);
 
-    out.roughnessPath = GetTexturePath(mat, aiTextureType_DIFFUSE_ROUGHNESS);
-    if (!out.roughnessPath.empty())
+    out.roughness = GetTextureSlot(mat, aiTextureType_DIFFUSE_ROUGHNESS);
+    if (!out.roughness.path.empty())
     {
-        if (out.roughnessPath == GetTexturePath(mat, aiTextureType_METALNESS))
+        if (out.roughness.path == GetTexturePath(mat, aiTextureType_METALNESS))
             out.workflow = MaterialWorkflow::PackedMR;
     }
     else if (specGloss && !specular.empty())
     {
-        out.roughnessPath = specular;
+        out.roughness = GetTextureSlot(mat, aiTextureType_SPECULAR);
         out.workflow = MaterialWorkflow::SpecularGloss;
     }
     else if (specGloss)
@@ -111,7 +122,7 @@ static void ResolveRoughnessWorkflow(const aiMaterial* mat, SubMeshInfo& out)
     }
     else if (!specular.empty())
     {
-        out.roughnessPath = specular;
+        out.roughness = GetTextureSlot(mat, aiTextureType_SPECULAR);
         out.workflow = MaterialWorkflow::PackedMR;
     }
 
@@ -151,17 +162,22 @@ static void DetectAlphaMode(const aiMaterial* mat, SubMeshInfo& out)
 static void ExtractSubMeshMaterial(const aiMaterial* mat, SubMeshInfo& out)
 {
     // Base color: prefer PBR slot, fall back to legacy diffuse.
-    out.albedoPath = GetTexturePath(mat, aiTextureType_BASE_COLOR);
-    if (out.albedoPath.empty())
-        out.albedoPath = GetTexturePath(mat, aiTextureType_DIFFUSE);
+    out.albedo = GetTextureSlot(mat, aiTextureType_BASE_COLOR);
+    if (out.albedo.path.empty())
+        out.albedo = GetTextureSlot(mat, aiTextureType_DIFFUSE);
 
-    out.normalPath = GetTexturePath(mat, aiTextureType_NORMALS);
+    out.normal = GetTextureSlot(mat, aiTextureType_NORMALS);
 
     ResolveRoughnessWorkflow(mat, out);
 
-    out.emissivePath = GetTexturePath(mat, aiTextureType_EMISSIVE);
-    if (out.emissivePath.empty())
-        out.emissivePath = GetTexturePath(mat, aiTextureType_EMISSION_COLOR);
+    out.emissive = GetTextureSlot(mat, aiTextureType_EMISSIVE);
+    if (out.emissive.path.empty())
+        out.emissive = GetTextureSlot(mat, aiTextureType_EMISSION_COLOR);
+
+    // glTF occlusion arrives as LIGHTMAP from Assimp's glTF reader (without its strength).
+    out.occlusion = GetTextureSlot(mat, aiTextureType_AMBIENT_OCCLUSION);
+    if (out.occlusion.path.empty())
+        out.occlusion = GetTextureSlot(mat, aiTextureType_LIGHTMAP);
 
     DetectAlphaMode(mat, out);
 }
@@ -406,15 +422,7 @@ bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)
                           sizeof(MeshVertex)) ||
             !sm.ib.Create(device, source.indices.data() + input.firstIndex, input.indexCount))
             return false;
-        sm.albedoPath = std::move(input.material.albedoPath);
-        sm.normalPath = std::move(input.material.normalPath);
-        sm.roughnessPath = std::move(input.material.roughnessPath);
-        sm.emissivePath = std::move(input.material.emissivePath);
-        sm.alphaMode = input.material.alphaMode;
-        sm.alphaCutoff = input.material.alphaCutoff;
-        sm.workflow = input.material.workflow;
-        sm.roughnessFactor = input.material.roughnessFactor;
-        sm.glossinessFactor = input.material.glossinessFactor;
+        sm.info = std::move(input.material);
         m_subMeshes.push_back(std::move(sm));
     }
     m_directory = std::move(source.directory);
@@ -438,22 +446,6 @@ void Mesh::DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const
     sm.vb.Bind(ctx);
     sm.ib.Bind(ctx);
     ctx->DrawIndexed(sm.ib.GetCount(), 0, 0);
-}
-
-SubMeshInfo Mesh::GetSubMeshInfo(uint32_t index) const
-{
-    const SubMesh& sm = m_subMeshes[index];
-    SubMeshInfo info;
-    info.albedoPath    = sm.albedoPath;
-    info.normalPath    = sm.normalPath;
-    info.roughnessPath = sm.roughnessPath;
-    info.emissivePath  = sm.emissivePath;
-    info.alphaMode     = sm.alphaMode;
-    info.alphaCutoff   = sm.alphaCutoff;
-    info.workflow      = sm.workflow;
-    info.roughnessFactor = sm.roughnessFactor;
-    info.glossinessFactor = sm.glossinessFactor;
-    return info;
 }
 
 } // namespace SE

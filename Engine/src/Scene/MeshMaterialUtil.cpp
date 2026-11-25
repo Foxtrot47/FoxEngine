@@ -76,16 +76,36 @@ std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
     materials.reserve(mesh.GetSubMeshCount());
     for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
     {
-        const auto info = mesh.GetSubMeshInfo(i);
-        const auto resolve = [&](const std::string& raw) {
-            if (raw.empty()) return AssetHandle<Texture2D>{};
-            return FindCachedTexture(assets, MaterialTexturePath(mesh.GetDirectory(), raw));
+        const SubMeshInfo& info = mesh.GetSubMeshInfo(i);
+        const auto resolve = [&](const TextureSlot& slot) {
+            if (slot.path.empty()) return AssetHandle<Texture2D>{};
+            return FindCachedTexture(assets, MaterialTexturePath(mesh.GetDirectory(), slot.path));
         };
         ForwardPipeline::SubMat material;
-        material.albedo = resolve(info.albedoPath);
-        material.normal = resolve(info.normalPath);
-        material.roughness = resolve(info.roughnessPath);
-        material.emissive = resolve(info.emissivePath);
+        material.albedo = resolve(info.albedo);
+        material.normal = resolve(info.normal);
+        material.roughness = resolve(info.roughness);
+        material.emissive = resolve(info.emissive);
+        // Absent occlusion/detail maps stay null: the pipeline binds white occlusion
+        // and skips detail sampling (sRGB-ness is chosen at bind time).
+        material.occlusion = resolve(info.occlusion);
+        material.detailAlbedo = resolve(info.detailAlbedo);
+        material.detailNormal = resolve(info.detailNormal);
+        const TextureSlot* slots[ForwardPipeline::SlotCount] = {
+            &info.albedo, &info.normal, &info.roughness, &info.emissive,
+            &info.occlusion, &info.detailAlbedo, &info.detailNormal };
+        for (uint32_t s = 0; s < ForwardPipeline::SlotCount; ++s)
+        {
+            ForwardPipeline::SlotTransform& slot = material.slots[s];
+            slot.uvSet = slots[s]->uvSet;
+            slot.scale[0] = slots[s]->scale[0];
+            slot.scale[1] = slots[s]->scale[1];
+            slot.offset[0] = slots[s]->offset[0];
+            slot.offset[1] = slots[s]->offset[1];
+        }
+        material.occlusionStrength = info.occlusionStrength;
+        material.occlusionChannel = info.occlusionChannel;
+        material.detailNormalStrength = info.detailNormalStrength;
         material.workflow = material.roughness ? info.workflow
                                                : MaterialWorkflow::SeparateMR;
         material.roughnessScale =

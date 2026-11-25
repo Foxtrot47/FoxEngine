@@ -21,6 +21,21 @@ public:
     enum class ViewShading { Lit, Unlit, Wireframe };
     ViewShading viewShading = ViewShading::Lit; // transient viewport override
 
+    // SubMat::slots order (matches MaterialCB SlotST / SlotUVA / SlotUVB in Basic.hlsl).
+    enum Slot : uint32_t
+    {
+        SlotAlbedo, SlotNormal, SlotRoughness, SlotEmissive,
+        SlotOcclusion, SlotDetailAlbedo, SlotDetailNormal, SlotCount
+    };
+
+    // Per-texture UV set and tiling (uv * scale + offset).
+    struct SlotTransform
+    {
+        uint8_t uvSet = 0;
+        float   scale[2] = { 1.0f, 1.0f };
+        float   offset[2] = { 0.0f, 0.0f };
+    };
+
     struct SubMat
     {
         AssetHandle<Texture2D> albedo;
@@ -28,6 +43,13 @@ public:
         AssetHandle<Texture2D> roughness;
         AssetHandle<Texture2D> metallic;   // t7; nullptr → default black (0 = dielectric)
         AssetHandle<Texture2D> emissive;   // t9; nullptr → default black (no emission)
+        AssetHandle<Texture2D> occlusion;  // t13; nullptr → default white (no occlusion)
+        AssetHandle<Texture2D> detailAlbedo; // t14 (sRGB, neutral at mid-grey); nullptr → not sampled
+        AssetHandle<Texture2D> detailNormal; // t15; nullptr → not sampled
+        SlotTransform slots[SlotCount];      // t7 (metallic) follows SlotRoughness
+        float     occlusionStrength = 1.0f;
+        uint8_t   occlusionChannel = 0;      // 0 = R, 1 = G
+        float     detailNormalStrength = 1.0f;
         AlphaMode alphaMode  = AlphaMode::Opaque;
         float     alphaCutoff = 0.5f;
         MaterialWorkflow workflow = MaterialWorkflow::SeparateMR; // t1 interpretation
@@ -148,13 +170,22 @@ private:
         DirectX::XMFLOAT4X4 viewProjNoJitter;  // current frame, no TAA jitter
         DirectX::XMFLOAT4X4 prevViewProj;      // last frame, no TAA jitter
     };
+    // Field-for-field mirror of Basic.hlsl MaterialCB (b3). Defaults are the neutral
+    // material: identity slot transforms on UV0, no occlusion or detail maps.
     struct MaterialParamsCBData
     {
         DirectX::XMFLOAT3 albedoTint; float roughnessScale;
         float metallic; float unlit; float debugShadow; float alphaCutoff;
         float emissiveIntensity; DirectX::XMFLOAT3 emissiveColor;
-        float workflow; float glossinessFactor; float receiveShadows; float _pad;
+        float workflow; float glossinessFactor; float receiveShadows; float occlusionStrength = 1.0f;
+        DirectX::XMFLOAT4 slotST[SlotCount] = { // xy scale, zw offset
+            { 1, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 1, 0, 0 },
+            { 1, 1, 0, 0 }, { 1, 1, 0, 0 }, { 1, 1, 0, 0 } };
+        DirectX::XMFLOAT4 slotUVA;   // UV set of slots 0-3
+        DirectX::XMFLOAT4 slotUVB;   // UV set of slots 4-6, w = detail normal strength
+        DirectX::XMFLOAT4 slotFlags; // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel
     };
+    static_assert(sizeof(MaterialParamsCBData) == 224, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
     struct PlanarReflectionCBData
     {
         DirectX::XMFLOAT4X4 reflectionViewProj;

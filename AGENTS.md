@@ -72,7 +72,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | b0 | TransformCB | Model, View, Projection (row_major) |
 | b1 | LightCB | LightDir, IBLIntensity, LightColor, CameraPos, LightViewProj |
 | b2 | PointLightCB | PointLight[8] (pos, radius, color), NumPointLights |
-| b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff |
+| b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags (`MaterialParamsCBData` mirrors it, size asserted) |
 | b4 | ForwardShadowCB | NumPointShadowCasters, PointShadowBias |
 
 ### Texture Slots (Basic.hlsl)
@@ -90,6 +90,9 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t10 | Prefiltered specular environment |
 | t11 | BRDF integration LUT |
 | t12 | Optional planar reflection |
+| t13 | Occlusion (glTF `occlusionTexture`; multiplies IBL ambient only) |
+| t14 | Detail albedo (`extras.fox.detailAlbedo`, ×4.59 around sRGB mid-grey) |
+| t15 | Detail normal (`extras.fox.detailNormal`, UDN blend) |
 
 ## Scripting
 

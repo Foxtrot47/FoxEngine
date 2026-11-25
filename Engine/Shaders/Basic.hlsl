@@ -1,6 +1,7 @@
 // Basic.hlsl — forward PBR + equirectangular IBL + directional/point shadows.
 // Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB
-//            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic
+//            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic,
+//            t13=occlusion, t14=detail albedo, t15=detail normal
 //            s0=sampler, s1=shadowSampler(cmp), s2=cubeSampler
 
 cbuffer TransformCB : register(b0)
@@ -37,7 +38,13 @@ cbuffer MaterialCB : register(b3)
     // Workflow: 0 = separate maps (t1.r rough, t7.r metal),
     //            1 = packed MR (t1 = x, roughness, metallic),
     //            2 = spec/gloss (t1.rgb specular color, t1.a glossiness)
-    float  Workflow;    float  GlossinessFactor;  float ReceiveShadows; float _mcbPad;
+    float  Workflow;    float  GlossinessFactor;  float ReceiveShadows; float OcclusionStrength;
+    // Per-slot UV set and tiling, slots: 0 albedo, 1 normal, 2 roughness (and t7 metallic),
+    // 3 emissive, 4 occlusion, 5 detail albedo, 6 detail normal.
+    float4 SlotST[7];   // xy scale, zw offset: uv * scale + offset
+    float4 SlotUVA;     // UV set (0..2) of slots 0-3
+    float4 SlotUVB;     // UV set of slots 4-6, w = DetailNormalStrength
+    float4 SlotFlags;   // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel (0 R, 1 G)
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -85,6 +92,9 @@ Texture2D              g_emissive     : register(t9);  // emissive map
 Texture2D              g_prefilteredEnv : register(t10);
 Texture2D              g_brdfLut      : register(t11);
 Texture2D              g_planarReflection : register(t12);
+Texture2D              g_occlusion    : register(t13);
+Texture2D              g_detailAlbedo : register(t14);
+Texture2D              g_detailNormal : register(t15);
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -258,6 +268,30 @@ float2 ComputeVelocity(float4 currClip, float4 prevClip)
     return (currNDC - prevNDC) * float2(0.5f, -0.5f);
 }
 
+// MaterialCB slot indices (SlotST / SlotUVA / SlotUVB order).
+static const int SLOT_ALBEDO        = 0;
+static const int SLOT_NORMAL        = 1;
+static const int SLOT_ROUGHNESS     = 2;
+static const int SLOT_EMISSIVE      = 3;
+static const int SLOT_OCCLUSION     = 4;
+static const int SLOT_DETAIL_ALBEDO = 5;
+static const int SLOT_DETAIL_NORMAL = 6;
+
+// Texture coordinate of one material slot: its UV set, then uv * scale + offset.
+float2 SlotUV(int slot, PSIn i)
+{
+    float set = (slot < 4 ? SlotUVA : SlotUVB)[slot & 3];
+    float2 uv = set > 1.5f ? i.TexCoord2 : (set > 0.5f ? i.TexCoord1 : i.TexCoord);
+    return uv * SlotST[slot].xy + SlotST[slot].zw;
+}
+
+// Sampling a tangent-space normal map (RG, reconstructed Z).
+float3 SampleTangentNormal(Texture2D map, float2 uv)
+{
+    float2 rg = map.Sample(g_sampler, uv).rg * 2.0f - 1.0f;
+    return float3(rg, sqrt(saturate(1.0f - dot(rg, rg))));
+}
+
 PSOut PS_Main(PSIn input)
 {
     PSOut o;
@@ -271,14 +305,21 @@ PSOut PS_Main(PSIn input)
         return o;
     }
 
-    // Normal map → world-space N
-    float2 tbn_rg = g_normal.Sample(g_sampler, input.TexCoord).rg * 2.0f - 1.0f;
-    float3 tbn_n  = float3(tbn_rg, sqrt(saturate(1.0f - dot(tbn_rg, tbn_rg))));
+    // Normal map → world-space N; the detail normal is UDN-blended in tangent space.
+    float3 tbn_n  = SampleTangentNormal(g_normal, SlotUV(SLOT_NORMAL, input));
+    if (SlotFlags.z > 0.5f)
+    {
+        float3 detailN = SampleTangentNormal(g_detailNormal, SlotUV(SLOT_DETAIL_NORMAL, input));
+        tbn_n = normalize(float3(tbn_n.xy + detailN.xy * SlotUVB.w, tbn_n.z));
+    }
     float3x3 TBN  = float3x3(normalize(input.T), normalize(input.B), normalize(input.N));
     float3 N      = normalize(mul(tbn_n, TBN));
 
     float3 V        = normalize(CameraPos - input.WorldPos);
-    float4 albedo   = g_albedo.Sample(g_sampler, input.TexCoord);
+    float4 albedo   = g_albedo.Sample(g_sampler, SlotUV(SLOT_ALBEDO, input));
+    // Detail albedo (sRGB) is neutral at mid-grey: sRGB 0.5 = linear 1 / 4.59479.
+    if (SlotFlags.y > 0.5f)
+        albedo.rgb *= g_detailAlbedo.Sample(g_sampler, SlotUV(SLOT_DETAIL_ALBEDO, input)).rgb * 4.59479f;
     albedo.rgb     *= AlbedoTint;
 
     // Alpha test (cutout): discard fragments below threshold
@@ -289,7 +330,7 @@ PSOut PS_Main(PSIn input)
     // 2 = textured unlit, 3 = flat wireframe (rasterizer supplies triangle edges).
     if (Unlit > 1.5f)
     {
-        float3 emission = g_emissive.Sample(g_sampler, input.TexCoord).rgb
+        float3 emission = g_emissive.Sample(g_sampler, SlotUV(SLOT_EMISSIVE, input)).rgb
                         * EmissiveColor * EmissiveIntensity;
         o.color = float4(Unlit > 2.5f ? float3(0.65f, 0.75f, 0.85f) : albedo.rgb + emission, albedo.a);
         o.normal = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -297,7 +338,8 @@ PSOut PS_Main(PSIn input)
     }
 
     // See MaterialCB Workflow comment for the t1 texture interpretations.
-    float4 mrSample = g_roughness.Sample(g_sampler, input.TexCoord);
+    float2 roughnessUV = SlotUV(SLOT_ROUGHNESS, input);
+    float4 mrSample = g_roughness.Sample(g_sampler, roughnessUV);
     float roughness;
     float metallic;
     float3 F0;
@@ -313,7 +355,7 @@ PSOut PS_Main(PSIn input)
         float roughSample = Workflow > 0.5f ? mrSample.g : mrSample.r;
         roughness = max(saturate(roughSample * RoughnessScale), 0.04f);
         float metalSample = Workflow > 0.5f ? mrSample.b
-                                            : g_metallic.Sample(g_sampler, input.TexCoord).r;
+                                            : g_metallic.Sample(g_sampler, roughnessUV).r;
         metallic  = saturate(metalSample * Metallic);
         F0        = lerp(float3(0.04f, 0.04f, 0.04f), albedo.rgb, metallic);
     }
@@ -366,8 +408,15 @@ PSOut PS_Main(PSIn input)
     float3 L    = normalize(LightDir);
     float  NdotL = max(dot(N, L), 0.0f);
 
-    // IBL ambient
-    float3 color = IBL(N, V, input.WorldPos, albedo.rgb, roughness, metallic, F0);
+    // IBL ambient, darkened by baked occlusion (never the direct light terms; SSAO
+    // multiplies the whole image afterwards, so the two combine by product).
+    float ao = 1.0f;
+    if (SlotFlags.x > 0.5f)
+    {
+        float2 occlusion = g_occlusion.Sample(g_sampler, SlotUV(SLOT_OCCLUSION, input)).rg;
+        ao = lerp(1.0f, SlotFlags.w > 0.5f ? occlusion.g : occlusion.r, OcclusionStrength);
+    }
+    float3 color = IBL(N, V, input.WorldPos, albedo.rgb, roughness, metallic, F0) * ao;
 
     // Directional light (Cook-Torrance)
     color += shadow * LightColor * CookTorrance(N, V, L, albedo.rgb, roughness, metallic, F0);
@@ -460,7 +509,7 @@ PSOut PS_Main(PSIn input)
     }
 
     // Emissive contribution (added directly to HDR color, feeds into bloom)
-    float3 emissive = g_emissive.Sample(g_sampler, input.TexCoord).rgb;
+    float3 emissive = g_emissive.Sample(g_sampler, SlotUV(SLOT_EMISSIVE, input)).rgb;
     float emissiveSum = emissive.r + emissive.g + emissive.b;
     if (emissiveSum > 0.001f)
         color += emissive * EmissiveColor * EmissiveIntensity;

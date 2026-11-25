@@ -334,23 +334,20 @@ void LevelLoadOperation::Prepare(std::string path, const std::string& levelJson,
         if (dependency.kind != LevelDependencyKind::Mesh) addTexture(dependency, false);
     for (const auto& mesh : cpuMeshes)
         for (const auto& subMesh : mesh.source.subMeshes)
-            for (const auto& raw : { subMesh.material.albedoPath, subMesh.material.normalPath,
-                                     subMesh.material.roughnessPath, subMesh.material.emissivePath })
-                if (!raw.empty()) addTexture({ MaterialTexturePath(mesh.source.directory, raw), mesh.path,
-                                               LevelDependencyKind::Texture, false }, true);
+            ForEachTexturePath(subMesh.material, [&](const std::string& raw) {
+                addTexture({ MaterialTexturePath(mesh.source.directory, raw), mesh.path,
+                             LevelDependencyKind::Texture, false }, true);
+            });
     for (const auto& dependency : meshDependencies)
     {
         const auto cached = m_cache.meshes.find(dependency.path);
         if (cached == m_cache.meshes.end()) continue;
         const auto& mesh = *cached->second;
         for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
-        {
-            const auto subMesh = mesh.GetSubMeshInfo(i);
-            for (const auto& raw : { subMesh.albedoPath, subMesh.normalPath,
-                                     subMesh.roughnessPath, subMesh.emissivePath })
-                if (!raw.empty()) addTexture({ MaterialTexturePath(mesh.GetDirectory(), raw),
-                                               dependency.path, LevelDependencyKind::Texture, false }, true);
-        }
+            ForEachTexturePath(mesh.GetSubMeshInfo(i), [&](const std::string& raw) {
+                addTexture({ MaterialTexturePath(mesh.GetDirectory(), raw),
+                             dependency.path, LevelDependencyKind::Texture, false }, true);
+            });
     }
 
     std::vector<LevelDependency> textureTasks;
