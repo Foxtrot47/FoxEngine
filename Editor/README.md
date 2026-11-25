@@ -148,6 +148,16 @@ input focus and cursor capture is virtual (the OS cursor is never hidden or
 clipped). Screenshots work while the window is minimized or covered: ImGui keeps
 the swap-chain size as its display size when the client area is 0x0.
 
+`editor_status.stats` reports the last frame: `fps`, `frame_ms`, `draw_calls`
+(main forward pass; an instanced draw counts once), `shadow_draw_calls` (sun
+cascades, point faces and spot pass), `planar_draw_calls`, `culled` (mesh and
+submesh frustum rejects), `instanced_draws`/`instanced_items` (forward-pass
+instanced draws and the submeshes they cover), `gpu_ms` (object of smoothed GPU
+milliseconds per scope: `shadows`, `planar`, `probes`, `forward`, `ssao`, `fog`,
+`temporal`, `motion_blur`, `bloom`, `tonemap`, plus `frame` for Render through
+PostProcess; timestamps read a few frames late) and the asset cache counts. The
+viewport stats overlay shows the `frame` value as `gpu <ms> ms`.
+
 ## Rendering limits
 
 Orthographic views skip perspective-only SSAO, volumetric fog and FSR rather than

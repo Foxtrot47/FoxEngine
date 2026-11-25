@@ -1184,11 +1184,11 @@ private:
                 subMeshCount += loaded.mesh->GetSubMeshCount();
 
         char line[160];
-        sprintf_s(line, "%.1f fps  %.2f ms   |   %ux%u   |   meshes %u  tex %u  submeshes %u",
+        sprintf_s(line, "%.1f fps  %.2f ms   |   %ux%u   |   meshes %u  tex %u  submeshes %u   |   gpu %.2f ms",
                   GetClock().GetFPS(), GetClock().GetDeltaTime() * 1000.0f,
                   m_viewportRT.GetWidth(), m_viewportRT.GetHeight(),
                   GetAssets().CachedMeshCount(), GetAssets().CachedTextureCount(),
-                  subMeshCount);
+                  subMeshCount, m_scene.GetGpuFrameMs());
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImVec2 pos = { imageMin.x + 8.0f, imageMax.y - 24.0f };

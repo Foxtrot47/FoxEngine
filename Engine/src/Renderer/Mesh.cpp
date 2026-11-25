@@ -269,6 +269,7 @@ static bool ReadSubMesh(const aiScene* scene, uint32_t m, const aiMatrix4x4& wor
         const MeshVertex vtx = ReadVertex(mesh, v, world, normalMat, applyTransform);
         output.vertices.push_back(vtx);
         output.bounds.Expand({ vtx.x, vtx.y, vtx.z });
+        record.bounds.Expand({ vtx.x, vtx.y, vtx.z });
     }
 
     record.firstIndex = static_cast<uint32_t>(output.indices.size());
@@ -423,6 +424,7 @@ bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)
             !sm.ib.Create(device, source.indices.data() + input.firstIndex, input.indexCount))
             return false;
         sm.info = std::move(input.material);
+        sm.bounds = input.bounds;
         m_subMeshes.push_back(std::move(sm));
     }
     m_directory = std::move(source.directory);
@@ -446,6 +448,14 @@ void Mesh::DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const
     sm.vb.Bind(ctx);
     sm.ib.Bind(ctx);
     ctx->DrawIndexed(sm.ib.GetCount(), 0, 0);
+}
+
+void Mesh::DrawSubMeshInstanced(ID3D11DeviceContext* ctx, uint32_t index, uint32_t instanceCount) const
+{
+    const SubMesh& sm = m_subMeshes[index];
+    sm.vb.Bind(ctx);
+    sm.ib.Bind(ctx);
+    ctx->DrawIndexedInstanced(sm.ib.GetCount(), instanceCount, 0, 0, 0);
 }
 
 } // namespace SE

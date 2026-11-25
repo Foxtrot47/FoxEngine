@@ -901,6 +901,59 @@ static void TestGltfImporterParity(const std::vector<const char*>& paths)
     }
 }
 
+// Per-submesh bounds: both importers give every submesh an AABB enclosing its own
+// vertices, and a MeshCache round trip keeps them.
+static void TestSubMeshBounds()
+{
+    namespace fs = std::filesystem;
+    const char* path = "Assets/TestFixtures/spec_gloss.gltf"; // node-instanced primitives
+    const auto requireEnclosed = [](const SE::MeshSourceData& data, const char* label) {
+        Require(data.subMeshes.size() > 1, (std::string(label) + ": expected several submeshes").c_str());
+        for (const SE::MeshSubMeshSource& sub : data.subMeshes)
+        {
+            Require(sub.bounds.IsValid(), (std::string(label) + ": submesh bounds missing").c_str());
+            for (uint32_t v = sub.firstVertex; v < sub.firstVertex + sub.vertexCount; ++v)
+            {
+                const SE::MeshVertex& vertex = data.vertices[v];
+                Require(vertex.x >= sub.bounds.min.x && vertex.x <= sub.bounds.max.x &&
+                        vertex.y >= sub.bounds.min.y && vertex.y <= sub.bounds.max.y &&
+                        vertex.z >= sub.bounds.min.z && vertex.z <= sub.bounds.max.z,
+                        (std::string(label) + ": vertex outside its submesh bounds").c_str());
+            }
+            Require(sub.bounds.min.x >= data.bounds.min.x && sub.bounds.max.x <= data.bounds.max.x &&
+                    sub.bounds.min.y >= data.bounds.min.y && sub.bounds.max.y <= data.bounds.max.y &&
+                    sub.bounds.min.z >= data.bounds.min.z && sub.bounds.max.z <= data.bounds.max.z,
+                    (std::string(label) + ": submesh bounds exceed the mesh bounds").c_str());
+        }
+    };
+
+    SE::MeshSourceData assimp, gltf;
+    std::string error;
+    Require(SE::Mesh::Import(path, assimp, {}, &error, SE::MeshImporter::Assimp), "Assimp import failed");
+    Require(SE::Mesh::Import(path, gltf, {}, &error, SE::MeshImporter::Gltf), "cgltf import failed");
+    requireEnclosed(assimp, "Assimp");
+    requireEnclosed(gltf, "cgltf");
+
+    const fs::path root = fs::temp_directory_path() / "FoxEngineSubMeshBoundsTest";
+    fs::remove_all(root);
+    const SE::MeshCache cache(root.string());
+    SE::MeshSourceData imported, cooked;
+    bool hit = true;
+    Require(cache.Load(path, imported, {}, nullptr, &hit) && !hit, "first submesh-bounds load did not import");
+    Require(cache.Load(path, cooked, {}, nullptr, &hit) && hit, "second submesh-bounds load missed");
+    Require(cooked.subMeshes.size() == imported.subMeshes.size(), "cooked submesh count differs");
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+    {
+        const SE::AABB& a = cooked.subMeshes[i].bounds;
+        const SE::AABB& b = imported.subMeshes[i].bounds;
+        Require(a.min.x == b.min.x && a.min.y == b.min.y && a.min.z == b.min.z &&
+                a.max.x == b.max.x && a.max.y == b.max.y && a.max.z == b.max.z,
+                "cooked submesh bounds differ from the import");
+    }
+    requireEnclosed(cooked, "cooked");
+    fs::remove_all(root);
+}
+
 static void TestMeshCache()
 {
     namespace fs = std::filesystem;
@@ -1944,6 +1997,7 @@ static void RunTests()
                              "Assets/TestFixtures/slots.gltf" });
     TestMeshCache();
     TestVertexStreams();
+    TestSubMeshBounds();
     TestTextureSlots();
     TestVertexTint();
     TestTerrainMaterial();

@@ -1,6 +1,6 @@
 // Basic.hlsl — forward PBR + equirectangular IBL + directional/point shadows.
 // Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB,
-//            b9=ReflectionProbeCB
+//            b9=ReflectionProbeCB; VS t29=instance buffer (instanced draws)
 //            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic,
 //            t13=occlusion, t14=detail albedo, t15=detail normal,
 //            FOX_TERRAIN only: t16-t19=layer albedo A-D, t20=splat, t21=overlay, t22-t25=layer normal A-D,
@@ -20,7 +20,18 @@ cbuffer TransformCB : register(b0)
     row_major matrix PrevModel;         // last frame's model matrix
     row_major matrix ViewProjNoJitter;  // current frame, no TAA jitter
     row_major matrix PrevViewProj;      // last frame, no TAA jitter
+    uint  InstanceBase;                 // first g_instances element of an instanced draw
+    uint  UseInstances;                 // 1: Model/PrevModel come from g_instances
+    uint2 _transformPad;
 };
+
+// Per-instance transforms of instanced draws (ForwardPipeline::InstanceData).
+struct InstanceData
+{
+    row_major matrix Model;
+    row_major matrix PrevModel;
+};
+StructuredBuffer<InstanceData> g_instances : register(t29);
 
 cbuffer LightCB : register(b1)
 {
@@ -149,6 +160,7 @@ struct VSIn
     float2 TexCoord1 : TEXCOORD1;
     float2 TexCoord2 : TEXCOORD2;
     float4 Color     : COLOR0;
+    uint   InstanceID : SV_InstanceID;
 };
 
 struct PSIn
@@ -170,18 +182,25 @@ struct PSIn
 PSIn VS_Main(VSIn input)
 {
     PSIn o;
-    float4 world = mul(float4(input.Position, 1.0f), Model);
+    float4x4 model = Model, prevModel = PrevModel;
+    if (UseInstances != 0)
+    {
+        const InstanceData instance = g_instances[InstanceBase + input.InstanceID];
+        model     = instance.Model;
+        prevModel = instance.PrevModel;
+    }
+    float4 world = mul(float4(input.Position, 1.0f), model);
     o.WorldPos   = world.xyz;
     float4 viewPos = mul(world, View);
     o.ViewZ      = viewPos.z;
     o.Position   = mul(viewPos, Projection);
     o.CurrClip   = mul(world, ViewProjNoJitter);
-    o.PrevClip   = mul(mul(float4(input.Position, 1.0f), PrevModel), PrevViewProj);
+    o.PrevClip   = mul(mul(float4(input.Position, 1.0f), prevModel), PrevViewProj);
     o.TexCoord   = input.TexCoord;
     o.TexCoord1  = input.TexCoord1;
     o.TexCoord2  = input.TexCoord2;
     o.Color      = input.Color;
-    float3x3 m3  = (float3x3)Model;
+    float3x3 m3  = (float3x3)model;
     o.T = normalize(mul(input.Tangent,   m3));
     o.B = normalize(mul(input.Bitangent, m3));
     o.N = normalize(mul(input.Normal,    m3));

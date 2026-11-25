@@ -883,6 +883,7 @@ void AppendInstance(const PrimitiveGeometry& geometry, const Mat4& world, const 
         vertex->v2 = hasUV2 ? geometry.uvs2[v * 2 + 1] : vertex->v;
         vertex->color = hasColor ? geometry.colors[v]  : 0xFFFFFFFFu;
         output.bounds.Expand({ vertex->x, vertex->y, vertex->z });
+        record.bounds.Expand({ vertex->x, vertex->y, vertex->z });
     }
 
     // The Z mirror reverses winding; a mirroring node transform reverses it back.

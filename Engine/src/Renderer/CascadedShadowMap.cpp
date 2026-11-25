@@ -271,6 +271,7 @@ void CascadedShadowMap::Update(XMFLOAT3 lightDir,
 void CascadedShadowMap::BeginCascade(ID3D11DeviceContext* ctx, int cascade)
 {
     m_currentCascade = cascade;
+    m_cascadeFrustum.ExtractFromVP(m_cascadeVP[cascade]);
 
     if (cascade == 0)
     {
@@ -299,19 +300,26 @@ void CascadedShadowMap::BeginCascade(ID3D11DeviceContext* ctx, int cascade)
     ctx->PSSetSamplers(0, 1, m_alphaSampler.GetAddressOf());
 }
 
-void CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
-                                  XMMATRIX model,
-                                  const std::vector<ShadowSubMesh>& subMeshes)
+uint32_t CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
+                                      XMMATRIX model,
+                                      const std::vector<ShadowSubMesh>& subMeshes)
 {
+    if (!m_cascadeFrustum.TestAABB(mesh.GetBounds(), model))
+        return 0;
+
     ShadowCBData cb;
     XMStoreFloat4x4(&cb.model, model);
     XMStoreFloat4x4(&cb.viewProj, m_cascadeVP[m_currentCascade]);
     m_cb.Update(ctx, cb);
     m_cb.BindVS(ctx, 0);
 
-    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    const uint32_t count = mesh.GetSubMeshCount();
+    uint32_t draws = 0;
+    for (uint32_t i = 0; i < count; ++i)
     {
         if (i < subMeshes.size() && !subMeshes[i].cast)
+            continue;
+        if (count > 1 && !m_cascadeFrustum.TestAABB(mesh.GetSubMeshBounds(i), model))
             continue;
 
         ShadowMaterialCBData material = {};
@@ -324,7 +332,9 @@ void CascadedShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
         m_materialCB.Update(ctx, material);
         m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
+        ++draws;
     }
+    return draws;
 }
 
 void CascadedShadowMap::DrawSphere(ID3D11DeviceContext* ctx, XMFLOAT3 position, float radius)

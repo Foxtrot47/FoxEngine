@@ -6,6 +6,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/Frustum.h"
 #include "Engine/Renderer/ShadowMaterial.h"
 #include "Engine/Renderer/VertexBuffer.h"
 #include "Engine/Renderer/IndexBuffer.h"
@@ -27,8 +28,9 @@ public:
 
     // Render shadow depth for a single cascade.
     void BeginCascade(ID3D11DeviceContext* ctx, int cascade);
-    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
-                  const std::vector<ShadowSubMesh>& subMeshes);
+    // Culls the mesh, then each submesh, against the cascade; returns the draws issued.
+    uint32_t DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
+                      const std::vector<ShadowSubMesh>& subMeshes);
     void DrawSphere(ID3D11DeviceContext* ctx, DirectX::XMFLOAT3 position, float radius);
     void EndCascade(ID3D11DeviceContext* ctx);
 
@@ -65,6 +67,7 @@ private:
 
     uint32_t m_resolution = 2048;
     int      m_currentCascade = 0;
+    Frustum  m_cascadeFrustum; // of m_cascadeVP[m_currentCascade]
 
     DirectX::XMMATRIX m_cascadeVP[CSM_NUM_CASCADES] = {};
     float             m_splits[CSM_NUM_CASCADES + 1] = {};

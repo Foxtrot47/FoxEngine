@@ -168,12 +168,16 @@ void PointShadowMap::BeginFace(ID3D11DeviceContext* ctx, int face,
     XMMATRIX view  = FaceView(lightPos, face);
     XMMATRIX proj  = XMMatrixPerspectiveFovLH(XM_PIDIV2, 1.0f, 0.05f, lightFar);
     m_faceViewProj = view * proj;
+    m_faceFrustum.ExtractFromVP(m_faceViewProj);
 }
 
-void PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
-                              XMMATRIX model,
-                              const std::vector<ShadowSubMesh>& subMeshes)
+uint32_t PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
+                                  XMMATRIX model,
+                                  const std::vector<ShadowSubMesh>& subMeshes)
 {
+    if (!m_faceFrustum.TestAABB(mesh.GetBounds(), model))
+        return 0;
+
     CBData cb;
     XMStoreFloat4x4(&cb.worldViewProj, model * m_faceViewProj);
     XMStoreFloat4x4(&cb.world,         model);
@@ -183,9 +187,13 @@ void PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
     m_cb.BindVS(ctx, 0);
     m_cb.BindPS(ctx, 0);
 
-    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    const uint32_t count = mesh.GetSubMeshCount();
+    uint32_t draws = 0;
+    for (uint32_t i = 0; i < count; ++i)
     {
         if (i < subMeshes.size() && !subMeshes[i].cast)
+            continue;
+        if (count > 1 && !m_faceFrustum.TestAABB(mesh.GetSubMeshBounds(i), model))
             continue;
 
         ShadowMaterialCBData material = {};
@@ -198,7 +206,9 @@ void PointShadowMap::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh,
         m_materialCB.Update(ctx, material);
         m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
+        ++draws;
     }
+    return draws;
 }
 
 void PointShadowMap::EndFace(ID3D11DeviceContext* ctx)

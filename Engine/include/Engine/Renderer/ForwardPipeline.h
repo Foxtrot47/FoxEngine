@@ -139,9 +139,14 @@ public:
     // Submit a mesh for sorted draw. Call Flush() after all submits to actually draw.
     // prevModel: last frame's model matrix for per-object motion vectors;
     // nullptr means the object did not move (velocity from camera only).
+    // Culls the whole mesh, then each submesh, against the view frustum; each
+    // submesh sorts by the view depth of its own bounds centre.
     void SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
                     const std::vector<SubMat>& mats, bool transparent = false,
                     const DirectX::XMMATRIX* prevModel = nullptr);
+    // Opaque and cutout submeshes submitted at least k_minInstanceGroup times with
+    // identical GPU bindings are drawn first as one DrawIndexedInstanced each;
+    // the rest follow in sorted order.
     void Flush(ID3D11DeviceContext* ctx);
 
     // --- Immediate rendering ---
@@ -184,8 +189,14 @@ public:
                       DirectX::XMFLOAT3 emissiveColor = { 1.f, 1.f, 1.f },
                       const DirectX::XMMATRIX* prevModel = nullptr);
 
+    // Draws issued since the last Begin() (one per instanced group).
     uint32_t GetLastDrawCalls() const { return m_lastDrawCalls; }
     uint32_t GetLastCulledCount() const { return m_lastCulled; }
+    // Instanced draws issued since the last Begin() and the submeshes they covered.
+    uint32_t GetLastInstancedDraws() const { return m_lastInstancedDraws; }
+    uint32_t GetLastInstancedItems() const { return m_lastInstancedItems; }
+
+    static constexpr uint32_t k_minInstanceGroup = 4;
 
 private:
     struct ForwardShadowCBData
@@ -204,6 +215,15 @@ private:
         DirectX::XMFLOAT4X4 prevModel;         // last frame's model matrix
         DirectX::XMFLOAT4X4 viewProjNoJitter;  // current frame, no TAA jitter
         DirectX::XMFLOAT4X4 prevViewProj;      // last frame, no TAA jitter
+        uint32_t instanceBase;  // first InstanceData of an instanced draw
+        uint32_t useInstances;  // 1: Model/PrevModel come from the t29 instance buffer
+        uint32_t pad[2];
+    };
+    // Element of the VS t29 instance buffer (Basic.hlsl InstanceData).
+    struct InstanceData
+    {
+        DirectX::XMFLOAT4X4 model;
+        DirectX::XMFLOAT4X4 prevModel;
     };
     // Field-for-field mirror of Basic.hlsl MaterialCB (b3). Defaults are the neutral
     // material: identity slot transforms on UV0, no occlusion or detail maps.
@@ -238,11 +258,43 @@ private:
         float clipEnabled;
     };
 
+    // Everything BindSubMaterial sends to the GPU for one submesh: the MaterialCB
+    // contents, the texture at each material register (null = left unbound) and the
+    // alpha mode and material kind that select blend/raster state and the shader
+    // permutation. Instancing groups draws whose bindings compare equal.
+    static constexpr uint32_t k_materialTextureCount = 20;
+    struct MaterialBinding
+    {
+        MaterialParamsCBData cb;
+        const Texture2D*     textures[k_materialTextureCount];
+        AlphaMode            alphaMode;
+        MaterialKind         kind;
+        bool operator==(const MaterialBinding& other) const;
+    };
+
     // Stored per-submit for Flush() to reference.
     struct QueuedDraw
     {
         const Mesh*              mesh;
         const std::vector<SubMat>* mats;
+    };
+
+    // Flush() scratch: an opaque/cutout queue item and the index of its binding.
+    struct InstanceCandidate
+    {
+        const Mesh*    mesh;
+        const SubMat*  mat;
+        uint32_t       subMesh;
+        uint32_t       item;     // index into the sorted queue
+        uint32_t       binding;  // index into m_bindings
+    };
+    struct InstanceGroup
+    {
+        uint32_t firstInstance; // into m_instanceData
+        uint32_t count;
+        uint32_t item;          // a member, for mesh and submesh
+        uint32_t binding;       // into m_bindings
+        float    depth;         // nearest member's sort depth
     };
 
     Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vs;
@@ -253,10 +305,19 @@ private:
 
     ConstantBuffer<TransformCBData>           m_transformCB;
     void ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mode);
+    void BuildMaterialBinding(const SubMat& mat, MaterialBinding& out) const;
+    void BindMaterial(ID3D11DeviceContext* ctx, const MaterialBinding& binding);
     void BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat);
     void UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model);
     void UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMATRIX model,
                            DirectX::XMMATRIX prevModel);
+    void UploadInstancedTransformCB(ID3D11DeviceContext* ctx, uint32_t instanceBase);
+    // Groups the sorted queue's repeated opaque/cutout submeshes and draws each
+    // group instanced; marks their items in m_instanced.
+    void DrawInstancedGroups(ID3D11DeviceContext* ctx, AlphaMode& boundMode, MaterialKind& boundKind);
+    void ApplyMaterialState(ID3D11DeviceContext* ctx, AlphaMode mode, MaterialKind kind,
+                            AlphaMode& boundMode, MaterialKind& boundKind);
+    bool UploadInstances(ID3D11DeviceContext* ctx);
 
     ConstantBuffer<MaterialParamsCBData>      m_materialCB;
     DirectX::XMFLOAT3 m_globalTint = { 1.0f, 1.0f, 1.0f };
@@ -297,6 +358,18 @@ private:
     std::vector<QueuedDraw>  m_queuedDraws;
     uint32_t                 m_lastDrawCalls = 0;
     uint32_t                 m_lastCulled    = 0;
+    uint32_t                 m_lastInstancedDraws = 0;
+    uint32_t                 m_lastInstancedItems = 0;
+
+    // Instancing (Flush scratch, reused across frames) and the VS t29 buffer.
+    std::vector<InstanceCandidate>  m_candidates;
+    std::vector<MaterialBinding>    m_bindings;
+    std::vector<InstanceGroup>      m_groups;
+    std::vector<InstanceData>       m_instanceData;
+    std::vector<uint8_t>            m_instanced; // per sorted queue item
+    Microsoft::WRL::ComPtr<ID3D11Buffer>             m_instanceBuffer;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_instanceSRV;
+    uint32_t                                         m_instanceCapacity = 0;
 };
 
 } // namespace SE

@@ -62,6 +62,30 @@ struct Frustum
         }
         return true;
     }
+
+    // True if the local-space AABB, placed by model, is at least partially inside.
+    // An invalid (empty) AABB is treated as visible.
+    bool TestAABB(const AABB& local, DirectX::FXMMATRIX model) const
+    {
+        return !local.IsValid() || TestAABB(TransformAABB(local, model));
+    }
+
+    // World-space AABB enclosing a local AABB under an affine transform
+    // (row-vector convention: world = local * m).
+    static AABB TransformAABB(const AABB& local, DirectX::FXMMATRIX m)
+    {
+        using namespace DirectX;
+        const XMFLOAT3 c = local.Center(), e = local.Extents();
+        const XMVECTOR center = XMVector3Transform(XMLoadFloat3(&c), m);
+        const XMVECTOR extents = XMVectorAdd(XMVectorAdd(
+            XMVectorScale(XMVectorAbs(m.r[0]), e.x),
+            XMVectorScale(XMVectorAbs(m.r[1]), e.y)),
+            XMVectorScale(XMVectorAbs(m.r[2]), e.z));
+        AABB world;
+        XMStoreFloat3(&world.min, XMVectorSubtract(center, extents));
+        XMStoreFloat3(&world.max, XMVectorAdd(center, extents));
+        return world;
+    }
 };
 
 } // namespace SE

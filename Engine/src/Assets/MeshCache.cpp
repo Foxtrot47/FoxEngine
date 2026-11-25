@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 9;
+constexpr uint32_t k_meshCacheVersion = 10;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -86,13 +86,14 @@ struct SubMeshRecord
     float clearcoat, clearcoatRoughness;
     uint8_t clearcoatMaskFromAlbedoAlpha, clearcoatPad[3];
     SlotRecord clearcoatSlots[2];
+    float boundsMin[3], boundsMax[3]; // mesh space, this submesh only
 };
 
 static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
 static_assert(sizeof(FileHeader) == 96, ".fxmesh FileHeader size");
 static_assert(sizeof(DependencyRecord) == 24, ".fxmesh DependencyRecord size");
 static_assert(sizeof(SlotRecord) == 28, ".fxmesh SlotRecord size");
-static_assert(sizeof(SubMeshRecord) == 616, ".fxmesh SubMeshRecord size");
+static_assert(sizeof(SubMeshRecord) == 640, ".fxmesh SubMeshRecord size");
 
 // SubMeshInfo slots in SubMeshRecord::slots order (const or mutable pointers).
 template <typename Info>
@@ -401,6 +402,12 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         WriteSlot(record.clearcoatSlots[0], sub.material.clearcoatTex, addString(sub.material.clearcoatTex.path));
         WriteSlot(record.clearcoatSlots[1], sub.material.clearcoatRoughnessTex,
                   addString(sub.material.clearcoatRoughnessTex.path));
+        record.boundsMin[0] = sub.bounds.min.x;
+        record.boundsMin[1] = sub.bounds.min.y;
+        record.boundsMin[2] = sub.bounds.min.z;
+        record.boundsMax[0] = sub.bounds.max.x;
+        record.boundsMax[1] = sub.bounds.max.y;
+        record.boundsMax[2] = sub.bounds.max.z;
         subMeshes.push_back(record);
     }
     header.stringBytes = static_cast<uint32_t>(strings.size());
@@ -663,6 +670,8 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         ReadSlot(record.clearcoatSlots[0], sub.material.clearcoatTex, text(record.clearcoatSlots[0].path));
         ReadSlot(record.clearcoatSlots[1], sub.material.clearcoatRoughnessTex,
                  text(record.clearcoatSlots[1].path));
+        sub.bounds.min = { record.boundsMin[0], record.boundsMin[1], record.boundsMin[2] };
+        sub.bounds.max = { record.boundsMax[0], record.boundsMax[1], record.boundsMax[2] };
         out->subMeshes.push_back(std::move(sub));
     }
     out->sourceFiles.reserve(dependencies.size());

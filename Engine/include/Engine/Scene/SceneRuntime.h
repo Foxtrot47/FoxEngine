@@ -20,6 +20,7 @@
 #include "Engine/Renderer/FSRUpscaler.h"
 #include "Engine/Renderer/FXAA.h"
 #include "Engine/Renderer/ForwardPipeline.h"
+#include "Engine/Renderer/GpuProfiler.h"
 #include "Engine/Renderer/LightEnvironment.h"
 #include "Engine/Renderer/MotionBlur.h"
 #include "Engine/Renderer/ParticleSystem.h"
@@ -127,6 +128,19 @@ public:
     // Jittered matrices used for this frame's scene rendering.
     DirectX::XMMATRIX GetView() const { return m_cachedView; }
     DirectX::XMMATRIX GetProj() const { return m_cachedProj; }
+
+    // Smoothed GPU milliseconds per render scope (shadows, planar, probes, forward,
+    // ssao, fog, temporal, motion_blur, bloom, tonemap), from Render to PostProcess.
+    const std::vector<std::pair<const char*, float>>& GetGpuTimings() const
+    {
+        return m_gpuProfiler.GetTimings();
+    }
+    // Smoothed GPU milliseconds of the whole frame (Render start to PostProcess end).
+    float GetGpuFrameMs() const { return m_gpuProfiler.GetFrameMs(); }
+    // Last frame's main-view draws: sun/point/spot shadow passes and the planar
+    // reflection pass (the forward pass count is pipeline.GetLastDrawCalls()).
+    uint32_t GetShadowDrawCalls() const { return m_shadowDrawCalls; }
+    uint32_t GetPlanarDrawCalls() const { return m_planarDrawCalls; }
 
     void ResetTemporalHistory();
     void RefreshParticlePresets();
@@ -553,6 +567,15 @@ private:
     ReflectionProbes  m_reflectionProbes;
     std::vector<SceneDescriptor::ReflectionProbeDesc> m_reflectionProbeDescs;
     bool              m_probesDirty           = false;
+
+    enum GpuScope : uint32_t
+    {
+        GpuShadows, GpuPlanar, GpuProbes, GpuForward, GpuSsao, GpuFog,
+        GpuTemporal, GpuMotionBlur, GpuBloom, GpuTonemap
+    };
+    GpuProfiler       m_gpuProfiler;
+    uint32_t          m_shadowDrawCalls       = 0; // this frame's shadow draws
+    uint32_t          m_planarDrawCalls       = 0;
 
     LevelLoadOperation m_levelLoad;
     std::string        m_pendingSceneLoad;

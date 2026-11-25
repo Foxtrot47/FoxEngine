@@ -1072,6 +1072,11 @@ McpTools::Outcome McpTools::EditorStatus()
     }
     const bool hasScene = scene.HasScene();
     const SE::ScriptSystem& scripts = *m_access.scripts;
+    // Smoothed GPU ms per render scope, plus the whole Render-to-PostProcess frame.
+    json gpuMs = json::object();
+    for (const auto& [name, ms] : scene.GetGpuTimings())
+        gpuMs[name] = ms;
+    gpuMs["frame"] = scene.GetGpuFrameMs();
     json status = {
         { "project", m_projectName },
         { "scene", scene.currentScenePath },
@@ -1090,7 +1095,12 @@ McpTools::Outcome McpTools::EditorStatus()
         { "view_options", ViewOptionsJson() },
         { "stats", { { "fps", clock.GetFPS() }, { "frame_ms", clock.GetDeltaTime() * 1000.0f },
                      { "draw_calls", scene.pipeline.GetLastDrawCalls() },
+                     { "shadow_draw_calls", scene.GetShadowDrawCalls() },
+                     { "planar_draw_calls", scene.GetPlanarDrawCalls() },
                      { "culled", scene.pipeline.GetLastCulledCount() },
+                     { "instanced_draws", scene.pipeline.GetLastInstancedDraws() },
+                     { "instanced_items", scene.pipeline.GetLastInstancedItems() },
+                     { "gpu_ms", gpuMs },
                      { "cached_meshes", m_access.assets->CachedMeshCount() },
                      { "cached_textures", m_access.assets->CachedTextureCount() } } },
         { "scripts", { { "running", scripts.IsRunning() },

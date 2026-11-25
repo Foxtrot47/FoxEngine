@@ -6,6 +6,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/Frustum.h"
 #include "Engine/Renderer/ShadowMaterial.h"
 
 namespace SE {
@@ -21,8 +22,9 @@ public:
 
     // Shadow pass: render scene depth from spot light's perspective.
     void BeginShadowPass(ID3D11DeviceContext* ctx);
-    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
-                  const std::vector<ShadowSubMesh>& subMeshes);
+    // Culls the mesh, then each submesh, against the light frustum; returns the draws issued.
+    uint32_t DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
+                      const std::vector<ShadowSubMesh>& subMeshes);
     void EndShadowPass(ID3D11DeviceContext* ctx);
 
     // Bind spot light cbuffer (b5) and shadow map SRV (t8) for lit pass.
@@ -62,6 +64,7 @@ private:
 
     uint32_t m_resolution = 1024;
     DirectX::XMMATRIX m_viewProj = {};
+    Frustum           m_frustum; // of m_viewProj, set by BeginShadowPass
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D>          m_depthTex;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilView>   m_dsv;

@@ -36,8 +36,8 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 ### Renderer Pipeline (forward-only)
 
 1. `ForwardPipeline::Begin()` → caches view/proj, extracts frustum
-2. `SubmitMesh()` → frustum cull, push to render queue
-3. `Flush()` → sort queue (opaque front-to-back, transparent back-to-front), bind per-draw state, draw
+2. `SubmitMesh()` → frustum cull the mesh, then each submesh's own AABB; push one queue item per visible submesh (sort depth = its bounds centre)
+3. `Flush()` → opaque/cutout submeshes submitted ≥ 4 times with identical GPU bindings (same mesh, submesh, MaterialCB bytes, textures, alpha mode, permutation) draw first as one `DrawIndexedInstanced` each (transforms in VS t29); the rest sort (opaque front-to-back, transparent back-to-front), bind per-draw state, draw. Shadow passes cull mesh then submesh AABBs against each cascade/face/spot frustum and never instance
 4. Post-process chain: **SSAO → Volumetric Fog → TAA/FSR → Motion Blur → Bloom → FXAA → ToneMap → Present**
 
 ### Key Classes
@@ -62,6 +62,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | `ParticleSystem` | GPU compute emit/update, billboard render, flipbook atlas, soft particles |
 | `ShaderLibrary` | Compile + cache shader permutations |
 | `RenderStateCache` | Deduplicate blend/raster/depth-stencil states |
+| `GpuProfiler` | Timestamp-query GPU timings per render scope (4-frame ring, no-flush readback, EMA); `SceneRuntime::GetGpuTimings()`, editor stats overlay and MCP `editor_status.stats.gpu_ms` |
 | `AssetManager` | Path-keyed cache, ref-counted handles |
 | `ScriptSystem` | Lua session: sandboxed VM, script instances + lifecycle, coroutines, hot reload, REPL, tests, API stub generation |
 | `Vehicle` | Wheeled vehicle on a Jolt chassis body: suspension, Pacejka tires, ABS/TC, engine + gearbox, LSD, aero (`Engine/Physics/Vehicle/`) |
@@ -71,7 +72,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 
 | Slot | Name | Contents |
 |------|------|----------|
-| b0 | TransformCB | Model, View, Projection (row_major) |
+| b0 | TransformCB | Model, View, Projection, PrevModel, ViewProjNoJitter, PrevViewProj (row_major), InstanceBase, UseInstances (1: Model/PrevModel from the t29 instance buffer at `InstanceBase + SV_InstanceID`) |
 | b1 | LightCB | LightDir, IBLIntensity, LightColor, CameraPos, LightViewProj |
 | b2 | PointLightCB | PointLight[8] (pos, radius, color), NumPointLights |
 | b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags, tint/detail params, terrain layer scales and params (`TerrainScale`, `TerrainParams`, `TerrainParams2`, `TerrainST`), clearcoat params (`Clearcoat`, `ClearcoatST`, `ClearcoatUV`) (`MaterialParamsCBData` mirrors it, size asserted) |
@@ -103,6 +104,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | t26 | Clearcoat factor (`KHR_materials_clearcoat` `clearcoatTexture`, R channel) |
 | t27 | Clearcoat roughness (`KHR_materials_clearcoat` `clearcoatRoughnessTexture`, G channel) |
 | t28 | Reflection probe array (Texture2DArray, 8 slices of 256×128 equirect, 8 GGX mips; box-projected, weighted over t10) |
+| t29 (VS) | Instance buffer (`StructuredBuffer<InstanceData { Model; PrevModel; }>`, instanced forward/planar draws) |
 
 ## Scripting
 

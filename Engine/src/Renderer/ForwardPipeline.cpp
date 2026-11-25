@@ -4,7 +4,9 @@
 #include "Engine/Renderer/PrimitiveMesh.h"
 #include <windows.h>
 #include <d3dcompiler.h>
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iterator>
 
 namespace SE {
@@ -76,6 +78,17 @@ void BuildWireSphere(int segs, std::vector<MeshVertex>& verts, std::vector<uint3
         }
     }
 }
+
+// MaterialBinding::textures order: shader register and whether the sRGB view binds.
+struct MaterialTextureSlot { uint32_t reg; bool srgb; };
+constexpr MaterialTextureSlot k_materialTextureSlots[] = {
+    { 0, true }, { 1, false }, { 2, false }, { 7, false }, { 9, true }, { 13, false },
+    { 14, true }, { 15, false },                                         // detail albedo, normal
+    { 16, true }, { 17, true }, { 18, true }, { 19, true },              // terrain layer albedo A-D
+    { 20, false }, { 21, true },                                         // terrain splat, overlay
+    { 22, false }, { 23, false }, { 24, false }, { 25, false },          // terrain layer normal A-D
+    { 26, false }, { 27, false },                                        // clearcoat, coat roughness
+};
 
 } // anonymous namespace
 
@@ -207,7 +220,10 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     m_frustum.ExtractFromVP(DirectX::XMMatrixMultiply(view, proj));
     m_queue.Clear();
     m_queuedDraws.clear();
+    m_lastDrawCalls = 0;
     m_lastCulled = 0;
+    m_lastInstancedDraws = 0;
+    m_lastInstancedItems = 0;
     ApplyAlphaModeState(ctx, AlphaMode::Opaque);
 
     m_sampler.BindPS(ctx, 0);
@@ -315,13 +331,27 @@ void ForwardPipeline::UploadTransformCB(ID3D11DeviceContext* ctx, DirectX::XMMAT
                                         DirectX::XMMATRIX prevModel)
 {
     using namespace DirectX;
-    TransformCBData cb;
+    TransformCBData cb = {};
     XMStoreFloat4x4(&cb.model,            model);
     XMStoreFloat4x4(&cb.view,             m_view);
     XMStoreFloat4x4(&cb.projection,       m_proj);
     XMStoreFloat4x4(&cb.prevModel,        prevModel);
     XMStoreFloat4x4(&cb.viewProjNoJitter, m_viewProjNoJitter);
     XMStoreFloat4x4(&cb.prevViewProj,     m_prevViewProj);
+    m_transformCB.Update(ctx, cb);
+    m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
+}
+
+void ForwardPipeline::UploadInstancedTransformCB(ID3D11DeviceContext* ctx, uint32_t instanceBase)
+{
+    using namespace DirectX;
+    TransformCBData cb = {};
+    XMStoreFloat4x4(&cb.view,             m_view);
+    XMStoreFloat4x4(&cb.projection,       m_proj);
+    XMStoreFloat4x4(&cb.viewProjNoJitter, m_viewProjNoJitter);
+    XMStoreFloat4x4(&cb.prevViewProj,     m_prevViewProj);
+    cb.instanceBase = instanceBase;
+    cb.useInstances = 1;
     m_transformCB.Update(ctx, cb);
     m_transformCB.BindVS(ctx, 0); m_transformCB.BindPS(ctx, 0);
 }
@@ -333,42 +363,36 @@ void ForwardPipeline::SubmitMesh(const Mesh& mesh, DirectX::XMMATRIX model,
     using namespace DirectX;
 
     // Frustum cull using the mesh's object-space AABB transformed to world space.
-    const AABB& localBounds = mesh.GetBounds();
-    if (localBounds.IsValid())
+    if (!m_frustum.TestAABB(mesh.GetBounds(), model))
     {
-        // Transform the 8 corners of the local AABB by the model matrix
-        // and compute a world-space AABB for frustum testing.
-        XMFLOAT3 mn = localBounds.min, mx = localBounds.max;
-        AABB worldBounds;
-        for (int i = 0; i < 8; ++i)
-        {
-            XMFLOAT3 corner = {
-                (i & 1) ? mx.x : mn.x,
-                (i & 2) ? mx.y : mn.y,
-                (i & 4) ? mx.z : mn.z
-            };
-            XMVECTOR wc = XMVector3Transform(XMLoadFloat3(&corner), model);
-            XMFLOAT3 wcf;
-            XMStoreFloat3(&wcf, wc);
-            worldBounds.Expand(wcf);
-        }
-        if (!m_frustum.TestAABB(worldBounds))
-        {
-            m_lastCulled += mesh.GetSubMeshCount();
-            return;
-        }
+        m_lastCulled += mesh.GetSubMeshCount();
+        return;
     }
 
-    // Compute camera-space Z of the mesh origin for sorting.
-    XMVECTOR origin = XMVector3Transform(XMVectorSet(0, 0, 0, 1), model);
-    XMVECTOR viewOrigin = XMVector3Transform(origin, m_view);
-    float depth = XMVectorGetZ(viewOrigin);
+    // Fallback sort depth for submeshes without bounds: the mesh origin.
+    const XMMATRIX modelView = XMMatrixMultiply(model, m_view);
+    const float originDepth = XMVectorGetZ(modelView.r[3]);
 
     uint32_t drawIdx = static_cast<uint32_t>(m_queuedDraws.size());
     m_queuedDraws.push_back({ &mesh, &mats });
 
-    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    const uint32_t count = mesh.GetSubMeshCount();
+    for (uint32_t i = 0; i < count; ++i)
     {
+        float depth = originDepth;
+        const AABB& bounds = mesh.GetSubMeshBounds(i);
+        if (bounds.IsValid())
+        {
+            // A single submesh shares the mesh bounds tested above.
+            if (count > 1 && !m_frustum.TestAABB(Frustum::TransformAABB(bounds, model)))
+            {
+                ++m_lastCulled;
+                continue;
+            }
+            const XMFLOAT3 center = bounds.Center();
+            depth = XMVectorGetZ(XMVector3Transform(XMLoadFloat3(&center), modelView));
+        }
+
         RenderItem item;
         item.model        = model;
         item.prevModel    = prevModel ? *prevModel : model;
@@ -401,12 +425,20 @@ void ForwardPipeline::ApplyAlphaModeState(ID3D11DeviceContext* ctx, AlphaMode mo
     if (viewShading == ViewShading::Wireframe) ctx->RSSetState(m_wireframeRS.Get());
 }
 
+bool ForwardPipeline::MaterialBinding::operator==(const MaterialBinding& other) const
+{
+    return alphaMode == other.alphaMode && kind == other.kind &&
+           std::memcmp(textures, other.textures, sizeof(textures)) == 0 &&
+           std::memcmp(&cb, &other.cb, sizeof(cb)) == 0;
+}
+
 // Every draw must initialize MaterialCB. Leaving opaque draws untouched
 // carries zero/stale parameters, which collapses roughness to 0.04 and can
 // also leak alpha, emissive, metallic, or debug state from a previous draw.
-void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat)
+void ForwardPipeline::BuildMaterialBinding(const SubMat& mat, MaterialBinding& out) const
 {
-    MaterialParamsCBData mc = {};
+    MaterialParamsCBData& mc = out.cb;
+    mc = {};
     mc.albedoTint       = { m_globalTint.x * mat.tint.x, m_globalTint.y * mat.tint.y,
                             m_globalTint.z * mat.tint.z };
     mc.roughnessScale   = mat.roughnessScale * m_globalRoughnessScale;
@@ -435,7 +467,8 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
                       static_cast<float>(mat.detailAlbedoBlend),
                       mat.detailAlbedoStrength, 0.0f };
     const TerrainMat& terrain = mat.terrain;
-    if (mat.kind == MaterialKind::Terrain)
+    const bool isTerrain = mat.kind == MaterialKind::Terrain;
+    if (isTerrain)
     {
         mc.terrainScale = { terrain.layerScale[0], terrain.layerScale[1],
                             terrain.layerScale[2], terrain.layerScale[3] };
@@ -457,70 +490,267 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
                           mat.clearcoatRoughnessSlot.offset[0], mat.clearcoatRoughnessSlot.offset[1] };
     mc.clearcoatUV = { static_cast<float>(mat.clearcoatSlot.uvSet),
                        static_cast<float>(mat.clearcoatRoughnessSlot.uvSet), 0.0f, 0.0f };
-    m_materialCB.Update(ctx, mc);
-    m_materialCB.BindPS(ctx, 3);
 
-    mat.albedo->BindPSSrgb(ctx, 0);
-    mat.roughness->BindPS(ctx, 1);
-    mat.normal->BindPS(ctx, 2);
-    (mat.metallic ? mat.metallic : m_defaultBlack)->BindPS(ctx, 7);
-    (mat.emissive ? mat.emissive : m_defaultBlack)->BindPSSrgb(ctx, 9);
-    (mat.occlusion ? mat.occlusion : m_defaultWhite)->BindPS(ctx, 13);
+    // In k_materialTextureSlots order; null leaves the register unbound.
+    const Texture2D** t = out.textures;
+    t[0] = mat.albedo.get();
+    t[1] = mat.roughness.get();
+    t[2] = mat.normal.get();
+    t[3] = (mat.metallic ? mat.metallic : m_defaultBlack).get();
+    t[4] = (mat.emissive ? mat.emissive : m_defaultBlack).get();
+    t[5] = (mat.occlusion ? mat.occlusion : m_defaultWhite).get();
     // Detail maps are sampled only when present (SlotFlags.y/z): a white default
     // would brighten the albedo by the mid-grey normalisation factor.
-    if (mat.detailAlbedo) mat.detailAlbedo->BindPSSrgb(ctx, 14);
-    if (mat.detailNormal) mat.detailNormal->BindPS(ctx, 15);
-    if (mat.kind == MaterialKind::Terrain)
+    t[6] = mat.detailAlbedo.get();
+    t[7] = mat.detailNormal.get();
+    for (uint32_t i = 0; i < k_maxTerrainLayers; ++i)
     {
-        for (uint32_t i = 0; i < k_maxTerrainLayers; ++i)
-        {
-            (terrain.layerAlbedo[i] ? terrain.layerAlbedo[i] : m_defaultWhite)->BindPSSrgb(ctx, 16 + i);
-            (terrain.layerNormal[i] ? terrain.layerNormal[i] : m_defaultNormal)->BindPS(ctx, 22 + i);
-        }
-        (terrain.splat ? terrain.splat : m_defaultBlack)->BindPS(ctx, 20);
-        (terrain.overlay ? terrain.overlay : m_defaultWhite)->BindPSSrgb(ctx, 21);
+        t[8 + i]  = isTerrain ? (terrain.layerAlbedo[i] ? terrain.layerAlbedo[i] : m_defaultWhite).get() : nullptr;
+        t[14 + i] = isTerrain ? (terrain.layerNormal[i] ? terrain.layerNormal[i] : m_defaultNormal).get() : nullptr;
     }
-    if (mat.clearcoatTex) mat.clearcoatTex->BindPS(ctx, 26);
-    if (mat.clearcoatRoughnessTex) mat.clearcoatRoughnessTex->BindPS(ctx, 27);
+    t[12] = isTerrain ? (terrain.splat ? terrain.splat : m_defaultBlack).get() : nullptr;
+    t[13] = isTerrain ? (terrain.overlay ? terrain.overlay : m_defaultWhite).get() : nullptr;
+    t[18] = mat.clearcoatTex.get();
+    t[19] = mat.clearcoatRoughnessTex.get();
+    out.alphaMode = mat.alphaMode;
+    out.kind = mat.kind;
+}
+
+void ForwardPipeline::BindMaterial(ID3D11DeviceContext* ctx, const MaterialBinding& binding)
+{
+    static_assert(std::size(k_materialTextureSlots) == k_materialTextureCount,
+                  "k_materialTextureSlots must list every MaterialBinding texture");
+    m_materialCB.Update(ctx, binding.cb);
+    m_materialCB.BindPS(ctx, 3);
+    for (uint32_t i = 0; i < k_materialTextureCount; ++i)
+    {
+        const Texture2D* texture = binding.textures[i];
+        if (!texture)
+            continue;
+        if (k_materialTextureSlots[i].srgb)
+            texture->BindPSSrgb(ctx, k_materialTextureSlots[i].reg);
+        else
+            texture->BindPS(ctx, k_materialTextureSlots[i].reg);
+    }
+}
+
+void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& mat)
+{
+    MaterialBinding binding;
+    BuildMaterialBinding(mat, binding);
+    BindMaterial(ctx, binding);
+}
+
+void ForwardPipeline::ApplyMaterialState(ID3D11DeviceContext* ctx, AlphaMode mode, MaterialKind kind,
+                                         AlphaMode& boundMode, MaterialKind& boundKind)
+{
+    if (mode != boundMode)
+    {
+        ApplyAlphaModeState(ctx, mode);
+        boundMode = mode;
+    }
+    if (kind != boundKind)
+    {
+        const bool terrain = kind == MaterialKind::Terrain;
+        ctx->VSSetShader(terrain ? m_terrainPerm.vs.Get() : m_vs.Get(), nullptr, 0);
+        ctx->PSSetShader(terrain ? m_terrainPerm.ps.Get() : m_ps.Get(), nullptr, 0);
+        boundKind = kind;
+    }
+}
+
+// Writes m_instanceData to the t29 structured buffer (grown by doubling) and binds it.
+bool ForwardPipeline::UploadInstances(ID3D11DeviceContext* ctx)
+{
+    const uint32_t needed = static_cast<uint32_t>(m_instanceData.size());
+    if (needed > m_instanceCapacity)
+    {
+        uint32_t capacity = (std::max)(m_instanceCapacity, 64u);
+        while (capacity < needed)
+            capacity *= 2;
+        Microsoft::WRL::ComPtr<ID3D11Device> device;
+        ctx->GetDevice(device.GetAddressOf());
+        D3D11_BUFFER_DESC bd = {};
+        bd.ByteWidth           = capacity * static_cast<uint32_t>(sizeof(InstanceData));
+        bd.Usage               = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags           = D3D11_BIND_SHADER_RESOURCE;
+        bd.CPUAccessFlags      = D3D11_CPU_ACCESS_WRITE;
+        bd.MiscFlags           = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        bd.StructureByteStride = sizeof(InstanceData);
+        m_instanceSRV.Reset();
+        m_instanceBuffer.Reset();
+        m_instanceCapacity = 0;
+        if (FAILED(device->CreateBuffer(&bd, nullptr, m_instanceBuffer.GetAddressOf())))
+        {
+            SE_LOG_ERROR("ForwardPipeline: instance buffer (%u instances) creation failed", capacity);
+            return false;
+        }
+        D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
+        sd.Format              = DXGI_FORMAT_UNKNOWN;
+        sd.ViewDimension       = D3D11_SRV_DIMENSION_BUFFER;
+        sd.Buffer.NumElements  = capacity;
+        SE_HR(device->CreateShaderResourceView(m_instanceBuffer.Get(), &sd, m_instanceSRV.GetAddressOf()));
+        m_instanceCapacity = capacity;
+    }
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    if (FAILED(ctx->Map(m_instanceBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+        return false;
+    std::memcpy(mapped.pData, m_instanceData.data(), m_instanceData.size() * sizeof(InstanceData));
+    ctx->Unmap(m_instanceBuffer.Get(), 0);
+    ctx->VSSetShaderResources(29, 1, m_instanceSRV.GetAddressOf());
+    return true;
+}
+
+void ForwardPipeline::DrawInstancedGroups(ID3D11DeviceContext* ctx, AlphaMode& boundMode,
+                                          MaterialKind& boundKind)
+{
+    using namespace DirectX;
+    const std::vector<RenderItem>& items = m_queue.Items();
+    m_instanced.assign(items.size(), 0);
+
+    // Candidates: opaque/cutout items, ordered so equal (mesh, submesh) form runs.
+    m_candidates.clear();
+    for (uint32_t i = 0; i < items.size(); ++i)
+    {
+        if (items[i].transparent)
+            continue;
+        const QueuedDraw& draw = m_queuedDraws[items[i].meshIndex];
+        m_candidates.push_back({ draw.mesh, &(*draw.mats)[items[i].subMeshIndex],
+                                 items[i].subMeshIndex, i, 0 });
+    }
+    if (m_candidates.size() < k_minInstanceGroup)
+        return;
+    const auto sameSubMesh = [](const InstanceCandidate& a, const InstanceCandidate& b) {
+        return a.mesh == b.mesh && a.subMesh == b.subMesh;
+    };
+    std::sort(m_candidates.begin(), m_candidates.end(),
+        [](const InstanceCandidate& a, const InstanceCandidate& b) {
+            if (a.mesh != b.mesh) return std::less<const Mesh*>()(a.mesh, b.mesh);
+            if (a.subMesh != b.subMesh) return a.subMesh < b.subMesh;
+            if (a.mat != b.mat) return std::less<const SubMat*>()(a.mat, b.mat);
+            return a.item < b.item;
+        });
+
+    m_bindings.clear();
+    m_groups.clear();
+    m_instanceData.clear();
+    for (size_t runBegin = 0; runBegin < m_candidates.size();)
+    {
+        size_t runEnd = runBegin + 1;
+        while (runEnd < m_candidates.size() && sameSubMesh(m_candidates[runEnd], m_candidates[runBegin]))
+            ++runEnd;
+        if (runEnd - runBegin < k_minInstanceGroup)
+        {
+            runBegin = runEnd;
+            continue;
+        }
+
+        // Bindings are compared only within this (mesh, submesh) run; candidates
+        // sharing a SubMat share its binding without rebuilding it.
+        const uint32_t runBindings = static_cast<uint32_t>(m_bindings.size());
+        for (size_t c = runBegin; c < runEnd; ++c)
+        {
+            InstanceCandidate& candidate = m_candidates[c];
+            if (c > runBegin && candidate.mat == m_candidates[c - 1].mat)
+            {
+                candidate.binding = m_candidates[c - 1].binding;
+                continue;
+            }
+            m_bindings.emplace_back();
+            BuildMaterialBinding(*candidate.mat, m_bindings.back());
+            candidate.binding = static_cast<uint32_t>(m_bindings.size() - 1);
+            for (uint32_t b = runBindings; b + 1 < m_bindings.size(); ++b)
+                if (m_bindings[b] == m_bindings.back())
+                {
+                    candidate.binding = b;
+                    m_bindings.pop_back();
+                    break;
+                }
+        }
+        std::sort(m_candidates.begin() + runBegin, m_candidates.begin() + runEnd,
+            [](const InstanceCandidate& a, const InstanceCandidate& b) {
+                return a.binding != b.binding ? a.binding < b.binding : a.item < b.item;
+            });
+
+        for (size_t groupBegin = runBegin; groupBegin < runEnd;)
+        {
+            size_t groupEnd = groupBegin + 1;
+            while (groupEnd < runEnd && m_candidates[groupEnd].binding == m_candidates[groupBegin].binding)
+                ++groupEnd;
+            if (groupEnd - groupBegin >= k_minInstanceGroup)
+            {
+                InstanceGroup group;
+                group.firstInstance = static_cast<uint32_t>(m_instanceData.size());
+                group.count         = static_cast<uint32_t>(groupEnd - groupBegin);
+                group.item          = m_candidates[groupBegin].item;
+                group.binding       = m_candidates[groupBegin].binding;
+                group.depth         = items[group.item].sortDepth;
+                for (size_t c = groupBegin; c < groupEnd; ++c)
+                {
+                    const RenderItem& item = items[m_candidates[c].item];
+                    InstanceData data;
+                    XMStoreFloat4x4(&data.model, item.model);
+                    XMStoreFloat4x4(&data.prevModel, item.prevModel);
+                    m_instanceData.push_back(data);
+                    m_instanced[m_candidates[c].item] = 1;
+                    group.depth = (std::min)(group.depth, item.sortDepth);
+                }
+                m_groups.push_back(group);
+            }
+            groupBegin = groupEnd;
+        }
+        runBegin = runEnd;
+    }
+    if (m_groups.empty())
+        return;
+    if (!UploadInstances(ctx))
+    {
+        std::fill(m_instanced.begin(), m_instanced.end(), uint8_t(0)); // draw them individually
+        return;
+    }
+
+    // Front-to-back by each group's nearest member, like the sorted opaque path.
+    std::sort(m_groups.begin(), m_groups.end(),
+        [](const InstanceGroup& a, const InstanceGroup& b) { return a.depth < b.depth; });
+    for (const InstanceGroup& group : m_groups)
+    {
+        const MaterialBinding& binding = m_bindings[group.binding];
+        ApplyMaterialState(ctx, binding.alphaMode, binding.kind, boundMode, boundKind);
+        BindMaterial(ctx, binding);
+        UploadInstancedTransformCB(ctx, group.firstInstance);
+        const RenderItem& item = items[group.item];
+        m_queuedDraws[item.meshIndex].mesh->DrawSubMeshInstanced(ctx, item.subMeshIndex, group.count);
+        ++m_lastDrawCalls;
+        ++m_lastInstancedDraws;
+        m_lastInstancedItems += group.count;
+    }
 }
 
 void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
 {
-    using namespace DirectX;
-
     m_queue.Sort();
-    m_lastDrawCalls = 0;
 
-    AlphaMode prevMode = AlphaMode::Opaque;
+    AlphaMode boundMode = AlphaMode::Opaque;
     MaterialKind boundKind = MaterialKind::Standard; // Begin() binds the standard permutation
 
-    for (auto& item : m_queue.Items())
+    DrawInstancedGroups(ctx, boundMode, boundKind);
+
+    const std::vector<RenderItem>& items = m_queue.Items();
+    for (size_t i = 0; i < items.size(); ++i)
     {
-        auto& draw = m_queuedDraws[item.meshIndex];
+        if (i < m_instanced.size() && m_instanced[i])
+            continue;
+        const RenderItem& item = items[i];
+        const QueuedDraw& draw = m_queuedDraws[item.meshIndex];
+        const SubMat& mat = (*draw.mats)[item.subMeshIndex];
 
         UploadTransformCB(ctx, item.model, item.prevModel);
-
-        auto& mat = (*draw.mats)[item.subMeshIndex];
-
-        if (mat.alphaMode != prevMode)
-        {
-            ApplyAlphaModeState(ctx, mat.alphaMode);
-            prevMode = mat.alphaMode;
-        }
-        if (mat.kind != boundKind)
-        {
-            const bool terrain = mat.kind == MaterialKind::Terrain;
-            ctx->VSSetShader(terrain ? m_terrainPerm.vs.Get() : m_vs.Get(), nullptr, 0);
-            ctx->PSSetShader(terrain ? m_terrainPerm.ps.Get() : m_ps.Get(), nullptr, 0);
-            boundKind = mat.kind;
-        }
-
+        ApplyMaterialState(ctx, mat.alphaMode, mat.kind, boundMode, boundKind);
         BindSubMaterial(ctx, mat);
         draw.mesh->DrawSubMesh(ctx, item.subMeshIndex);
         ++m_lastDrawCalls;
     }
 
-    if (prevMode != AlphaMode::Opaque)
+    if (boundMode != AlphaMode::Opaque)
         ApplyAlphaModeState(ctx, AlphaMode::Opaque);
     if (boundKind != MaterialKind::Standard)
     {

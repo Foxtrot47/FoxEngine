@@ -92,10 +92,11 @@ MeshSourceData SingleSubMesh(std::vector<MeshVertex>&& vertices, std::vector<uin
     subMesh.vertexCount = static_cast<uint32_t>(vertices.size());
     subMesh.indexCount = static_cast<uint32_t>(indices.size());
     subMesh.material.roughnessFactor = roughness;
+    subMesh.bounds = AABB::FromCenterExtents({ 0.0f, 0.0f, 0.0f }, extents);
     source.subMeshes.push_back(subMesh);
     source.vertices = std::move(vertices);
     source.indices = std::move(indices);
-    source.bounds = AABB::FromCenterExtents({ 0.0f, 0.0f, 0.0f }, extents);
+    source.bounds = subMesh.bounds;
     return source;
 }
 

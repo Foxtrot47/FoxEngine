@@ -113,6 +113,7 @@ struct MeshSubMeshSource
     uint32_t firstIndex  = 0;   // into MeshSourceData::indices; index values are submesh-local
     uint32_t indexCount  = 0;
     SubMeshInfo material;
+    AABB bounds; // mesh space, this submesh's vertices only
 };
 
 struct MeshSourceData
@@ -148,10 +149,13 @@ public:
     bool Upload(ID3D11Device* device, MeshSourceData&& source);
     void Draw(ID3D11DeviceContext* ctx) const;
     void DrawSubMesh(ID3D11DeviceContext* ctx, uint32_t index) const;
+    // Draws instanceCount instances of the submesh (SV_InstanceID 0..instanceCount-1).
+    void DrawSubMeshInstanced(ID3D11DeviceContext* ctx, uint32_t index, uint32_t instanceCount) const;
 
     uint32_t         GetSubMeshCount() const { return static_cast<uint32_t>(m_subMeshes.size()); }
     const SubMeshInfo& GetSubMeshInfo(uint32_t index) const { return m_subMeshes[index].info; }
     AlphaMode        GetSubMeshAlphaMode(uint32_t index) const { return m_subMeshes[index].info.alphaMode; }
+    const AABB&      GetSubMeshBounds(uint32_t index) const { return m_subMeshes[index].bounds; }
     const std::string& GetDirectory() const { return m_directory; }
     const AABB&      GetBounds() const { return m_bounds; }
 
@@ -161,6 +165,7 @@ private:
         VertexBuffer vb;
         IndexBuffer  ib;
         SubMeshInfo  info;
+        AABB         bounds;
     };
     std::vector<SubMesh> m_subMeshes;
     std::string          m_directory;

@@ -102,6 +102,7 @@ void SpotLight::Update()
 void SpotLight::BeginShadowPass(ID3D11DeviceContext* ctx)
 {
     Update();
+    m_frustum.ExtractFromVP(m_viewProj);
 
     // Save current state
     UINT numVP = 1;
@@ -128,18 +129,25 @@ void SpotLight::BeginShadowPass(ID3D11DeviceContext* ctx)
     ctx->PSSetSamplers(0, 1, m_alphaSampler.GetAddressOf());
 }
 
-void SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX model,
-                          const std::vector<ShadowSubMesh>& subMeshes)
+uint32_t SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX model,
+                             const std::vector<ShadowSubMesh>& subMeshes)
 {
+    if (!m_frustum.TestAABB(mesh.GetBounds(), model))
+        return 0;
+
     ShadowCBData cb;
     XMStoreFloat4x4(&cb.model, model);
     XMStoreFloat4x4(&cb.viewProj, m_viewProj);
     m_shadowCB.Update(ctx, cb);
     m_shadowCB.BindVS(ctx, 0);
 
-    for (uint32_t i = 0; i < mesh.GetSubMeshCount(); ++i)
+    const uint32_t count = mesh.GetSubMeshCount();
+    uint32_t draws = 0;
+    for (uint32_t i = 0; i < count; ++i)
     {
         if (i < subMeshes.size() && !subMeshes[i].cast)
+            continue;
+        if (count > 1 && !m_frustum.TestAABB(mesh.GetSubMeshBounds(i), model))
             continue;
 
         ShadowMaterialCBData material = {};
@@ -152,7 +160,9 @@ void SpotLight::DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, XMMATRIX mo
         m_materialCB.Update(ctx, material);
         m_materialCB.BindPS(ctx, 1);
         mesh.DrawSubMesh(ctx, i);
+        ++draws;
     }
+    return draws;
 }
 
 void SpotLight::EndShadowPass(ID3D11DeviceContext* ctx)

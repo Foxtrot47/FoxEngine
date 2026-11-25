@@ -5,6 +5,7 @@
 #include "Engine/Renderer/ConstantBuffer.h"
 #include "Engine/Renderer/ShaderLibrary.h"
 #include "Engine/Renderer/Mesh.h"
+#include "Engine/Renderer/Frustum.h"
 #include "Engine/Renderer/ShadowMaterial.h"
 
 using Microsoft::WRL::ComPtr;
@@ -26,8 +27,9 @@ public:
     // Call DrawMesh() between Begin/EndFace for every face before binding the SRV.
     void BeginFace(ID3D11DeviceContext* ctx, int face,
                    DirectX::XMFLOAT3 lightPos, float lightFar);
-    void DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
-                  const std::vector<ShadowSubMesh>& subMeshes);
+    // Culls the mesh, then each submesh, against the face frustum; returns the draws issued.
+    uint32_t DrawMesh(ID3D11DeviceContext* ctx, const Mesh& mesh, DirectX::XMMATRIX model,
+                      const std::vector<ShadowSubMesh>& subMeshes);
     void EndFace(ID3D11DeviceContext* ctx);
 
     ID3D11ShaderResourceView* GetSRV() const { return m_srv.Get(); }
@@ -61,6 +63,7 @@ private:
 
     // State cached from BeginFace, used by DrawMesh
     DirectX::XMMATRIX m_faceViewProj  = {};
+    Frustum           m_faceFrustum;  // of m_faceViewProj
     DirectX::XMFLOAT3 m_lightPos      = {};
     float             m_lightFar      = 1.0f;
 

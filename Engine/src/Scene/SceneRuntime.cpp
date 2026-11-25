@@ -186,6 +186,9 @@ bool SceneRuntime::Init(Renderer& renderer, ShaderLibrary& shaders, AssetManager
     if (!bloom.Init(device, shaders, width, height)) return false;
     if (!m_motionBlur.Init(device, shaders, width, height)) return false;
     if (!m_reflectionProbes.Init(device, shaders)) return false;
+    // Order matches GpuScope; timings are optional (a failure only logs).
+    m_gpuProfiler.Init(device, { "shadows", "planar", "probes", "forward", "ssao", "fog",
+                                 "temporal", "motion_blur", "bloom", "tonemap" });
     if (!ssao.Init(device, shaders, width, height)) return false;
     if (!volFog.Init(device, shaders, width, height)) return false;
     if (!fxaa.Init(device, shaders)) return false;
@@ -1335,6 +1338,7 @@ void SceneRuntime::ResetTemporalHistory()
 void SceneRuntime::Render(float aspect)
 {
     ID3D11DeviceContext* ctx = m_renderer->GetContext();
+    m_gpuProfiler.BeginFrame(ctx);
 
     XMMATRIX view = camera->GetViewMatrix();
     XMMATRIX proj = camera->GetProjectionMatrix(aspect);
@@ -1376,7 +1380,11 @@ void SceneRuntime::Render(float aspect)
     if (!brdfLutSRV) brdfLutSRV = fallbackEnvironment;
 
     if (m_probesDirty)
+    {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuProbes);
         CaptureReflectionProbes(ctx, irradianceSRV, specularSRV, brdfLutSRV);
+    }
+    m_shadowDrawCalls = 0; // main-view shadow passes only, not probe captures
 
     // Staggered cutout coverage: dither the alpha-test threshold only while a
     // temporal resolve (TAA or FSR) accumulates the noise into stable coverage.
@@ -1387,12 +1395,19 @@ void SceneRuntime::Render(float aspect)
     const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
     if (litView)
     {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuShadows);
         RenderShadowMaps(ctx, m_cachedView, m_cachedProjNoJitter, camera->nearZ, camera->farZ);
         RenderLocalShadowMaps(ctx);
     }
 
     m_reflectionProbes.Bind(ctx, true);
-    if (litView) RenderPlanarReflection(ctx, irradianceSRV, specularSRV, brdfLutSRV);
+    m_planarDrawCalls = 0;
+    if (litView)
+    {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuPlanar);
+        RenderPlanarReflection(ctx, irradianceSRV, specularSRV, brdfLutSRV);
+    }
+    GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuForward);
     RenderForwardPass(ctx, irradianceSRV, specularSRV, brdfLutSRV);
     if (drawDebugHelpers) RenderDebugShapes(ctx);
     if (pipeline.viewShading != ForwardPipeline::ViewShading::Wireframe) RenderParticles(ctx);
@@ -1513,8 +1528,8 @@ void SceneRuntime::RenderShadowMaps(ID3D11DeviceContext* ctx, XMMATRIX view, XMM
             ForEachMeshInstance([&](const MeshInstance& instance) {
                 if (!instance.castsShadows || !instance.shadowSubMeshes)
                     return;
-                shadowMap.DrawMesh(ctx, *instance.mesh, instance.model,
-                                   *instance.shadowSubMeshes);
+                m_shadowDrawCalls += shadowMap.DrawMesh(ctx, *instance.mesh, instance.model,
+                                                        *instance.shadowSubMeshes);
             });
             for (const PhysicsBall& ball : balls)
                 shadowMap.DrawSphere(ctx, ball.transform->position, ball.radius);
@@ -1545,8 +1560,8 @@ void SceneRuntime::RenderLocalShadowMaps(ID3D11DeviceContext* ctx)
                 ForEachMeshInstance([&](const MeshInstance& instance) {
                     if (!instance.castsShadows || !instance.shadowSubMeshes)
                         return;
-                    pointShadowMaps[li].DrawMesh(ctx, *instance.mesh, instance.model,
-                                                 *instance.shadowSubMeshes);
+                    m_shadowDrawCalls += pointShadowMaps[li].DrawMesh(
+                        ctx, *instance.mesh, instance.model, *instance.shadowSubMeshes);
                 });
                 pointShadowMaps[li].EndFace(ctx);
             }
@@ -1560,8 +1575,8 @@ void SceneRuntime::RenderLocalShadowMaps(ID3D11DeviceContext* ctx)
         ForEachMeshInstance([&](const MeshInstance& instance) {
             if (!instance.castsShadows || !instance.shadowSubMeshes)
                 return;
-            spotLight.DrawMesh(ctx, *instance.mesh, instance.model,
-                               *instance.shadowSubMeshes);
+            m_shadowDrawCalls += spotLight.DrawMesh(ctx, *instance.mesh, instance.model,
+                                                    *instance.shadowSubMeshes);
         });
         spotLight.EndShadowPass(ctx);
     }
@@ -1629,6 +1644,7 @@ void SceneRuntime::RenderPlanarReflection(ID3D11DeviceContext* ctx,
                                   object.def.emissiveIntensity, emissive,
                                   &objectPrev);
     }
+    m_planarDrawCalls = pipeline.GetLastDrawCalls(); // before the forward pass's Begin resets it
     pipeline.SetReflectionPass(ctx, false);
     shadowMap.Unbind(ctx);
     ID3D11ShaderResourceView* nullPointShadows[2] = { nullptr, nullptr };
@@ -2052,11 +2068,15 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
     // These effects currently reconstruct perspective rays. Utility ortho
     // views omit them rather than applying an incorrect depth interpretation.
     if (ssao.enabled && litView && !camera->orthographic)
+    {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuSsao);
         ssao.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_normalRT.GetSRV(), m_cachedProj);
+    }
 
     // Volumetric fog / god rays (in-scatter into hdrRT before bloom picks up shafts)
     if (volFog.enabled && litView && !camera->orthographic)
     {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuFog);
         float er = XMConvertToRadians(lights.elevDeg);
         float ar = XMConvertToRadians(lights.azimDeg);
         XMFLOAT3 lightDir = { cosf(er) * sinf(ar), sinf(er), cosf(er) * cosf(ar) };
@@ -2095,10 +2115,12 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
     const XMMATRIX prevViewProj = m_prevViewProjNoJitter;
     if (useFsr)
     {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuTemporal);
         DispatchFsr(ctx, frameDt);
     }
     else if (taa.enabled)
     {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuTemporal);
         XMMATRIX invVP = XMMatrixInverse(nullptr, m_viewProjNoJitter);
         taa.Apply(ctx, hdrRT, hdrRT.GetDepthSRV(), m_velocityRT.GetSRV(),
                   invVP, prevViewProj);
@@ -2110,14 +2132,19 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
     if (motionBlur.enabled && litView && !camera->orthographic &&
         frameDt > 0.0f && m_lastUpdateDt > 0.0f)
     {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuMotionBlur);
         XMMATRIX invVP = XMMatrixInverse(nullptr, m_viewProjNoJitter);
         m_motionBlur.Apply(ctx, outRT, m_velocityRT.GetSRV(), hdrRT.GetDepthSRV(),
                            motionBlur, invVP, prevViewProj, camera->nearZ, camera->farZ);
     }
 
     if (bloom.enabled && litView)
+    {
+        GpuProfiler::Scope scope(m_gpuProfiler, ctx, GpuBloom);
         bloom.Apply(ctx, outRT);
+    }
 
+    m_gpuProfiler.Begin(ctx, GpuTonemap);
     if (fxaa.enabled)
     {
         // Tone map into intermediate LDR RT, then FXAA into the output
@@ -2134,6 +2161,8 @@ void SceneRuntime::PostProcess(uint32_t outputWidth, uint32_t outputHeight, floa
         bindOutput();
         toneMap.Apply(ctx, outRT.GetSRV(), w, h);
     }
+    m_gpuProfiler.End(ctx, GpuTonemap);
+    m_gpuProfiler.EndFrame(ctx);
 }
 
 float SceneRuntime::FsrUpscaleRatio() const
