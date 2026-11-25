@@ -230,8 +230,8 @@ When a pass needs to both read and write the same RT (e.g., SSAO apply), use a m
 ### Development Asset Loading
 - Levels and source assets are loaded directly during the current runtime/rendering phase.
 - `LevelLoadOperation` prepares dependencies asynchronously, uploads GPU resources on the main thread, and reuses the in-memory `AssetManager` cache.
-- Assimp is the source importer for FBX, glTF, and OBJ assets. `MeshCache` cooks imported meshes to `Cache/Meshes/*.fxmesh` (zstd, 256 KiB blocks) on first load or via `FoxCook` (`Tools/FoxCook`).
-- Cooked entries invalidate when the source or any side file the importer read (`.bin`, `.mtl`, ...) changes, when the Assimp version changes, or when `k_meshCacheVersion` is bumped; a missing source loads its cooked entry.
+- glTF (`.gltf`/`.glb`) is read natively with cgltf (`Renderer/GltfImport.cpp`; MikkTSpace tangents when the file has none; Draco/meshopt compression is rejected); Assimp imports FBX, OBJ and everything else. `Mesh::Import` takes an optional `MeshImporter` to force either path; both produce the same left-handed output (Z mirrored, node transforms baked, one submesh per primitive instance in mesh order). `MeshCache` cooks imported meshes to `Cache/Meshes/*.fxmesh` (zstd, 256 KiB blocks) on first load or via `FoxCook` (`Tools/FoxCook`).
+- Cooked entries invalidate when the source or any side file the importer read (`.bin`, `.mtl`, ...) changes, when the importer (cgltf or Assimp) or its version changes, or when `k_meshCacheVersion` is bumped; a missing source loads its cooked entry.
 - Textures still use offline BC DDS from `Tools/ConvertTextures.ps1`.
 
 ## Current Milestone Roadmap

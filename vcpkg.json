@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "dependencies": [
     "assimp",
+    "cgltf",
     { "name": "imgui", "features": ["dx11-binding", "win32-binding", "docking-experimental", "freetype"] },
     "imguizmo",
     "directxtex",
     "joltphysics",
     "lua",
+    "mikktspace",
     "nlohmann-json",
     "sol2",
     "zstd"

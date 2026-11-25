@@ -19,6 +19,8 @@
 #include <cstring>
 #include <iterator>
 #include <set>
+#include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -598,6 +600,106 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b)
            a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
            a.workflow == b.workflow && a.roughnessFactor == b.roughnessFactor &&
            a.glossinessFactor == b.glossinessFactor;
+}
+
+// Triangles of one submesh as (position, UV0) corners quantized to 1e-4, each rotated
+// to start at its smallest corner (winding preserved), sorted; `corners` keeps the
+// vertices in the same order for frame comparisons.
+struct QuantizedTriangle
+{
+    std::array<int64_t, 15> key;
+    std::array<const SE::MeshVertex*, 3> corners;
+    bool operator<(const QuantizedTriangle& other) const { return key < other.key; }
+};
+
+static std::vector<QuantizedTriangle> QuantizedTriangles(const SE::MeshSourceData& data,
+                                                         const SE::MeshSubMeshSource& sub)
+{
+    std::vector<QuantizedTriangle> triangles;
+    for (uint32_t i = 0; i + 2 < sub.indexCount; i += 3)
+    {
+        std::array<std::array<int64_t, 5>, 3> keys;
+        std::array<const SE::MeshVertex*, 3> vertices;
+        for (uint32_t c = 0; c < 3; ++c)
+        {
+            const SE::MeshVertex& v = data.vertices[sub.firstVertex + data.indices[sub.firstIndex + i + c]];
+            vertices[c] = &v;
+            const float values[5] = { v.x, v.y, v.z, v.u, v.v };
+            for (int k = 0; k < 5; ++k)
+                keys[c][k] = static_cast<int64_t>(std::llround(double(values[k]) * 1e4));
+        }
+        const size_t first = static_cast<size_t>(std::min_element(keys.begin(), keys.end()) - keys.begin());
+        QuantizedTriangle triangle;
+        for (size_t c = 0; c < 3; ++c)
+        {
+            std::copy(keys[(first + c) % 3].begin(), keys[(first + c) % 3].end(), triangle.key.begin() + c * 5);
+            triangle.corners[c] = vertices[(first + c) % 3];
+        }
+        triangles.push_back(triangle);
+    }
+    std::sort(triangles.begin(), triangles.end());
+    return triangles;
+}
+
+// The cgltf reader must reproduce the Assimp path's submeshes, materials, bounds and
+// triangles; vertex counts may differ (Assimp welds identical vertices).
+static void TestGltfImporterParity(const std::vector<const char*>& paths)
+{
+    for (const char* path : paths)
+    {
+        const std::string context = std::string(" (") + path + ")";
+        const auto require = [&context](bool condition, const char* message) {
+            if (!condition) throw std::runtime_error(message + context);
+        };
+        SE::MeshSourceData assimp, gltf;
+        std::string error;
+        require(SE::Mesh::Import(path, assimp, {}, &error, SE::MeshImporter::Assimp), "Assimp import failed");
+        require(SE::Mesh::Import(path, gltf, {}, &error, SE::MeshImporter::Gltf), "cgltf import failed");
+        require(gltf.subMeshes.size() == assimp.subMeshes.size(), "importer submesh counts differ");
+        require(gltf.sourceFiles == assimp.sourceFiles, "importer dependency lists differ");
+        require(gltf.directory == assimp.directory, "importer directories differ");
+        const auto within = [](float a, float b) { return std::fabs(a - b) <= 1e-4f; };
+        require(within(gltf.bounds.min.x, assimp.bounds.min.x) && within(gltf.bounds.min.y, assimp.bounds.min.y) &&
+                within(gltf.bounds.min.z, assimp.bounds.min.z) && within(gltf.bounds.max.x, assimp.bounds.max.x) &&
+                within(gltf.bounds.max.y, assimp.bounds.max.y) && within(gltf.bounds.max.z, assimp.bounds.max.z),
+                "importer bounds differ");
+
+        // Tangent frames: MikkTSpace and Assimp's CalcTangentSpace differ in detail, so
+        // require broad agreement in direction (this catches sign convention errors).
+        size_t corners = 0, normalAgree = 0, tangentAgree = 0, bitangentAgree = 0;
+        for (size_t s = 0; s < assimp.subMeshes.size(); ++s)
+        {
+            require(SameMaterial(gltf.subMeshes[s].material, assimp.subMeshes[s].material),
+                    "importer submesh materials differ");
+            const auto a = QuantizedTriangles(assimp, assimp.subMeshes[s]);
+            const auto b = QuantizedTriangles(gltf, gltf.subMeshes[s]);
+            require(a.size() == b.size(), "importer triangle counts differ");
+            for (size_t t = 0; t < a.size(); ++t)
+            {
+                // One quantization step of slack for values that round to neighbouring steps.
+                for (size_t k = 0; k < a[t].key.size(); ++k)
+                    require(std::llabs(a[t].key[k] - b[t].key[k]) <= 1, "importer triangles differ");
+                for (size_t c = 0; c < 3; ++c)
+                {
+                    const SE::MeshVertex& r = *a[t].corners[c];
+                    const SE::MeshVertex& g = *b[t].corners[c];
+                    ++corners;
+                    normalAgree += g.nx * r.nx + g.ny * r.ny + g.nz * r.nz > 0.99f;
+                    tangentAgree += g.tx * r.tx + g.ty * r.ty + g.tz * r.tz > 0.0f;
+                    bitangentAgree += g.bx * r.bx + g.by * r.by + g.bz * r.bz > 0.0f;
+                }
+            }
+        }
+        require(normalAgree >= corners * 99 / 100, "importer normals differ");
+        require(tangentAgree >= corners * 99 / 100, "importer tangents differ");
+        require(bitangentAgree >= corners * 99 / 100, "importer bitangents differ");
+
+        SE::MeshSourceData cancelled;
+        std::string cancelError;
+        require(!SE::Mesh::Import(path, cancelled, [](float) { return false; }, &cancelError,
+                                  SE::MeshImporter::Gltf) && cancelError == "cancelled",
+                "cancelled cgltf import did not report cancellation");
+    }
 }
 
 static void TestMeshCache()
@@ -1270,6 +1372,8 @@ static void RunTests()
     TestDependencyPlan();
     TestMaterialTexturePath();
     TestCpuTextureDecode();
+    TestGltfImporterParity({ "Assets/TestAssets/SpecGlossVsMetalRough/SpecGlossVsMetalRough.gltf",
+                             "Assets/Vehicles/Porsche911GT3R/body.gltf" });
     std::filesystem::current_path(FOX_TEST_FIXTURE_ROOT);
     TestOperationFailuresAndCancellation();
     TestCachedMeshSkipsImport();
@@ -1277,6 +1381,7 @@ static void RunTests()
     TestCpuMeshImport();
     TestGltfPackedMRDetection();
     TestGltfSpecGlossDetection();
+    TestGltfImporterParity({ "Assets/TestFixtures/packed_mr.gltf", "Assets/TestFixtures/spec_gloss.gltf" });
     TestMeshCache();
     std::cout << "LevelAssetTests: all tests passed\n";
 }

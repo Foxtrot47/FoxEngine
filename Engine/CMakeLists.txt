@@ -18,6 +18,8 @@ find_package(zstd CONFIG REQUIRED)
 find_package(Jolt CONFIG REQUIRED)
 find_package(Lua REQUIRED)
 find_package(sol2 CONFIG REQUIRED)
+find_package(mikktspace CONFIG REQUIRED)
+find_path(CGLTF_INCLUDE_DIR cgltf.h REQUIRED)
 
 target_link_libraries(FoxEngine PUBLIC
     d3d11.lib
@@ -35,6 +37,9 @@ target_link_libraries(FoxEngine PUBLIC
 )
 
 target_link_libraries(FoxEngine PRIVATE zstd::libzstd)
+# glTF import (cgltf, header-only) and MikkTSpace tangents stay private to Renderer/GltfImport.cpp.
+target_include_directories(FoxEngine PRIVATE ${CGLTF_INCLUDE_DIR})
+target_link_libraries(FoxEngine PRIVATE mikktspace::mikktspace)
 # Jolt stays private: only Engine/src/Physics includes its headers.
 target_link_libraries(FoxEngine PRIVATE Jolt::Jolt)
 # Lua and sol2 stay private as well: only Engine/src/Scripting includes them.

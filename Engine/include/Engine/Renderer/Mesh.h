@@ -63,6 +63,9 @@ struct MeshSourceData
     AABB bounds;
 };
 
+// Source importer for Mesh::Import. Auto selects Gltf for .gltf/.glb and Assimp otherwise.
+enum class MeshImporter : uint8_t { Auto, Assimp, Gltf };
+
 class Mesh
 {
 public:
@@ -70,10 +73,14 @@ public:
     using ImportProgressCallback = std::function<bool(float)>;
 
     // Bump `k_meshCacheVersion` (`MeshCache.cpp`) whenever this code changes import
-    // output; Assimp upgrades are detected by the cache itself.
+    // output; Assimp upgrades are detected by the cache itself, cgltf upgrades by its
+    // pinned version in `ImporterVersion` (`MeshCache.cpp`), which must follow vcpkg.
     static bool Import(const char* path, MeshSourceData& output,
                        const ImportProgressCallback& progress = {},
-                       std::string* error = nullptr);
+                       std::string* error = nullptr,
+                       MeshImporter importer = MeshImporter::Auto);
+    // The importer `Import` uses for `path` (never Auto).
+    static MeshImporter ResolveImporter(const std::string& path, MeshImporter importer = MeshImporter::Auto);
     // Directory part of `path` including the trailing separator, or "" if none.
     static std::string SourceDirectory(const std::string& path);
     bool Upload(ID3D11Device* device, MeshSourceData&& source);

@@ -1,5 +1,6 @@
 #include "Engine/Renderer/Mesh.h"
 #include "Engine/Core/Logger.h"
+#include "Renderer/GltfImport.h"
 #include <assimp/Importer.hpp>
 #include <assimp/DefaultIOSystem.h>
 #include <assimp/IOSystem.hpp>
@@ -272,10 +273,9 @@ std::string Mesh::SourceDirectory(const std::string& path)
     return pos != std::string::npos ? path.substr(0, pos + 1) : std::string();
 }
 
-bool Mesh::Import(const char* path, MeshSourceData& output,
-                  const ImportProgressCallback& progress, std::string* error)
+static bool ImportAssimp(const char* path, MeshSourceData& output,
+                         const Mesh::ImportProgressCallback& progress, std::string* error)
 {
-    output = {};
     if (progress && !progress(0.0f))
         return false;
 
@@ -305,7 +305,7 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
                              output.sourceFiles.end());
 
     // Callers resolve relative texture paths against this directory.
-    output.directory = SourceDirectory(path);
+    output.directory = Mesh::SourceDirectory(path);
     output.bounds = AABB{};
 
     // Bake node placement into vertices (glTF and FBX position meshes via nodes).
@@ -352,6 +352,27 @@ bool Mesh::Import(const char* path, MeshSourceData& output,
         return false;
     SE_LOG_INFO("Mesh imported: '%s' — %zu sub-mesh(es)", path, output.subMeshes.size());
     return true;
+}
+
+MeshImporter Mesh::ResolveImporter(const std::string& path, MeshImporter importer)
+{
+    if (importer != MeshImporter::Auto)
+        return importer;
+    const size_t dot = path.find_last_of("./\\");
+    std::string extension = dot != std::string::npos && path[dot] == '.' ? path.substr(dot) : std::string();
+    for (char& c : extension)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return extension == ".gltf" || extension == ".glb" ? MeshImporter::Gltf : MeshImporter::Assimp;
+}
+
+bool Mesh::Import(const char* path, MeshSourceData& output,
+                  const ImportProgressCallback& progress, std::string* error,
+                  MeshImporter importer)
+{
+    output = {};
+    return ResolveImporter(path, importer) == MeshImporter::Gltf
+        ? ImportGltf(path, output, progress, error)
+        : ImportAssimp(path, output, progress, error);
 }
 
 bool Mesh::Upload(ID3D11Device* device, MeshSourceData&& source)

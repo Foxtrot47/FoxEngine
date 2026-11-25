@@ -6,6 +6,7 @@
 #include <assimp/version.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -22,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 2;
+constexpr uint32_t k_meshCacheVersion = 3;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -41,7 +42,7 @@ struct FileHeader
     char magic[4];
     uint32_t version;
     uint32_t blockSize;
-    uint32_t importerVersion[4]; // Assimp major, minor, patch, revision
+    uint32_t importerVersion[4]; // ImporterVersion(): importer id, then its version
     uint32_t dependencyCount, subMeshCount;
     uint32_t vertexCount, indexCount;
     uint32_t vertexBlockCount, indexBlockCount;
@@ -115,13 +116,13 @@ uint64_t RawBytes(const MeshSourceData& data)
            uint64_t(data.indices.size()) * sizeof(uint32_t);
 }
 
-// The Assimp runtime that produced an entry; an upgrade can change import output.
-void ImporterVersion(uint32_t (&out)[4])
+// The importer that produces an entry: id (1 Assimp, 2 cgltf) and its version; an
+// importer switch or upgrade can change import output.
+std::array<uint32_t, 4> ImporterVersion(const std::string& sourcePath)
 {
-    out[0] = aiGetVersionMajor();
-    out[1] = aiGetVersionMinor();
-    out[2] = aiGetVersionPatch();
-    out[3] = aiGetVersionRevision();
+    if (Mesh::ResolveImporter(sourcePath) == MeshImporter::Gltf)
+        return { 2, 1, 15, 0 };
+    return { 1, aiGetVersionMajor(), aiGetVersionMinor(), aiGetVersionPatch() };
 }
 
 std::string CacheKey(const std::string& path)
@@ -265,7 +266,8 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
     std::memcpy(header.magic, k_magic, sizeof(k_magic));
     header.version = k_meshCacheVersion;
     header.blockSize = k_blockSize;
-    ImporterVersion(header.importerVersion);
+    const std::array<uint32_t, 4> importerVersion = ImporterVersion(key);
+    std::memcpy(header.importerVersion, importerVersion.data(), sizeof(header.importerVersion));
     header.dependencyCount = static_cast<uint32_t>(data.sourceFiles.size());
     header.subMeshCount = static_cast<uint32_t>(data.subMeshes.size());
     header.vertexCount = static_cast<uint32_t>(data.vertices.size());
@@ -431,9 +433,8 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
     if (!ReadAll(file.handle, reinterpret_cast<uint8_t*>(&header), sizeof(header))) return miss("read failed");
     if (std::memcmp(header.magic, k_magic, sizeof(k_magic)) != 0) return miss("bad magic");
     if (header.version != k_meshCacheVersion || header.blockSize != k_blockSize) return miss("format version");
-    uint32_t importerVersion[4];
-    ImporterVersion(importerVersion);
-    if (std::memcmp(header.importerVersion, importerVersion, sizeof(importerVersion)) != 0)
+    const std::array<uint32_t, 4> importerVersion = ImporterVersion(key);
+    if (std::memcmp(header.importerVersion, importerVersion.data(), sizeof(header.importerVersion)) != 0)
         return miss("importer version");
 
     const uint64_t vertexBytes = uint64_t(header.vertexCount) * sizeof(MeshVertex);
