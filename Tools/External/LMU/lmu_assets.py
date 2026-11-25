@@ -117,6 +117,8 @@ class Gmt:
             raise ValueError(f"{path.name}: no vertex stride reproduces the face centroids (err {err})")
         self.nrm = raw[:, 12:24].copy().view("<f4").astype(np.float64)
         self.uv = raw[:, 64:72].copy().view("<f4").astype(np.float64)
+        self.tangent = raw[:, 40:52].copy().view("<f4").astype(np.float64)
+        self.bitangent = raw[:, 52:64].copy().view("<f4").astype(np.float64)
         self.uv_b = raw[:, 72:80].copy().view("<f4").astype(np.float64)  # LMU UV_B
         self.uv_c = raw[:, 80:88].copy().view("<f4").astype(np.float64)  # LMU UV_C
         if with_materials:
@@ -341,57 +343,141 @@ class TextureWriter:
 
 # --------------------------------------------------------------------------- materials
 
+class TextureSlot:
+    """One glTF material texture reference: path, TEXCOORD set index (0..2) and
+    KHR_texture_transform scale. LMU has no UV offsets, so they stay 0."""
+
+    __slots__ = ("path", "uv_set", "scale")
+
+    def __init__(self, path=None, uv_set=0, scale=(1.0, 1.0)):
+        self.path = path
+        self.uv_set = int(uv_set)
+        self.scale = (float(scale[0]), float(scale[1]))
+
+    def __bool__(self):
+        return bool(self.path)
+
+    @property
+    def tiled(self):
+        return any(abs(value - 1.0) > 1e-6 for value in self.scale)
+
+
+class _Slot:
+    """A Material texture slot. Assigning a path string sets the slot's texture
+    and keeps its mapping, so builders can rewrite one texture in place."""
+
+    def __set_name__(self, owner, name):
+        self.attribute = "_" + name
+
+    def __get__(self, instance, owner=None):
+        return instance.__dict__[self.attribute]
+
+    def __set__(self, instance, value):
+        if isinstance(value, TextureSlot):
+            instance.__dict__[self.attribute] = value
+        else:
+            instance.__dict__[self.attribute].path = value
+
+
+SLOTS = ("base_color", "normal", "metal_rough", "occlusion", "detail_albedo", "detail_normal")
+
+
 class Material:
+    base_color = _Slot()
+    normal = _Slot()
+    metal_rough = _Slot()
+    occlusion = _Slot()
+    detail_albedo = _Slot()
+    detail_normal = _Slot()
+
     def __init__(self, name):
         self.name = name
-        self.base_color = None   # texture uri
-        self.normal = None
-        self.metal_rough = None
+        self.base_color = TextureSlot()
+        self.normal = TextureSlot()
+        self.metal_rough = TextureSlot()
+        self.occlusion = TextureSlot()
+        self.detail_albedo = TextureSlot()
+        self.detail_normal = TextureSlot()
+        # glTF extras fox.detailAlbedo.mode/strength: LMU's DETAILALBEDO blend
+        # ("overlay" is the engine's default when absent) and the Detail.Albedo
+        # weight of the layer.
+        self.detail_albedo_mode = "overlay"
+        self.detail_albedo_strength = 1.0
         self.alpha_mode = "OPAQUE"
         self.alpha_cutoff = 0.5
         # Texture coordinates of TEXCOORD_0: the mesh's first UV set, or world
         # X/Z for LMU's WorldPlanar mapping; scaled by uv_scale.
         self.uv_source = "UV_A"
         self.uv_scale = (1.0, 1.0)
+        # glTF extras fox.vertexTint: "albedoAlphaMask" or "multiply" when the
+        # LMU material colours itself from the mesh's COLOR_0 stream.
+        self.vertex_tint = None
+
+    def __copy__(self):
+        """Copy with independent texture slots (the palette tint rewrites one)."""
+        clone = Material(self.name)
+        clone.__dict__.update(self.__dict__)
+        for name in SLOTS:
+            slot = getattr(self, name)
+            clone.__dict__["_" + name] = TextureSlot(slot.path, slot.uv_set, slot.scale)
+        return clone
 
 
 # Per role, the LMU stages that can provide it in shader order of preference:
-# (texture stage name, UV_Scale key, preprocessor flags naming the stage's UV set).
-# Clearcoat shaders name the set in the <STAGE>MAP flag itself.
+# (texture stage name, UV_Scale key, preprocessor flags naming the stage's UV set,
+# flag that defines the stage). LMU writes "@Null" for a flag it defines without a
+# value, so only "@Undef" (or a missing flag) means the stage is off. The detail
+# stages fall back to DETAILMAP, the flag the clearcoat shader form uses to name
+# its detail UV set instead of DETAILUV.
 STAGES = {
-    "albedo": (("albedoMap", "Albedo", ("ALBEDOUV", "ALBEDOROUGHUV", "ALBEDOMAP")),
-               ("sTex0", "Albedo", ("ALBEDOUV",))),
-    "normal": (("normalMap", "Normal", ("NORMALUV", "NORMALMAP")),),
-    "metal_rough": (("metalRoughMap", "MetalRough", ("METALROUGHUV",)),
-                    ("roughnessMap", "MetalRough", ("ROUGHNESSUV", "ROUGHNESSMAP"))),
+    "albedo": (("albedoMap", "Albedo", ("ALBEDOUV", "ALBEDOROUGHUV", "ALBEDOMAP"), None),
+               ("sTex0", "Albedo", ("ALBEDOUV",), None)),
+    "normal": (("normalMap", "Normal", ("NORMALUV", "NORMALMAP"), None),),
+    "metal_rough": (("metalRoughMap", "MetalRough", ("METALROUGHUV",), None),
+                    ("roughnessMap", "MetalRough", ("ROUGHNESSUV", "ROUGHNESSMAP"), None)),
+    "occlusion": (("aoSpecularMap", "aoSpec", ("AOSPECUV",), "AOSPECMAP"),
+                  ("aoSpecMap", "aoSpec", ("AOSPECUV",), "AOSPECMAP")),
+    "detail_albedo": (("detailMap", "Detail", ("DETAILUV", "DETAILMAP"), "DETAILMAP"),),
+    "detail_normal": (("detailNormalMap", "Detail", ("DETAILUV", "DETAILMAP"), "DETAILNORMAL"),),
 }
 UV_SETS = ("UV_A", "UV_B", "UV_C", "UV_D", "WorldPlanar")
+UV_SET_INDEX = {"UV_A": 0, "UV_B": 1, "UV_C": 2}
+# LMU DETAILALBEDO shader function -> engine detail albedo blend mode.
+DETAIL_MODES = {"Multiply": "multiply", "AlphaBlend": "alphaBlend"}
 
 
 class LmuMaterialDefinition:
-    def __init__(self, definition, raw):
+    def __init__(self, definition, raw, report=None):
         self.definition = definition
         self.raw = raw
+        self.report = report
         cb = (definition.get("parameters") or {}).get("cbParameters") or {}
         self.adjust_values = cb.get("Material_Adjust") or {}
         self.uv_scale = cb.get("UV_Scale") or {}
+        self.detail_values = cb.get("Detail") or {}
         self.uv_flags = definition.get("preprocessorFlags") or {}
         self.stages = {t.get("Name"): t.get("Texture") for t in definition.get("textures") or []
                        if t.get("Texture") and not t.get("inactive")}
         self.shader = definition.get("shader", "")
         self.is_glass = self.shader.startswith(("L2WINDSCREEN", "L2IBLGLASS"))
-        # The one UV set and scale the output primitive carries; stages mapped
-        # differently are dropped (or become constants).
+        # The UV set and scale baked into the output primitive's TEXCOORD_0: set
+        # by MaterialBuilder when it bakes the albedo stage's mapping (LMU stages
+        # on that set are then divided by it, see slot()).
         self.base_uv_set = "UV_A"
         self.base_uv_scale = (1.0, 1.0)
 
     def stage(self, role):
-        """(stem, uv set, uv scale) of the first stage providing `role`, or None."""
-        for stage, scale_key, uv_keys in STAGES[role]:
+        """(stem, uv set, uv scale) of the first active stage providing `role`, or None."""
+        for stage, scale_key, uv_keys, flag in STAGES[role]:
             stem = self.stages.get(stage)
-            if stem:
+            if stem and self._defined(flag):
                 return stem, self._uv_set(uv_keys), tuple(self.uv_scale.get(scale_key, [1.0, 1.0]))
         return None
+
+    def _defined(self, flag):
+        """A stage with no defining flag is active; LMU stores "@Null" for a flag
+        it defines without a value and "@Undef" for an undefined one."""
+        return flag is None or self.uv_flags.get(flag) not in (None, "@Undef")
 
     def _uv_set(self, uv_keys):
         for key in uv_keys:
@@ -400,16 +486,68 @@ class LmuMaterialDefinition:
                 return value
         return "UV_A"
 
+    @property
+    def detail_albedo_strength(self):
+        """LMU Detail.Albedo weight of the detail albedo layer."""
+        return float(self.detail_values.get("Albedo", 1.0))
+
+    def detail_albedo(self):
+        """(TextureSlot, engine blend mode) of the detail albedo layer, or
+        (None, None). DETAILALBEDO names the shader's blend: Multiply multiplies
+        the albedo, AlphaBlend composites the detail as a decal over it."""
+        value = self.uv_flags.get("DETAILALBEDO")
+        mode = DETAIL_MODES.get(value)
+        if mode is not None:
+            return self.slot("detail_albedo"), mode
+        stem = self.stages.get("detailMap")
+        if stem:
+            name = self.definition.get("name") or stem
+            self._log(f"{name}: dropped detail albedo (DETAILALBEDO={value or '@Undef'})")
+        return None, None
+
+    def slot(self, role):
+        """TextureSlot of a role's stage on the output UV streams, or None when
+        the stage is absent, its texture is missing or its mapping cannot be
+        expressed on the primitives' UVs.
+
+        TEXCOORD_0 carries the baked albedo mapping, so a stage on that set is
+        divided by its UV_Scale; UV_B/UV_C stages use their own stream as stored."""
+        found = self.stage(role)
+        if found is None:
+            return None
+        stem, uv_set, scale = found
+        path = self.raw.texture(stem)
+        if path is None:
+            return None
+        if uv_set not in UV_SET_INDEX:
+            # UV_D has no stream; WorldPlanar would need world X/Z on the stage's
+            # own UV set, which the primitives only carry on TEXCOORD_0.
+            self._drop(role, stem, f"{uv_set} has no TEXCOORD set")
+            return None
+        if self.base_uv_set == "WorldPlanar" and uv_set == "UV_A":
+            self._drop(role, stem, "TEXCOORD_0 carries world X/Z for this material")
+            return None
+        if uv_set == self.base_uv_set:
+            uv_set = "UV_A"
+            scale = tuple(scale[i] / (self.base_uv_scale[i] or 1.0) for i in (0, 1))
+        return TextureSlot(path, UV_SET_INDEX[uv_set], scale)
+
+    def _log(self, message):
+        if self.report is not None:
+            self.report.append(message)
+
+    def _drop(self, role, stem, reason):
+        name = self.definition.get("name") or stem
+        self._log(f"{name}: dropped {role} texture '{stem}' ({reason})")
+
     def texture(self, role):
-        """(stem, path) of a role's texture; path is None when the file is
-        missing or the stage is mapped differently from the base UV set/scale."""
+        """(stem, source path) of a role's texture on the output UV streams; the
+        path is None when the stage is missing or cannot be mapped."""
         found = self.stage(role)
         if found is None:
             return None, None
-        stem, uv_set, scale = found
-        path = self.raw.texture(stem)
-        usable = path and uv_set == self.base_uv_set and scale == self.base_uv_scale
-        return stem, path if usable else None
+        slot = self.slot(role)
+        return found[0], slot.path if slot else None
 
     def albedo(self):
         return self.texture("albedo")
@@ -435,10 +573,10 @@ class MaterialBuilder:
 
     `constants`: name -> (linear base color, roughness, metallic) for shared
     textures that are not in the archives or shaders with nothing worth keeping.
-    `bake_albedo_mapping`: when the albedo stage is tiled (UV_Scale != 1) or
-    WorldPlanar, carry its mapping in the primitive's UVs (Material.uv_source,
-    uv_scale) instead of collapsing the albedo to its mean color; other stages
-    mapped differently still become constants."""
+    `bake_albedo_mapping`: when the albedo stage is on UV_A or WorldPlanar, carry
+    its mapping in the primitive's UVs (Material.uv_source, uv_scale) instead of
+    emitting a texture transform; every other stage is emitted with its own
+    TEXCOORD set and KHR_texture_transform."""
 
     def __init__(self, raw, textures, constants=None, bake_albedo_mapping=False):
         self.raw = raw
@@ -455,11 +593,11 @@ class MaterialBuilder:
 
     def _solid_color(self, mat, rgb_linear):
         rgba8 = list((linear_to_srgb(rgb_linear) * 255 + 0.5).astype(int)) + [255]
-        mat.base_color = self.textures.solid(f"{mat.name}_basecolor.dds", rgba8)
+        mat.base_color = TextureSlot(self.textures.solid(f"{mat.name}_basecolor.dds", rgba8))
 
     def _solid_mr(self, mat, roughness, metallic):
         rgba8 = [255, int(roughness * 255 + 0.5), int(metallic * 255 + 0.5), 255]
-        mat.metal_rough = self.textures.solid(f"{mat.name}_mr.dds", rgba8)
+        mat.metal_rough = TextureSlot(self.textures.solid(f"{mat.name}_mr.dds", rgba8))
 
     def _repack_mr(self, mat, src, metal_adjust, rough_adjust):
         """LMU metalRough (R metallic, G roughness) -> glTF (G roughness, B metallic)."""
@@ -467,7 +605,11 @@ class MaterialBuilder:
         metal = adjust(lmu[..., 0], metal_adjust)
         rough = adjust(lmu[..., 1], rough_adjust)
         packed = np.stack([np.ones_like(metal), rough, metal, np.ones_like(metal)], axis=-1)
-        mat.metal_rough = self.textures.encode(f"{mat.name}_mr.dds", packed)
+        mat.metal_rough = TextureSlot(self.textures.encode(f"{mat.name}_mr.dds", packed))
+
+    def _copy_slot(self, mat, attribute, slot):
+        """Stores a stage slot's texture, TEXCOORD set and tiling on the material."""
+        setattr(mat, attribute, TextureSlot(self.textures.copy(slot.path), slot.uv_set, slot.scale))
 
     def _override_texture(self, name):
         """Replacement base color for a named material (vehicle liveries)."""
@@ -495,7 +637,7 @@ class MaterialBuilder:
         return mat
 
     def _build_from_json(self, mat, name, definition):
-        lmu = LmuMaterialDefinition(definition, self.raw)
+        lmu = LmuMaterialDefinition(definition, self.raw, self.report)
         albedo_stage = lmu.stage("albedo")
         if self.bake_albedo_mapping and albedo_stage and albedo_stage[1] in ("UV_A", "WorldPlanar"):
             lmu.base_uv_set = mat.uv_source = albedo_stage[1]
@@ -503,47 +645,78 @@ class MaterialBuilder:
         albedo = self._json_base_color(mat, name, lmu)
         self._json_normal(mat, lmu)
         mr = self._json_metal_rough(mat, lmu)
+        self._json_occlusion(mat, lmu)
+        self._json_detail(mat, lmu, name)
         mat.alpha_mode = self._alpha_mode(lmu, albedo)
         mapping = "" if (mat.uv_source, mat.uv_scale) == ("UV_A", (1.0, 1.0)) else \
             f" {mat.uv_source}*{list(mat.uv_scale)}"
+        detail = [label for label, attribute in (("alb", "detail_albedo"), ("nrm", "detail_normal"))
+                  if getattr(mat, attribute)]
         self.report.append(f"{name}: {lmu.shader} base={'tex' if albedo else 'const'} "
                            f"normal={'tex' if mat.normal else '-'} mr={'tex' if mr else 'const'} "
+                           f"ao={'tex' if mat.occlusion else '-'} detail={','.join(detail) or '-'} "
                            f"{mat.alpha_mode}{mapping}")
 
     def _alpha_mode(self, lmu, albedo):
         return lmu.alpha_mode(albedo, "OPAQUE")
 
     def _json_base_color(self, mat, name, lmu):
-        """Override, else the albedo map; tiled or missing maps become their
-        mean color. Returns the texture used, if any."""
-        albedo_stem, albedo = lmu.albedo()
-        albedo = self._override_texture(name) or albedo
-        if albedo:
-            mat.base_color = self.textures.copy(albedo)
-        else:
-            self._solid_color(mat, self._mean_color(albedo_stem))
-        return albedo
+        """Override, else the albedo map with its mapping, else its mean color.
+        Returns the texture used, if any."""
+        override = self._override_texture(name)
+        if override:
+            mat.base_color = TextureSlot(self.textures.copy(override))
+            return override
+        slot = lmu.slot("albedo")
+        if slot:
+            self._copy_slot(mat, "base_color", slot)
+            return slot.path
+        found = lmu.stage("albedo")
+        self._solid_color(mat, self._mean_color(found[0] if found else None))
+        return None
 
     def _json_normal(self, mat, lmu):
-        _, normal = lmu.texture("normal")
-        if normal and not normal.stem.upper().startswith("_DEFTEX"):
-            mat.normal = self.textures.copy(normal)
+        slot = lmu.slot("normal")
+        if slot and not slot.path.stem.upper().startswith("_DEFTEX"):
+            self._copy_slot(mat, "normal", slot)
 
     def _json_metal_rough(self, mat, lmu):
         """Glass is smooth dielectric; otherwise the repacked metalRough map, or
         its mean (default when missing). Returns the map used, if any."""
         metal_adjust = lmu.adjust_amount("Metallic")
         rough_adjust = lmu.adjust_amount("Roughness")
-        mr_stem, mr = lmu.texture("metal_rough")
+        slot = lmu.slot("metal_rough")
         if lmu.is_glass:
             self._solid_mr(mat, 0.05, 0.0)
-            return mr
-        if mr:
-            self._repack_mr(mat, mr, metal_adjust, rough_adjust)
-            return mr
-        metallic, roughness = self._mean_metal_rough(mr_stem)
+            return slot.path if slot else None
+        if slot:
+            self._repack_mr(mat, slot.path, metal_adjust, rough_adjust)
+            mat.metal_rough.uv_set, mat.metal_rough.scale = slot.uv_set, slot.scale
+            return slot.path
+        found = lmu.stage("metal_rough")
+        metallic, roughness = self._mean_metal_rough(found[0] if found else None)
         self._solid_mr(mat, adjust(roughness, rough_adjust), adjust(metallic, metal_adjust))
         return None
+
+    def _json_occlusion(self, mat, lmu):
+        slot = lmu.slot("occlusion")
+        if slot:
+            self._copy_slot(mat, "occlusion", slot)
+
+    def _json_detail(self, mat, lmu, name):
+        self._json_detail_albedo(mat, lmu, name)
+        slot = lmu.slot("detail_normal")
+        if slot:
+            self._copy_slot(mat, "detail_normal", slot)
+
+    def _json_detail_albedo(self, mat, lmu, name):
+        """Detail albedo layer; `name` lets importers that cannot use the stage
+        for a material skip it (see the track importer's palette tint)."""
+        slot, mode = lmu.detail_albedo()
+        if slot:
+            self._copy_slot(mat, "detail_albedo", slot)
+            mat.detail_albedo_mode = mode
+            mat.detail_albedo_strength = lmu.detail_albedo_strength
 
     def _mean_metal_rough(self, stem):
         path = self.raw.texture(stem) if stem else None
@@ -581,14 +754,29 @@ class MaterialBuilder:
 class Primitive:
     def __init__(self, material):
         self.material = material
-        self.pos, self.nrm, self.uv, self.idx = [], [], [], []
+        self.pos, self.nrm, self.uv, self.uv_b, self.uv_c = [], [], [], [], []
+        self.tan, self.btan, self.idx, self.color = [], [], [], []
+        # Terrain bake input: (n, 2) world X/Z per chunk, else None.
+        self.world = []
         self.count = 0
 
-    def add(self, pos, nrm, uv, tris):
+    def add(self, pos, nrm, uv, uv_b, uv_c, tangent, bitangent, tris, world=None, color=None):
+        """Append a chunk: positions/normals/tangents, UV_A as `uv`, LMU UV_B and
+        UV_C (their own glTF streams), the per-vertex linear RGB `color` of the
+        material's vertex tint (None = no COLOR_0 stream) and, for terrain
+        placeholders, the world X/Z the bake maps the texture through."""
         used, remap = np.unique(tris, return_inverse=True)
+        if self.color and (self.color[-1] is None) != (color is None):
+            raise ValueError(f"{self.material.name}: mixed vertex-tint chunks in one primitive")
         self.pos.append(pos[used])
         self.nrm.append(nrm[used])
         self.uv.append(uv[used])
+        self.uv_b.append(uv_b[used])
+        self.uv_c.append(uv_c[used])
+        self.tan.append(tangent[used])
+        self.btan.append(bitangent[used])
+        self.color.append(None if color is None else np.asarray(color, np.float32)[used])
+        self.world.append(None if world is None else world[used])
         self.idx.append(remap.reshape(-1, 3) + self.count)
         self.count += len(used)
 
@@ -598,6 +786,7 @@ def write_gltf(path, name, primitives, generator):
     blob = bytearray()
     views, accessors, gl_prims = [], [], []
     materials, textures, images = [], [], []
+    extensions = ["MSFT_texture_dds"]
     image_index, material_index = {}, {}
 
     def add_view(data, target):
@@ -624,16 +813,55 @@ def write_gltf(path, name, primitives, generator):
             image_index[uri] = len(textures) - 1
         return {"index": image_index[uri]}
 
+    def texture_info(slot):
+        """glTF textureInfo: the slot's TEXCOORD set and, when tiled, the
+        KHR_texture_transform that carries the rest of its mapping."""
+        info = texture(slot.path)
+        if slot.uv_set:
+            info["texCoord"] = slot.uv_set
+        if slot.tiled:
+            transform = {"scale": rounded(slot.scale, 6)}
+            if slot.uv_set:
+                transform["texCoord"] = slot.uv_set
+            info["extensions"] = {"KHR_texture_transform": transform}
+            if "KHR_texture_transform" not in extensions:
+                extensions.append("KHR_texture_transform")
+        return info
+
+    def fox_texture(slot):
+        """Material extras texture reference: index, TEXCOORD set, tiling (LMU
+        has no UV offsets)."""
+        return {"index": texture(slot.path)["index"], "texCoord": slot.uv_set,
+                "uvScale": rounded(slot.scale, 6), "uvOffset": [0.0, 0.0]}
+
     def material(mat):
         if mat.name not in material_index:
             pbr = {"metallicFactor": 1.0, "roughnessFactor": 1.0}
             if mat.base_color:
-                pbr["baseColorTexture"] = texture(mat.base_color)
+                pbr["baseColorTexture"] = texture_info(mat.base_color)
             if mat.metal_rough:
-                pbr["metallicRoughnessTexture"] = texture(mat.metal_rough)
+                pbr["metallicRoughnessTexture"] = texture_info(mat.metal_rough)
             entry = {"name": mat.name, "pbrMetallicRoughness": pbr, "alphaMode": mat.alpha_mode}
             if mat.normal:
-                entry["normalTexture"] = texture(mat.normal)
+                entry["normalTexture"] = texture_info(mat.normal)
+            if mat.occlusion:
+                occlusion = texture_info(mat.occlusion)
+                occlusion.setdefault("texCoord", 0)
+                occlusion["strength"] = 1.0
+                entry["occlusionTexture"] = occlusion
+            if mat.occlusion or mat.detail_albedo or mat.detail_normal or mat.vertex_tint:
+                # LMU AOS maps pack ambient occlusion in R (occlusionChannel 0).
+                fox = {"occlusionChannel": 0}
+                if mat.detail_albedo:
+                    detail = fox_texture(mat.detail_albedo)
+                    detail["mode"] = mat.detail_albedo_mode
+                    detail["strength"] = round(float(mat.detail_albedo_strength), 6)
+                    fox["detailAlbedo"] = detail
+                if mat.detail_normal:
+                    fox["detailNormal"] = fox_texture(mat.detail_normal)
+                if mat.vertex_tint:
+                    fox["vertexTint"] = mat.vertex_tint
+                entry["extras"] = {"fox": fox}
             if mat.alpha_mode == "MASK":
                 entry["alphaCutoff"] = mat.alpha_cutoff
             if mat.alpha_mode != "OPAQUE":
@@ -648,20 +876,49 @@ def write_gltf(path, name, primitives, generator):
         lengths = np.linalg.norm(nrm, axis=1, keepdims=True)
         nrm = np.where(lengths > 1e-8, nrm / np.maximum(lengths, 1e-8), [0.0, 1.0, 0.0]).astype("<f4")
         uv = (np.concatenate(prim.uv) * prim.material.uv_scale).astype("<f4")
+        uv_b = np.concatenate(prim.uv_b).astype("<f4")
+        uv_c = np.concatenate(prim.uv_c).astype("<f4")
+        tan = np.concatenate(prim.tan).astype(np.float64)
+        tlen = np.linalg.norm(tan, axis=1, keepdims=True)
+        tan /= np.maximum(tlen, 1e-8)
+        # The stored tangent leans slightly off the stored normal, so
+        # orthogonalise it (Gram-Schmidt) to emit an orthonormal basis. A
+        # tangent that is zero or parallel to the normal leaves no direction:
+        # cross the normal with the unit axis it leans on least instead.
+        n = nrm.astype(np.float64)
+        axis = np.zeros_like(n)
+        axis[np.arange(len(n)), np.argmin(np.abs(n), axis=1)] = 1.0
+        tan -= np.einsum("ij,ij->i", n, tan)[:, None] * n
+        tlen = np.linalg.norm(tan, axis=1, keepdims=True)
+        tan = np.where(tlen > 1e-6, tan / np.maximum(tlen, 1e-6), np.cross(n, axis))
+        tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-8)
+        # glTF bitangent = cross(N, T.xyz) * T.w, so w is the handedness the
+        # stored bitangent has against the tangent and the (mirrored) normal.
+        w = np.where(np.einsum("ij,ij->i", np.cross(n, tan), np.concatenate(prim.btan)) < 0,
+                     -1.0, 1.0)
+        tangent = np.concatenate([tan, w[:, None]], axis=1).astype("<f4")
         idx = np.concatenate(prim.idx).astype("<u4").reshape(-1)
+        attributes = {
+            "POSITION": add_accessor(pos, "VEC3", 5126, 34962, True),
+            "NORMAL": add_accessor(nrm, "VEC3", 5126, 34962),
+            "TEXCOORD_0": add_accessor(uv, "VEC2", 5126, 34962),
+            "TEXCOORD_1": add_accessor(uv_b, "VEC2", 5126, 34962),
+            "TEXCOORD_2": add_accessor(uv_c, "VEC2", 5126, 34962),
+            "TANGENT": add_accessor(tangent, "VEC4", 5126, 34962),
+            "COLOR_0": add_accessor(
+                np.concatenate([np.c_[c, np.ones(len(c))] for c in prim.color
+                                if c is not None]).astype("<f4"), "VEC4", 5126, 34962)
+            if any(c is not None for c in prim.color) else None,
+        }
         gl_prims.append({
-            "attributes": {
-                "POSITION": add_accessor(pos, "VEC3", 5126, 34962, True),
-                "NORMAL": add_accessor(nrm, "VEC3", 5126, 34962),
-                "TEXCOORD_0": add_accessor(uv, "VEC2", 5126, 34962),
-            },
+            "attributes": {name: index for name, index in attributes.items() if index is not None},
             "indices": add_accessor(idx, "SCALAR", 5125, 34963),
             "material": material(prim.material),
         })
 
     doc = {
         "asset": {"version": "2.0", "generator": generator},
-        "extensionsUsed": ["MSFT_texture_dds"],
+        "extensionsUsed": extensions,
         "extensionsRequired": ["MSFT_texture_dds"],
         "scene": 0,
         "scenes": [{"nodes": [0]}],

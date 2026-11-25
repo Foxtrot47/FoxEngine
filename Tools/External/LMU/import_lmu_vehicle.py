@@ -358,6 +358,8 @@ def build_primitives(meshes, wheel_centers, z_mid, builder):
 def add_mesh_primitives(prims, gmt, pos, builder):
     """Append the mesh's non-degenerate faces to one primitive per material."""
     nrm = gmt.nrm * GMT_TO_GLTF
+    tan = gmt.tangent * GMT_TO_GLTF
+    btan = gmt.bitangent * GMT_TO_GLTF
     a, b, c = (pos[gmt.tris[:, k]] for k in range(3))
     has_area = np.linalg.norm(np.cross(b - a, c - a), axis=1) > 1e-12
     for mat_index in np.unique(gmt.face_mat):
@@ -367,7 +369,7 @@ def add_mesh_primitives(prims, gmt, pos, builder):
             continue
         mat = builder.get(mat_name, gmt_textures)
         prim = prims.setdefault(mat.name, Primitive(mat))
-        prim.add(pos, nrm, gmt.uv, gmt.tris[select])
+        prim.add(pos, nrm, gmt.uv, gmt.uv_b, gmt.uv_c, tan, btan, gmt.tris[select])
 
 
 def build_layout(groups, tire_extent, wheel_centers, z_mid):

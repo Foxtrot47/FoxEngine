@@ -49,9 +49,12 @@ Pipeline:
     terrain (L2IBLTERRAIN grass) -> its splat-map blend of four tiled layers
              is evaluated offline into one albedo per material and output
              file (TerrainBaker; see there for what is approximated).
-    palette tint (parked vehicles, trucks, pit equipment) -> split by the
-             palette swatch each vertex's UV_B picks; one albedo baked per
-             swatch with the albedo alpha as mask (PaletteTint).
+    palette tint (parked vehicles, trucks, pit equipment) -> the palette swatch
+             each vertex's UV_B picks becomes COLOR_0 (linear RGB), the albedo
+             alpha stays the mask, and the material gets the albedoAlphaMask
+             vertex tint (PaletteTint). VERTEXCOLOR=AlbedoMultiply materials get
+             a white COLOR_0 and the multiply tint (their true colours are not
+             decoded).
     .AIW  -> pole position (GridIndex 0); heading along the starting grid,
              height from the drivable surface below it.
 
@@ -63,7 +66,6 @@ Frames:
 """
 
 import argparse
-import copy
 import json
 import math
 import re
@@ -74,7 +76,7 @@ import numpy as np
 from PIL import Image
 
 from lmu_assets import (REPO_ROOT, LmuMaterialDefinition, Material, MaterialBuilder, Primitive,
-                        RawDir, Gmt, TextureWriter, adjust, linear_to_srgb, load_rgba, material_slug,
+                        RawDir, Gmt, TextureWriter, adjust, load_rgba, material_slug,
                         rounded, srgb_to_linear, strip_comment, write_gltf)
 
 PROJECT_ASSETS = REPO_ROOT / "Projects" / "Showcase" / "Assets"
@@ -179,7 +181,11 @@ class PaletteTint:
         L2IBLSTANDARDBLEND  albedoAltMap on ALBEDOALTUV=UV_B, BLENDMASK=AlbedoA_A,
                             ALBEDOFUNCTION Multiply or MultiplySquare
         L2IBLCLEARCOAT      detailMap on DETAILMAP=UV_B, DETAILALBEDO=Multiply,
-                            DETAILMASKING=AlbedoAlpha"""
+                            DETAILMASKING=AlbedoAlpha
+    Both become the engine's albedoAlphaMask vertex tint: the swatch travels in
+    COLOR_0, the material keeps its one albedo whose alpha is the mask."""
+
+    MODE = "albedoAlphaMask"
 
     def __init__(self, palette, albedo, square):
         self.palette = palette   # float RGBA image
@@ -211,14 +217,17 @@ class PaletteTint:
         y = (np.mod(uv_b[:, 1], 1.0) * h).astype(np.int64).clip(0, h - 1)
         return (self.palette[y, x, :3] * 255 + 0.5).astype(np.uint8)
 
+    def colors(self, uv_b):
+        """Per-vertex linear RGB of the swatch at UV_B for COLOR_0, squared for
+        MultiplySquare (the shader form multiplies the square of the swatch)."""
+        colour = srgb_to_linear(self.swatches(uv_b).astype(np.float64) / 255.0)
+        return (colour * colour if self.square else colour).astype(np.float32)
+
 
 class TrackMaterialBuilder(MaterialBuilder):
-    TINT_MAX_SIZE = 1024   # per-swatch albedo copies; the plain albedo keeps --max-texture-size
-
     def __init__(self, raw, textures):
         super().__init__(raw, textures, CONSTANT_MATERIALS, bake_albedo_mapping=True)
         self.tints = {}
-        self.tinted_cache = {}
 
     def palette_tint(self, name):
         """The material's PaletteTint, or None."""
@@ -228,35 +237,14 @@ class TrackMaterialBuilder(MaterialBuilder):
                 if definition else None
         return self.tints[name]
 
-    def tinted(self, name, gmt_textures, swatch):
-        """The material with its albedo baked for one palette swatch:
-        albedo * lerp(1, swatch, alpha) in linear colour (squared for MultiplySquare)."""
-        base = self.get(name, gmt_textures)
-        if swatch == (255, 255, 255):
-            return base
-        key = (name, swatch)
-        if key not in self.tinted_cache:
-            tint = self.tints[name]
-            mat = copy.copy(base)
-            mat.name = f"{base.name}_{swatch[0]:02x}{swatch[1]:02x}{swatch[2]:02x}"
-            image = Image.open(tint.albedo)
-            image.load()
-            image = image.convert("RGBA")
-            if max(image.size) > self.TINT_MAX_SIZE:
-                scale = self.TINT_MAX_SIZE / max(image.size)
-                image = image.resize((max(4, int(image.width * scale)), max(4, int(image.height * scale))), Image.BOX)
-            rgba = np.asarray(image).astype(np.float32) / 255.0
-            colour = srgb_to_linear(np.array(swatch) / 255.0)
-            if tint.square:
-                colour = colour * colour
-            mask = rgba[..., 3:4]
-            rgb = linear_to_srgb(srgb_to_linear(rgba[..., :3]) * (1 - mask + mask * colour))
-            mat.base_color = self.textures.encode(f"{mat.name}_basecolor.dds",
-                                                  np.concatenate([rgb, np.ones_like(mask)], axis=-1))
-            self.tinted_cache[key] = mat
-            self.report.append(f"{name}: palette swatch #{swatch[0]:02x}{swatch[1]:02x}{swatch[2]:02x} baked "
-                               f"({image.width}x{image.height})")
-        return self.tinted_cache[key]
+    def albedo_multiply(self, name):
+        """True when the material multiplies mesh vertex colour into its albedo
+        (VERTEXCOLOR=AlbedoMultiply) and its true vertex colours are unknown, so
+        the mesh carries white: the tint mode is emitted for the engine, the
+        colour is neutral."""
+        definition = self.raw.json(name)
+        return bool(definition) and \
+            (definition.get("preprocessorFlags") or {}).get("VERTEXCOLOR") == "AlbedoMultiply"
 
     def _mean_color(self, stem):
         if stem and self.raw.texture(stem):
@@ -281,6 +269,15 @@ class TrackMaterialBuilder(MaterialBuilder):
         between albedo and palette of L2IBLSTANDARDBLEND (BLENDMASK=AlbedoA_A,
         e.g. parked trucks, half of whose texels are 'clear')."""
         return "CLEARCOAT" in lmu.shader or lmu.uv_flags.get("BLENDMASK", "").startswith("Albedo")
+
+    def _json_detail_albedo(self, mat, lmu, name):
+        """A palette-tinted material carries its swatches in COLOR_0, so the map
+        its detail stage names is that palette, not a detail layer: emitting it
+        would tint twice and on the stage's own UV set, not UV_B."""
+        if lmu.stages.get("detailMap") and self.palette_tint(name) is not None:
+            self.report.append(f"{name}: dropped detail albedo (palette tint in COLOR_0)")
+            return
+        super()._json_detail_albedo(mat, lmu, name)
 
     def _json_metal_rough(self, mat, lmu):
         _, mr = lmu.texture("metal_rough")
@@ -422,15 +419,16 @@ class TerrainBaker:
         return bool(definition) and definition.get("shader") == self.SHADER
 
     def placeholder(self, name, gmt, faces):
-        """(stand-in material until bake(), its per-vertex UVs: world X/Z plus
-        UV_C); records the UV_B mapping samples."""
+        """(stand-in material until bake(), its per-vertex world X/Z for the
+        bake); records the UV_B mapping samples. The LMU UV_B and UV_C sets stay
+        in their own vertex streams, so `uv` is the mesh's own UV_A."""
         used = np.unique(gmt.tris[faces])
         self.samples[name].append((gmt.pos[used][:, [0, 2]], gmt.uv_b[used]))
         if name not in self.placeholders:
             mat = Material(material_slug(name))
             mat.lmu_name = name
             self.placeholders[name] = mat
-        return self.placeholders[name], np.c_[gmt.pos[:, [0, 2]], gmt.uv_c]
+        return self.placeholders[name], gmt.pos[:, [0, 2]]
 
     def bake(self, files):
         """Replaces every placeholder primitive with its baked material; their
@@ -442,10 +440,12 @@ class TerrainBaker:
                 name = getattr(prim.material, "lmu_name", None)
                 if name is None:
                     continue
-                verts = np.concatenate(prim.uv)
+                verts = np.concatenate([np.c_[world, uv_c]
+                                        for world, uv_c in zip(prim.world, prim.uv_c)])
                 tris = np.concatenate(prim.idx)
                 lo, size = verts[:, :2].min(axis=0), np.maximum(np.ptp(verts[:, :2], axis=0), 1e-3)
-                prim.uv = [(chunk[:, :2] - lo) / size for chunk in prim.uv]
+                prim.uv = [(chunk - lo) / size for chunk in prim.world]
+                prim.world = []
                 prim.material = self._bake_material(name, stem, lo, size, texel, mappings[name], verts, tris)
 
     def _fit_uv_b(self, name):
@@ -543,6 +543,8 @@ class CellGrid:
             whole = f"{kind}_wide"
         pos = gmt.pos * GMT_TO_GLTF
         nrm = gmt.nrm * GMT_TO_GLTF
+        tan = gmt.tangent * GMT_TO_GLTF
+        btan = gmt.bitangent * GMT_TO_GLTF
         added = 0
         for mat_index in np.unique(gmt.face_mat):
             mat_name, gmt_textures = gmt.materials[mat_index]
@@ -553,38 +555,36 @@ class CellGrid:
             select = (gmt.face_mat == mat_index) & has_area
             if not select.any():
                 continue
+            color = None
             if terrain.is_terrain(mat_name):
-                mat, uv = terrain.placeholder(mat_name, gmt, select)
-                variants = [(mat, select)]
+                mat, world = terrain.placeholder(mat_name, gmt, select)
+                uv = gmt.uv
             else:
                 mat = builder.get(mat_name, gmt_textures)
                 uv = gmt.pos[:, [0, 2]] if mat.uv_source == "WorldPlanar" else gmt.uv
-                variants = self._palette_variants(builder, mat_name, gmt_textures, gmt, select) or [(mat, select)]
-            for mat, chosen in variants:
-                if whole:
-                    parts = [(whole, chosen)]
-                else:
-                    parts = [(f"{kind}_{cx}_{cz}", chosen & (cells[:, 0] == cx) & (cells[:, 1] == cz))
-                             for cx, cz in np.unique(cells[chosen], axis=0)]
-                for stem, faces in parts:
-                    prims = self.files.setdefault(stem, (kind, {}))[1]
-                    prims.setdefault(mat.name, Primitive(mat)).add(pos, nrm, uv, gmt.tris[faces])
+                world = None
+                tint = builder.palette_tint(mat_name)
+                if tint is not None:
+                    # Per-vertex palette swatch in COLOR_0; the albedo's alpha is
+                    # the mask the engine tints through.
+                    mat.vertex_tint = tint.MODE
+                    color = tint.colors(gmt.uv_b)
+                elif builder.albedo_multiply(mat_name):
+                    # VERTEXCOLOR=AlbedoMultiply: true vertex colours unknown, so
+                    # the stream is white (neutral) and the mode still emitted.
+                    mat.vertex_tint = "multiply"
+                    color = np.ones((len(gmt.pos), 3), np.float32)
+            if whole:
+                parts = [(whole, select)]
+            else:
+                parts = [(f"{kind}_{cx}_{cz}", select & (cells[:, 0] == cx) & (cells[:, 1] == cz))
+                         for cx, cz in np.unique(cells[select], axis=0)]
+            for stem, faces in parts:
+                prims = self.files.setdefault(stem, (kind, {}))[1]
+                prims.setdefault(mat.name, Primitive(mat)).add(
+                    pos, nrm, uv, gmt.uv_b, gmt.uv_c, tan, btan, gmt.tris[faces], world, color)
             added += int(select.sum())
         return added
-
-    @staticmethod
-    def _palette_variants(builder, mat_name, gmt_textures, gmt, select):
-        """[(material, faces)] per palette swatch (a face takes its first vertex's),
-        or None when the material has no palette tint."""
-        tint = builder.palette_tint(mat_name)
-        if tint is None:
-            return None
-        face_swatch = tint.swatches(gmt.uv_b)[gmt.tris[:, 0]]
-        variants = []
-        for swatch in np.unique(face_swatch[select], axis=0):
-            faces = select & np.all(face_swatch == swatch, axis=1)
-            variants.append((builder.tinted(mat_name, gmt_textures, tuple(int(c) for c in swatch)), faces))
-        return variants
 
 
 def surface_height(surfaces, x, z):
