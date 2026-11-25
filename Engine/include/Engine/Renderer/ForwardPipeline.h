@@ -118,6 +118,11 @@ public:
                           ID3D11ShaderResourceView* psrv1,
                           int numCasters, float bias);
 
+    // Staggered cutout coverage (b4): alpha-tested pixels blend the threshold
+    // with interleaved gradient noise by up to width, animated by frameIndex.
+    // Use a non-zero width only while a temporal resolve (TAA or FSR) is active.
+    void SetCutoutDither(uint32_t frameIndex, float width);
+
     // Upload and bind MaterialParamsCB (b3).
     void SetMaterialParams(ID3D11DeviceContext* ctx,
                            DirectX::XMFLOAT3 tint, float roughnessScale, float metallic,
@@ -187,7 +192,8 @@ private:
     {
         int   numPointShadowCasters;
         float pointShadowBias;
-        float _pad[2];
+        float frameIndex;        // dither animation step for cutout coverage
+        float cutoutDitherWidth; // 0 disables the dithered cutout threshold
     };
 
     struct TransformCBData
@@ -258,6 +264,8 @@ private:
     float m_globalMetallic = 1.0f;
     float m_globalDebugShadow = 0.0f;
     ConstantBuffer<ForwardShadowCBData>       m_shadowCB;
+    uint32_t                                  m_cutoutFrameIndex  = 0;
+    float                                     m_cutoutDitherWidth = 0.0f;
     ConstantBuffer<PlanarReflectionCBData>    m_planarCB;
     SamplerState                              m_sampler;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> m_cubeSampler;

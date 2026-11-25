@@ -73,7 +73,7 @@ New `.cpp` files in `Engine/src/` are auto-discovered by `GLOB_RECURSE` — no n
 | b1 | LightCB | LightDir, IBLIntensity, LightColor, CameraPos, LightViewProj |
 | b2 | PointLightCB | PointLight[8] (pos, radius, color), NumPointLights |
 | b3 | MaterialCB | AlbedoTint, RoughnessScale, Metallic, Unlit, DebugShadow, AlphaCutoff, emissive, workflow, OcclusionStrength, per-slot UV set/scale/offset (`SlotST`, `SlotUVA/B`), slot flags, tint/detail params, terrain layer scales and params (`TerrainScale`, `TerrainParams`, `TerrainParams2`, `TerrainST`), clearcoat params (`Clearcoat`, `ClearcoatST`, `ClearcoatUV`) (`MaterialParamsCBData` mirrors it, size asserted) |
-| b4 | ForwardShadowCB | NumPointShadowCasters, PointShadowBias |
+| b4 | ForwardShadowCB | NumPointShadowCasters, PointShadowBias, FrameIndex, CutoutDitherWidth (temporal cutout dither) |
 
 ### Texture Slots (Basic.hlsl)
 

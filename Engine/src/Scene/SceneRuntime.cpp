@@ -1353,6 +1353,12 @@ void SceneRuntime::Render(float aspect)
         }
     }
 
+    // Staggered cutout coverage: dither the alpha-test threshold only while a
+    // temporal resolve (TAA or FSR) accumulates the noise into stable coverage.
+    const bool temporalResolve = taa.enabled ||
+        (fsrEnabled && !camera->orthographic && fsr.IsInitialized());
+    pipeline.SetCutoutDither(m_cutoutFrameIndex++, temporalResolve ? 0.2f : 0.0f);
+
     const bool litView = pipeline.viewShading == ForwardPipeline::ViewShading::Lit;
     if (litView) RenderShadowMaps(ctx);
 

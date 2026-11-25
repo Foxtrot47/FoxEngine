@@ -222,7 +222,8 @@ void ForwardPipeline::Begin(ID3D11DeviceContext* ctx, DirectX::XMMATRIX view, Di
     m_defaultBlack->BindPSSrgb(ctx, 9);
 
     // Default: no point shadow casters; caller overrides with BindPointShadows().
-    ForwardShadowCBData defaultShadow = { 0, 0.0f, { 0.0f, 0.0f } };
+    ForwardShadowCBData defaultShadow = {
+        0, 0.0f, static_cast<float>(m_cutoutFrameIndex), m_cutoutDitherWidth };
     m_shadowCB.Update(ctx, defaultShadow);
     m_shadowCB.BindPS(ctx, 4);
 
@@ -286,9 +287,16 @@ void ForwardPipeline::BindPointShadows(ID3D11DeviceContext* ctx,
     ID3D11ShaderResourceView* srvs[2] = { psrv0, psrv1 };
     ctx->PSSetShaderResources(5, 2, srvs);
     ctx->PSSetSamplers(2, 1, m_cubeSampler.GetAddressOf());
-    ForwardShadowCBData data = { numCasters, bias, { 0.0f, 0.0f } };
+    ForwardShadowCBData data = {
+        numCasters, bias, static_cast<float>(m_cutoutFrameIndex), m_cutoutDitherWidth };
     m_shadowCB.Update(ctx, data);
     m_shadowCB.BindPS(ctx, 4);
+}
+
+void ForwardPipeline::SetCutoutDither(uint32_t frameIndex, float width)
+{
+    m_cutoutFrameIndex  = frameIndex;
+    m_cutoutDitherWidth = width;
 }
 
 void ForwardPipeline::SetTemporalMatrices(DirectX::XMMATRIX prevViewProj,

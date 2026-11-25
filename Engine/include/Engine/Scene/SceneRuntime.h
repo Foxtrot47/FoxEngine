@@ -526,6 +526,7 @@ private:
     DirectX::XMMATRIX m_cachedProj           = DirectX::XMMatrixIdentity();
     DirectX::XMMATRIX m_cachedProjNoJitter   = DirectX::XMMatrixIdentity();
     float             m_shadowDistance        = 0.0f; // metres; 0 = camera far plane
+    uint32_t          m_cutoutFrameIndex      = 0;    // cutout dither animation step
 
     LevelLoadOperation m_levelLoad;
     std::string        m_pendingSceneLoad;

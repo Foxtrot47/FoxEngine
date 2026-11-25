@@ -66,7 +66,8 @@ cbuffer ForwardShadowCB : register(b4)
 {
     int   NumPointShadowCasters;
     float PointShadowBias;
-    float2 _fscbPad;
+    float FrameIndex;         // dither animation step for cutout coverage
+    float CutoutDitherWidth;  // 0 disables the dithered cutout threshold
 };
 
 cbuffer SpotLightCB : register(b5)
@@ -370,6 +371,13 @@ float3 SampleTangentNormal(Texture2D map, float2 uv)
     return float3(rg, sqrt(saturate(1.0f - dot(rg, rg))));
 }
 
+// Interleaved gradient noise in [0, 1) (Jimenez 2014), used to dither the
+// cutout threshold so coverage resolves stably under TAA/FSR.
+float InterleavedGradientNoise(float2 p)
+{
+    return frac(52.9829189f * frac(dot(p, float2(0.06711056f, 0.00583715f))));
+}
+
 #if FOX_TERRAIN
 // Layered terrain: layer i tiles world X/Z * TerrainScale[i]; the result starts at
 // layer A and lerps toward B, C, D by the splat's R, G, B. Tangent-space layer normals
@@ -473,9 +481,14 @@ PSOut PS_Main(PSIn input)
     }
     albedo.rgb     *= AlbedoTint;
 
-    // Alpha test (cutout): discard fragments below threshold
+    // Alpha test (cutout): discard fragments below threshold. A temporal resolve
+    // (TAA/FSR) lets the threshold move per pixel and frame, trading the hard
+    // edge for stable dithered coverage instead of crawling holes.
     if (AlphaCutoff > 0.0f)
-        clip(albedo.a - AlphaCutoff);
+    {
+        float ign = InterleavedGradientNoise(input.Position.xy + FrameIndex * 5.588238f);
+        clip(albedo.a - (AlphaCutoff + (ign - 0.5f) * CutoutDitherWidth));
+    }
     if (Clearcoat.x > 0.0f && Clearcoat.z > 0.5f)
         albedo.a = 1.0f;
 
