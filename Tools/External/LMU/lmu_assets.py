@@ -293,6 +293,7 @@ class TextureWriter:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.max_size = max_size
         self.written = set()
+        self.sizes = {}  # written file name -> (width, height)
         self.tmp = Path(tempfile.mkdtemp(prefix="lmu_import_"))
 
     def _texconv(self, src, fmt, width, height, cutoff=None):
@@ -305,27 +306,32 @@ class TextureWriter:
         if result.returncode != 0:
             raise RuntimeError(f"texconv failed for {src}:\n{result.stdout}{result.stderr}")
 
-    def _fit(self, width, height):
-        scale = min(1.0, self.max_size / max(width, height))
+    def _fit(self, width, height, cap=None):
+        limit = self.max_size if cap is None else max(self.max_size, cap)
+        scale = min(1.0, limit / max(width, height))
         return max(4, int(width * scale)), max(4, int(height * scale))
 
-    def copy(self, src, cutoff=None):
+    def copy(self, src, cutoff=None, cap=None):
         """Source DDS as-is (or downscaled to max_size in its own format).
 
+        `cap` raises the size limit for this texture (road albedos keep 4096).
         `cutoff` (a MASK albedo's alpha cutoff) recompresses through texconv with
         -keepcoverage even when the size is unchanged, so a cutout keeps its
         coverage once the block compressor has run over its alpha."""
         name = src.stem.lower() + ".dds"
-        if name not in self.written:
-            width, height, mips, fmt = dds_info(src)
-            w, h = self._fit(width, height)
-            if cutoff is None and (w, h) == (width, height) and mips > 1:
-                shutil.copyfile(src, self.dir / name)
-            else:
-                staged = self.tmp / name
-                shutil.copyfile(src, staged)
-                self._texconv(staged, DXGI_TEXCONV[fmt], w, h, cutoff)
-            self.written.add(name)
+        width, height, mips, fmt = dds_info(src)
+        w, h = self._fit(width, height, cap)
+        previous = self.sizes.get(name)
+        if previous is not None and previous[0] >= w and previous[1] >= h:
+            return "textures/" + name
+        if cutoff is None and (w, h) == (width, height) and mips > 1:
+            shutil.copyfile(src, self.dir / name)
+        else:
+            staged = self.tmp / name
+            shutil.copyfile(src, staged)
+            self._texconv(staged, DXGI_TEXCONV[fmt], w, h, cutoff)
+        self.sizes[name] = (w, h)
+        self.written.add(name)
         return "textures/" + name
 
     def encode(self, name, rgba, fmt="BC7_UNORM", cutoff=None):
@@ -351,18 +357,26 @@ class TextureWriter:
 # --------------------------------------------------------------------------- materials
 
 class TextureSlot:
-    """One glTF material texture reference: path, TEXCOORD set index (0..2) and
-    KHR_texture_transform scale. LMU has no UV offsets, so they stay 0."""
+    """One glTF material texture reference: path, UV set and mapping scale.
+
+    `uv_set` is a TEXCOORD index (0..2) or "world": LMU's WorldPlanar mapping,
+    which the engine evaluates from world X/Z with `scale` (extras.fox.worldUV)
+    instead of a mesh UV set. LMU has no UV offsets, so they stay 0."""
 
     __slots__ = ("path", "uv_set", "scale")
 
     def __init__(self, path=None, uv_set=0, scale=(1.0, 1.0)):
         self.path = path
-        self.uv_set = int(uv_set)
+        self.uv_set = "world" if uv_set == "world" else int(uv_set)
         self.scale = (float(scale[0]), float(scale[1]))
 
     def __bool__(self):
         return bool(self.path)
+
+    @property
+    def world(self):
+        """True when the slot samples its texture in world X/Z space."""
+        return self.uv_set == "world"
 
     @property
     def tiled(self):
@@ -387,6 +401,10 @@ class _Slot:
 
 
 SLOTS = ("base_color", "normal", "metal_rough", "occlusion", "detail_albedo", "detail_normal")
+# Material slot -> extras.fox.worldUV key (the engine's slot names).
+WORLD_UV_KEYS = {"base_color": "baseColor", "normal": "normal", "metal_rough": "metallicRoughness",
+                 "emissive": "emissive", "occlusion": "occlusion",
+                 "detail_albedo": "detailAlbedo", "detail_normal": "detailNormal"}
 
 
 class Material:
@@ -410,6 +428,10 @@ class Material:
         # weight of the layer.
         self.detail_albedo_mode = "overlay"
         self.detail_albedo_strength = 1.0
+        # Linear value the detail albedo samples where it must leave the base
+        # albedo unchanged (extras.fox.detailAlbedo.neutral); None keeps the
+        # engine default (linear sRGB 0.5).
+        self.detail_albedo_neutral = None
         self.alpha_mode = "OPAQUE"
         self.alpha_cutoff = 0.5
         # Texture coordinates of TEXCOORD_0: the mesh's first UV set, or world
@@ -455,6 +477,7 @@ STAGES = {
                   ("aoSpecMap", "aoSpec", ("AOSPECUV",), "AOSPECMAP")),
     "detail_albedo": (("detailMap", "Detail", ("DETAILUV", "DETAILMAP"), "DETAILMAP"),),
     "detail_normal": (("detailNormalMap", "Detail", ("DETAILUV", "DETAILMAP"), "DETAILNORMAL"),),
+    "overlay": (("overlayMap", "Overlay", ("OVERLAYUV",), "OVERLAYMAP"),),
 }
 UV_SETS = ("UV_A", "UV_B", "UV_C", "UV_D", "WorldPlanar")
 UV_SET_INDEX = {"UV_A": 0, "UV_B": 1, "UV_C": 2}
@@ -528,7 +551,10 @@ class LmuMaterialDefinition:
         expressed on the primitives' UVs.
 
         TEXCOORD_0 carries the baked albedo mapping, so a stage on that set is
-        divided by its UV_Scale; UV_B/UV_C stages use their own stream as stored."""
+        divided by its UV_Scale; UV_B/UV_C stages use their own stream as stored.
+        A WorldPlanar stage is kept whichever set the albedo uses: it samples
+        world X/Z with its own UV_Scale (the engine's world UV set), except the
+        albedo stage itself, whose mapping is already baked into TEXCOORD_0."""
         found = self.stage(role)
         if found is None:
             return None
@@ -536,9 +562,13 @@ class LmuMaterialDefinition:
         path = self.raw.texture(stem)
         if path is None:
             return None
+        if uv_set == "WorldPlanar":
+            if role == "albedo" and self.base_uv_set == "WorldPlanar":
+                # Baked: TEXCOORD_0 already stores world X/Z * this stage's scale.
+                return TextureSlot(path, 0, (1.0, 1.0))
+            return TextureSlot(path, "world", scale)
         if uv_set not in UV_SET_INDEX:
-            # UV_D has no stream; WorldPlanar would need world X/Z on the stage's
-            # own UV set, which the primitives only carry on TEXCOORD_0.
+            # UV_D has no stream.
             self._drop(role, stem, f"{uv_set} has no TEXCOORD set")
             return None
         if self.base_uv_set == "WorldPlanar" and uv_set == "UV_A":
@@ -548,6 +578,10 @@ class LmuMaterialDefinition:
             uv_set = "UV_A"
             scale = tuple(scale[i] / (self.base_uv_scale[i] or 1.0) for i in (0, 1))
         return TextureSlot(path, UV_SET_INDEX[uv_set], scale)
+
+    def groove_map(self):
+        """Stem of the asphalt groove (rubber build-up) map while the stage is on."""
+        return self.stages.get("grooveMap") if self._defined("GROOVEMASK") else None
 
     def _log(self, message):
         if self.report is not None:
@@ -624,10 +658,15 @@ class MaterialBuilder:
         packed = np.stack([np.ones_like(metal), rough, metal, np.ones_like(metal)], axis=-1)
         mat.metal_rough = TextureSlot(self.textures.encode(f"{mat.name}_mr.dds", packed))
 
-    def _copy_slot(self, mat, attribute, slot, cutoff=None):
-        """Stores a stage slot's texture, TEXCOORD set and tiling on the material."""
+    def _copy_slot(self, mat, attribute, slot, cutoff=None, cap=None):
+        """Stores a stage slot's texture, UV set and tiling on the material."""
         setattr(mat, attribute,
-                TextureSlot(self.textures.copy(slot.path, cutoff), slot.uv_set, slot.scale))
+                TextureSlot(self.textures.copy(slot.path, cutoff, cap), slot.uv_set, slot.scale))
+
+    def _albedo_cap(self, lmu):
+        """Size limit this material's albedo needs on top of --max-texture-size
+        (None keeps the command-line limit)."""
+        return None
 
     @staticmethod
     def _mask_cutoff(mat):
@@ -713,7 +752,7 @@ class MaterialBuilder:
             mat.base_color = TextureSlot(self.textures.copy(override, cutoff))
             return override
         if slot:
-            self._copy_slot(mat, "base_color", slot, cutoff)
+            self._copy_slot(mat, "base_color", slot, cutoff, self._albedo_cap(lmu))
             return slot.path
         found = lmu.stage("albedo")
         self._solid_color(mat, self._mean_color(found[0] if found else None))
@@ -869,11 +908,12 @@ def write_gltf(path, name, primitives, generator):
 
     def texture_info(slot):
         """glTF textureInfo: the slot's TEXCOORD set and, when tiled, the
-        KHR_texture_transform that carries the rest of its mapping."""
+        KHR_texture_transform that carries the rest of its mapping. A world
+        slot samples TEXCOORD_0; extras.fox.worldUV carries its mapping."""
         info = texture(slot.path)
-        if slot.uv_set:
+        if isinstance(slot.uv_set, int) and slot.uv_set:
             info["texCoord"] = slot.uv_set
-        if slot.tiled:
+        if slot.tiled and not slot.world:
             transform = {"scale": rounded(slot.scale, 6)}
             if slot.uv_set:
                 transform["texCoord"] = slot.uv_set
@@ -884,8 +924,9 @@ def write_gltf(path, name, primitives, generator):
 
     def fox_texture(slot):
         """Material extras texture reference: index, TEXCOORD set, tiling (LMU
-        has no UV offsets)."""
-        return {"index": texture(slot.path)["index"], "texCoord": slot.uv_set,
+        has no UV offsets). A world slot's scale is also in fox.worldUV."""
+        return {"index": texture(slot.path)["index"],
+                "texCoord": 0 if slot.world else slot.uv_set,
                 "uvScale": rounded(slot.scale, 6), "uvOffset": [0.0, 0.0]}
 
     def material(mat):
@@ -916,6 +957,15 @@ def write_gltf(path, name, primitives, generator):
             if mat.clearcoat_mask and mat.clearcoat_factor > 0.0:
                 # The albedo alpha is the coat mask, never opacity.
                 fox["clearcoatMask"] = "albedoAlpha"
+            world_uv = {}
+            for attribute, key in WORLD_UV_KEYS.items():
+                slot = getattr(mat, attribute, None)
+                if slot is not None and slot.world:
+                    world_uv[key] = rounded(slot.scale, 6)
+            if world_uv:
+                # Slots that sample world X/Z: the engine ignores their
+                # texCoord/KHR_texture_transform and uses these scales.
+                fox["worldUV"] = world_uv
             if mat.occlusion or mat.detail_albedo or mat.detail_normal or mat.vertex_tint \
                     or "clearcoatMask" in fox:
                 # LMU AOS maps pack ambient occlusion in R (occlusionChannel 0).
@@ -924,6 +974,8 @@ def write_gltf(path, name, primitives, generator):
                     detail = fox_texture(mat.detail_albedo)
                     detail["mode"] = mat.detail_albedo_mode
                     detail["strength"] = round(float(mat.detail_albedo_strength), 6)
+                    if mat.detail_albedo_neutral is not None:
+                        detail["neutral"] = round(float(mat.detail_albedo_neutral), 6)
                     fox["detailAlbedo"] = detail
                 if mat.detail_normal:
                     fox["detailNormal"] = fox_texture(mat.detail_normal)

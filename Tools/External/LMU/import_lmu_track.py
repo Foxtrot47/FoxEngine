@@ -41,11 +41,15 @@ Pipeline:
              Every other track mesh has a zero pivot.
     material .json -> glTF metallic-roughness (lmu_assets.MaterialBuilder),
              plus what track shaders need: the albedo stage's UV scale or
-             WorldPlanar mapping is baked into TEXCOORD_0, _ALBR albedo alpha
-             becomes roughness when no metalRough map exists, cutout
-             _ALBA/_DCA albedo alpha becomes MASK. Materials without JSON use
-             their GMT texture list (_ALB*, _MR, _NM). Night glows, puddles and
-             runtime screens are dropped.
+             WorldPlanar mapping is baked into TEXCOORD_0, other WorldPlanar
+             stages keep their own world X/Z mapping (extras.fox.worldUV:
+             asphalt normals and the L2IBLROAD overlay), which L2IBLROAD also
+             emits as the detail albedo with its measured neutral, _ALBR albedo
+             alpha becomes roughness when no metalRough map exists, cutout
+             _ALBA/_DCA albedo alpha becomes MASK, and road albedos keep 4096
+             texels. Materials without JSON use their GMT texture list
+             (_ALB*, _MR, _NM). Night glows, puddles, runtime screens and the
+             session-dependent groove (rubber) map are dropped.
     terrain (L2IBLTERRAIN grass) -> a <material>.foxmat sidecar next to the
              glTFs (four world-planar albedo/rough layers, layer normals, splat
              map, overlay) that the engine's terrain shader blends per pixel;
@@ -229,9 +233,28 @@ class PaletteTint:
 
 
 class TrackMaterialBuilder(MaterialBuilder):
+    # Asphalt albedos are 4096x1024 strips; the default cap halves them and
+    # leaves the racing line soft.
+    ROAD_SHADER = "L2IBLROAD"
+    ROAD_ALBEDO_CAP = 4096
+
     def __init__(self, raw, textures):
         super().__init__(raw, textures, CONSTANT_MATERIALS, bake_albedo_mapping=True)
         self.tints = {}
+        self.neutrals = {}
+
+    def _albedo_cap(self, lmu):
+        return self.ROAD_ALBEDO_CAP if lmu.shader == self.ROAD_SHADER else None
+
+    def overlay_neutral(self, path):
+        """Mean of the sRGB-decoded top-mip RGB (average of the channel means):
+        the linear overlay value that leaves the base albedo unchanged. Cached
+        by texture stem."""
+        key = path.stem.lower()
+        if key not in self.neutrals:
+            rgb = srgb_to_linear(load_rgba(path)[..., :3])
+            self.neutrals[key] = float(np.mean([rgb[..., channel].mean() for channel in range(3)]))
+        return self.neutrals[key]
 
     def palette_tint(self, name):
         """The material's PaletteTint, or None."""
@@ -270,11 +293,29 @@ class TrackMaterialBuilder(MaterialBuilder):
     def _json_detail_albedo(self, mat, lmu, name):
         """A palette-tinted material carries its swatches in COLOR_0, so the map
         its detail stage names is that palette, not a detail layer: emitting it
-        would tint twice and on the stage's own UV set, not UV_B."""
+        would tint twice and on the stage's own UV set, not UV_B. L2IBLROAD's
+        world-planar overlay (`Track_Asphalt_ova`) is the road's grain and
+        becomes the detail albedo; its world-planar normal map already comes
+        through the normal slot."""
         if lmu.stages.get("detailMap") and self.palette_tint(name) is not None:
             self.report.append(f"{name}: dropped detail albedo (palette tint in COLOR_0)")
             return
         super()._json_detail_albedo(mat, lmu, name)
+        if lmu.shader != self.ROAD_SHADER:
+            return
+        if lmu.groove_map():
+            self.report.append(f"{name}: groove map not reproduced")
+        if mat.detail_albedo:
+            if lmu.slot("overlay"):
+                self.report.append(f"{name}: dropped overlay (detail albedo in use)")
+            return
+        slot = lmu.slot("overlay")
+        if slot is None:
+            return
+        self._copy_slot(mat, "detail_albedo", slot)
+        mat.detail_albedo_mode = "overlay"
+        mat.detail_albedo_strength = 1.0
+        mat.detail_albedo_neutral = self.overlay_neutral(slot.path)
 
     def _json_metal_rough(self, mat, lmu):
         _, mr = lmu.texture("metal_rough")
