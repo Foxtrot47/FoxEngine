@@ -56,6 +56,10 @@ Pipeline:
              vertex tint (PaletteTint). VERTEXCOLOR=AlbedoMultiply materials get
              a white COLOR_0 and the multiply tint (their true colours are not
              decoded).
+    ambient-light hulls (IRRAD_VOL_*) -> settings.reflectionProbes: one box
+             probe per hull at the world AABB of its GMT vertices, blend
+             distance 5 m. IRRAD_GLOBAL and the IRRADIANCE_PROBE blocks that
+             reference the hulls are not used.
     .AIW  -> pole position (GridIndex 0); heading along the starting grid,
              height from the drivable surface below it.
 
@@ -533,10 +537,39 @@ def read_pole(aiw_path, rows=10):
     return slots[0].copy(), axis
 
 
+# --------------------------------------------------------------------------- probes
+
+IRRAD_VOLUME = re.compile(r"^IRRAD_VOL_", re.I)
+
+
+def read_probes(instances, raw):
+    """reflectionProbes settings of the scene's IRRAD_VOL_* ambient-light hulls:
+    one box probe per hull, at the world AABB of the hull's GMT vertices
+    (the hull meshes carry no transform and a zero pivot)."""
+    probes = []
+    for instance in instances:
+        if not IRRAD_VOLUME.match(instance.name):
+            continue
+        for mesh_file, _coll, _caster, _shadow in instance.meshes():
+            path = raw.find(mesh_file)
+            if path is None:
+                print(f"warning: {mesh_file} (instance {instance.name}) not found")
+                continue
+            gmt = Gmt(path, with_materials=False)
+            pos = gmt.pos + gmt.pivot
+            lo, hi = pos.min(axis=0), pos.max(axis=0)
+            probes.append({
+                "position": rounded((lo + hi) * 0.5, 3),
+                "extents": rounded((hi - lo) * 0.5, 3),
+                "blendDistance": 5.0,
+            })
+    return probes
+
+
 # --------------------------------------------------------------------------- scene
 
 def write_scene(path, name, mesh_entries, pole, yaw, bounds_min, bounds_max, floor_top,
-                shadow_distance=None):
+                shadow_distance=None, probes=None):
     forward = np.array([math.sin(math.radians(yaw)), 0.0, math.cos(math.radians(yaw))])
     eye = pole - forward * 8.0 + [0.0, 2.5, 0.0]
     entities = [
@@ -580,6 +613,8 @@ def write_scene(path, name, mesh_entries, pole, yaw, bounds_min, bounds_max, flo
     }
     if shadow_distance is not None:
         level["settings"]["shadows"] = {"distance": shadow_distance}
+    if probes:
+        level["settings"]["reflectionProbes"] = probes
     path.write_text(json.dumps(level, indent=2) + "\n", encoding="ascii")
 
 
@@ -619,6 +654,7 @@ def main():
 
     gmts, surfaces, counts = {}, [], defaultdict(int)
     instances, shadow_distance = read_scn(scn)
+    probes = read_probes(instances, raw)
     for instance in instances:
         for mesh_file, coll_target, caster, shadow_object in instance.meshes():
             kind = classify(instance, coll_target, caster, shadow_object)
@@ -654,11 +690,12 @@ def main():
     everything = np.concatenate([g.pos for g in gmts.values()])
     write_scene(args.scene, args.name, mesh_entries, pole, yaw, everything.min(axis=0),
                 everything.max(axis=0), float(positions[:, 1].min()) - 40.0,
-                shadow_distance)
+                shadow_distance, probes)
 
     print(f"Output: {args.out}  scene: {args.scene}")
     print("Triangles: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     print(f"  {len(mesh_entries)} meshes, {len(builder.cache)} materials, {len(textures.written)} textures")
+    print(f"  {len(probes)} reflection probes")
     print(f"  pole {rounded(pole, 3)} yaw {yaw:.2f} (surface {'found' if ground is not None else 'missing'})")
     print("Materials:")
     for line in builder.report + terrain.report:
