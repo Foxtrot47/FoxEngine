@@ -2,7 +2,7 @@
 
 Usage:
     python Tools/External/LMU/import_lmu_track.py <raw_dir> [--shared DIR]... [--out DIR]
-        [--scene FILE] [--name NAME] [--cell-size M] [--max-texture-size N] [--terrain-texel M]
+        [--scene FILE] [--name NAME] [--cell-size M] [--max-texture-size N]
 
 <raw_dir> is the directory of files extracted from the track's .mas archives
 (.scn, .AIW, GMT meshes, material .json, DDS textures). --shared adds
@@ -46,9 +46,10 @@ Pipeline:
              _ALBA/_DCA albedo alpha becomes MASK. Materials without JSON use
              their GMT texture list (_ALB*, _MR, _NM). Night glows, puddles and
              runtime screens are dropped.
-    terrain (L2IBLTERRAIN grass) -> its splat-map blend of four tiled layers
-             is evaluated offline into one albedo per material and output
-             file (TerrainBaker; see there for what is approximated).
+    terrain (L2IBLTERRAIN grass) -> a <material>.foxmat sidecar next to the
+             glTFs (four world-planar albedo/rough layers, layer normals, splat
+             map, overlay) that the engine's terrain shader blends per pixel;
+             the glTF material references it through extras.fox.material.
     palette tint (parked vehicles, trucks, pit equipment) -> the palette swatch
              each vertex's UV_B picks becomes COLOR_0 (linear RGB), the albedo
              alpha stays the mask, and the material gets the albedoAlphaMask
@@ -73,11 +74,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
-from lmu_assets import (REPO_ROOT, LmuMaterialDefinition, Material, MaterialBuilder, Primitive,
-                        RawDir, Gmt, TextureWriter, adjust, load_rgba, material_slug,
-                        rounded, srgb_to_linear, strip_comment, write_gltf)
+from lmu_assets import (REPO_ROOT, LmuMaterialDefinition, MaterialBuilder, Primitive, RawDir, Gmt,
+                        TextureWriter, UV_SET_INDEX, adjust, load_rgba, material_slug, rounded,
+                        srgb_to_linear, strip_comment, write_gltf)
 
 PROJECT_ASSETS = REPO_ROOT / "Projects" / "Showcase" / "Assets"
 DEFAULT_OUT = PROJECT_ASSETS / "Tracks" / "RoadAtlanta"
@@ -325,194 +325,113 @@ class TrackMaterialBuilder(MaterialBuilder):
 
 # --------------------------------------------------------------------------- terrain
 
-def sample_bilinear(image, u, v):
-    """Wrapped bilinear lookup of an (H, W, C) image at texture coordinates
-    (D3D convention: v = 0 is the top row)."""
-    h, w = image.shape[:2]
-    x = np.mod(u, 1.0) * w - 0.5
-    y = np.mod(v, 1.0) * h - 0.5
-    x0, y0 = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
-    fx, fy = (x - x0)[..., None], (y - y0)[..., None]
-    x0, y0, x1, y1 = x0 % w, y0 % h, (x0 + 1) % w, (y0 + 1) % h
-    top = image[y0, x0] * (1 - fx) + image[y0, x1] * fx
-    bottom = image[y1, x0] * (1 - fx) + image[y1, x1] * fx
-    return top * (1 - fy) + bottom * fy
+class TerrainMaterials:
+    """L2IBLTERRAIN materials -> glTF material + `<material>.foxmat` sidecar.
 
-
-def rasterize(points, values, tris, lo, size, w, h):
-    """Per-texel linear interpolation of per-vertex `values` over triangles
-    projected to the XZ grid (lo, size, w x h); texels no triangle covers take
-    the mean value."""
-    grid = np.full((h, w, values.shape[1]), np.nan)
-    px = (points - lo) / size * [w, h] - 0.5
-    for tri in tris:
-        p = px[tri]
-        x0, y0 = np.maximum(np.ceil(p.min(axis=0)).astype(int), 0)
-        x1, y1 = np.minimum(np.floor(p.max(axis=0)).astype(int), [w - 1, h - 1])
-        if x1 < x0 or y1 < y0:
-            continue
-        ys, xs = np.mgrid[y0:y1 + 1, x0:x1 + 1]
-        e0, e1 = p[1] - p[0], p[2] - p[0]
-        den = e0[0] * e1[1] - e1[0] * e0[1]
-        if abs(den) < 1e-12:
-            continue
-        dx, dy = xs - p[0, 0], ys - p[0, 1]
-        b1 = (dx * e1[1] - e1[0] * dy) / den
-        b2 = (e0[0] * dy - dx * e0[1]) / den
-        inside = (b1 >= -1e-6) & (b2 >= -1e-6) & (b1 + b2 <= 1 + 1e-6)
-        bary = np.stack([1 - b1 - b2, b1, b2], axis=-1)[inside]
-        grid[ys[inside], xs[inside]] = bary @ values[tri]
-    missing = np.isnan(grid[..., 0])
-    grid[missing] = np.nanmean(grid[~missing], axis=0) if (~missing).any() else 0.0
-    return grid
-
-
-def resize_field(grid, w, h):
-    """Bilinear resize of a float (H, W, C) field."""
-    channels = [np.asarray(Image.fromarray(grid[..., c].astype(np.float32), "F")
-                           .resize((w, h), Image.BILINEAR)) for c in range(grid.shape[2])]
-    return np.stack(channels, axis=-1)
-
-
-class TerrainBaker:
-    """L2IBLTERRAIN materials -> one baked albedo per (material, output file).
-
-    LMU blends four WorldPlanar-tiled layers (albedoRoughA..D) per pixel by a
-    splat map on UV_B, which is itself a planar world mapping covering the
-    circuit, then tints by a colour map (splatterOverlayMap, on UV_B or the
-    UV_C ribbon along the track). A FoxEngine material has one UV set and one
-    albedo, so the blend is evaluated here, at --terrain-texel metres per texel
-    over the XZ bounds of the material's triangles in each file, and the
-    primitive gets UVs into that unique texture. Blend (inferred, not decoded
-    from the shader): start from layer A (dry straw), lerp in B, C, D by the
-    splat's R, G, B, then multiply by the overlay map, weighted by the
-    material's Terrain.SplatterOverlay times the map's alpha (multiply, not an
-    overlay blend, matches the in-game grass/asphalt brightness ratio); UV_C is
-    rasterized at 1 m.
-    Roughness is the splat-weighted mean of the layers' _ALBR alpha; pattern
-    and mix maps, vertex colour and normals are not reproduced.
-
-    Close-up the bake is softer than the game (12 cm texels at the 2048 cap on
-    a 250 m cell; off-track "ground" terrain, seen from beyond the barriers, is
-    OFF_TRACK_TEXEL_SCALE times coarser). Later step: an engine terrain
-    material sampling the splat map, overlay and the four layers per pixel
-    (layers at world X/Z, splat at the affine UV_B fit, UV_C as a second vertex
-    UV set) would remove that limit and the per-tile textures."""
+    LMU blends four world-planar tiled albedo layers (albedoRoughA..DMap) per
+    pixel by the splatter map on UV_B, then tints the result by the splatter
+    overlay on UV_B or the UV_C ribbon. The sidecar keeps that blend for the
+    engine's terrain shader instead of baking one albedo per cell: layer UV =
+    world (x, z) * UV_Scale.Albedo<layer>, u from world X and v from world Z
+    (GMT world space is engine world space); the splat's R, G and B pick layers
+    B, C and D over layer A. Layer normals are normalAMap on the first two
+    layers and normalBMap on the last two (inferred from the shader forms, not
+    decoded). The overlay's alpha weights a tint of the blended albedo. Roughness
+    is the blended albedo alpha (LMU _ALBR); the pattern and mix maps are not
+    reproduced. The glTF material keeps the standard slots as the engine's
+    fallback when the sidecar cannot be used."""
 
     SHADER = "L2IBLTERRAIN"
     LAYERS = "ABCD"
-    OVERLAY_GRID = 1.0  # metres per UV_C sample
-    OFF_TRACK_TEXEL_SCALE = 4.0
 
-    def __init__(self, raw, textures, texel, max_size):
+    def __init__(self, raw, textures, builder):
         self.raw = raw
         self.textures = textures
-        self.texel = texel
-        self.max_size = max_size
-        self.samples = defaultdict(list)  # material -> [(world xz, UV_B)]
-        self.placeholders = {}
-        self.images = {}
+        self.builder = builder
+        self.materials = {}
+        self.documents = {}  # sidecar file name -> JSON document
         self.report = []
 
     def is_terrain(self, name):
         definition = self.raw.json(name)
         return bool(definition) and definition.get("shader") == self.SHADER
 
-    def placeholder(self, name, gmt, faces):
-        """(stand-in material until bake(), its per-vertex world X/Z for the
-        bake); records the UV_B mapping samples. The LMU UV_B and UV_C sets stay
-        in their own vertex streams, so `uv` is the mesh's own UV_A."""
-        used = np.unique(gmt.tris[faces])
-        self.samples[name].append((gmt.pos[used][:, [0, 2]], gmt.uv_b[used]))
-        if name not in self.placeholders:
-            mat = Material(material_slug(name))
-            mat.lmu_name = name
-            self.placeholders[name] = mat
-        return self.placeholders[name], gmt.pos[:, [0, 2]]
+    def get(self, name, gmt_textures):
+        """The material of an L2IBLTERRAIN name, carrying its sidecar reference."""
+        if name not in self.materials:
+            self.materials[name] = self._build(name, gmt_textures)
+        return self.materials[name]
 
-    def bake(self, files):
-        """Replaces every placeholder primitive with its baked material; their
-        UVs become UVs into the baked texture."""
-        mappings = {name: self._fit_uv_b(name) for name in self.samples}
-        for stem, (kind, prims) in files.items():
-            texel = self.texel * (1.0 if kind == "surface" else self.OFF_TRACK_TEXEL_SCALE)
-            for prim in prims.values():
-                name = getattr(prim.material, "lmu_name", None)
-                if name is None:
-                    continue
-                verts = np.concatenate([np.c_[world, uv_c]
-                                        for world, uv_c in zip(prim.world, prim.uv_c)])
-                tris = np.concatenate(prim.idx)
-                lo, size = verts[:, :2].min(axis=0), np.maximum(np.ptp(verts[:, :2], axis=0), 1e-3)
-                prim.uv = [(chunk - lo) / size for chunk in prim.world]
-                prim.world = []
-                prim.material = self._bake_material(name, stem, lo, size, texel, mappings[name], verts, tris)
+    def write(self, out_dir):
+        """Writes every referenced sidecar next to the glTFs."""
+        for file_name, document in sorted(self.documents.items()):
+            (out_dir / file_name).write_text(json.dumps(document, indent=2) + "\n", encoding="ascii")
 
-    def _fit_uv_b(self, name):
-        """Least-squares affine map world (x, z) -> UV_B (exact for LMU terrain)."""
-        xz = np.concatenate([s[0] for s in self.samples[name]])
-        uv_b = np.concatenate([s[1] for s in self.samples[name]])
-        coef, *_ = np.linalg.lstsq(np.c_[xz, np.ones(len(xz))], uv_b, rcond=None)
-        return coef
-
-    def _image(self, stem, size=None):
-        """Float RGBA of a texture, box-filtered to `size` texels when given."""
-        key = (stem.lower(), size)
-        if key not in self.images:
-            image = Image.open(self.raw.texture(stem))
-            image.load()
-            image = image.convert("RGBA")
-            if size and size < image.width:
-                image = image.resize((size, size), Image.BOX)
-            self.images[key] = np.asarray(image).astype(np.float32) / 255.0
-        return self.images[key]
-
-    def _bake_material(self, name, stem, lo, size, texel, uv_b_map, verts, tris):
-        lmu = LmuMaterialDefinition(self.raw.json(name), self.raw)
-        # Multiples of 4: D3D11 rejects BC textures whose top level is not whole blocks.
-        w, h = (int(np.clip(np.ceil(s / texel / 4) * 4, 4, self.max_size)) for s in size)
-        x = lo[0] + (np.arange(w) + 0.5) / w * size[0]
-        z = lo[1] + (np.arange(h) + 0.5) / h * size[1]
-        x, z = np.meshgrid(x, z)
-        uv_b = np.stack([x, z, np.ones_like(x)], axis=-1) @ uv_b_map
-        splat = sample_bilinear(self._image(lmu.stages["splatterMap"]), uv_b[..., 0], uv_b[..., 1])
-
-        result = None
-        for i, layer in enumerate(self.LAYERS):
-            texture = lmu.stages[f"albedoRough{layer}Map"]
-            scale = lmu.uv_scale.get(f"Albedo{layer}", [1.0, 1.0])
-            # Prefilter to twice the bake rate: the bake is the layer's mip.
-            tile_texels = int(np.clip(2.0 / (scale[0] * size[0] / w), 4, 2048))
-            texels = sample_bilinear(self._image(texture, tile_texels), x * scale[0], z * scale[1])
-            result = texels if result is None else result + (texels - result) * splat[..., i - 1:i]
-        rgb, roughness = result[..., :3], float(result[..., 3].mean())
-
-        overlay_note = "no overlay"
-        overlay_stem = lmu.stages.get("splatterOverlayMap")
-        if overlay_stem:
-            if lmu.uv_flags.get("SPLATTEROVERLAYUV") == "UV_C":
-                cw, ch = (max(2, int(np.ceil(s / self.OVERLAY_GRID))) for s in size)
-                uv = resize_field(rasterize(verts[:, :2], verts[:, 2:4], tris, lo, size, cw, ch), w, h)
-            else:
-                uv = uv_b
-            scale = lmu.uv_scale.get("SplatterOverlay", [1.0, 1.0])
-            tint = sample_bilinear(self._image(overlay_stem), uv[..., 0] * scale[0], uv[..., 1] * scale[1])
-            strength = (lmu.definition["parameters"]["cbParameters"].get("Terrain", {})
-                        .get("SplatterOverlay", 1.0))
-            weight = strength * tint[..., 3:4]
-            rgb = rgb * (1 - weight + weight * tint[..., :3])
-            overlay_note = f"overlay {lmu.uv_flags.get('SPLATTEROVERLAYUV')} x{strength:.2f}"
-
-        mat = Material(f"{material_slug(name)}_{stem}".replace("-", "m"))
-        rgba = np.concatenate([rgb, np.ones_like(rgb[..., :1])], axis=-1)
-        # Texture2D views colour maps as sRGB; UNORM keeps texconv from re-encoding.
-        mat.base_color = self.textures.encode(f"{mat.name}_basecolor.dds", rgba)
-        rough = adjust(roughness, lmu.adjust_amount("Roughness"))
-        mat.metal_rough = self.textures.solid(f"{mat.name}_mr.dds",
-                                              [255, int(rough * 255 + 0.5), 0, 255])
-        self.report.append(f"{name} @ {stem}: baked {w}x{h} ({size[0] / w:.3f} m/texel), "
-                           f"{overlay_note}, roughness {rough:.2f}")
+    def _build(self, name, gmt_textures):
+        mat = self.builder.get(name, gmt_textures)
+        lmu = LmuMaterialDefinition(self.raw.json(name), self.raw, self.report)
+        layers = self._layers(name, lmu)
+        splat = self._texture(lmu, "splatterMap")
+        if not layers or splat is None:
+            self.report.append(f"{name}: standard material "
+                               f"(no {'albedo layer' if not layers else 'splatter map'})")
+            return mat
+        file_name = f"{material_slug(name)}.foxmat"
+        document = {"format": "FoxMaterial", "version": 1, "type": "terrain", "layers": layers,
+                    "albedoAlphaIsRoughness": True,
+                    "splat": {"texture": splat, "uvSet": 1,
+                              "uvScale": rounded(lmu.uv_scale.get("Splatter", [1.0, 1.0]), 6)}}
+        overlay = self._overlay(lmu)
+        if overlay:
+            document["overlay"] = overlay
+        document["roughnessScale"] = 1.0
+        self.documents[file_name] = document
+        mat.foxmat = file_name
+        self.report.append(f"{name}: {file_name}, {len(layers)} layers"
+                           + (f", overlay uvSet {overlay['uvSet']} x{overlay['strength']:.2f}"
+                              if overlay else ", no overlay"))
         return mat
+
+    def _texture(self, lmu, stage):
+        """Copied texture path (relative to the sidecar) of a material stage, or
+        None when the stage is missing or its file is not in the archives."""
+        stem = lmu.stages.get(stage)
+        path = self.raw.texture(stem) if stem else None
+        return self.textures.copy(path) if path else None
+
+    def _layers(self, name, lmu):
+        """The sidecar's layers: contiguous albedo layers from A, each with its
+        world scale and (when present) its normal map."""
+        layers = []
+        for index, letter in enumerate(self.LAYERS):
+            albedo = self._texture(lmu, f"albedoRough{letter}Map")
+            if albedo is None:
+                break
+            layer = {"albedo": albedo}
+            normal = self._texture(lmu, "normalAMap" if index < 2 else "normalBMap")
+            if normal is not None:
+                layer["normal"] = normal
+            scale = lmu.uv_scale.get(f"Albedo{letter}", [1.0, 1.0])
+            if abs(float(scale[0]) - float(scale[1])) > 1e-6:
+                self.report.append(f"{name}: layer {letter} world scale {list(scale)} is not "
+                                   f"uniform, using {scale[0]}")
+            layer["worldScale"] = round(float(scale[0]), 6)
+            layers.append(layer)
+        return layers
+
+    def _overlay(self, lmu):
+        """The sidecar's overlay, or None. LMU turns the stage off with
+        SPLATTEROVERLAYMAP=@Undef, and then the stage is absent too."""
+        if lmu.uv_flags.get("SPLATTEROVERLAYMAP") in (None, "@Undef"):
+            return None
+        texture = self._texture(lmu, "splatterOverlayMap")
+        uv_set = UV_SET_INDEX.get(lmu.uv_flags.get("SPLATTEROVERLAYUV"))
+        if texture is None or uv_set not in (1, 2):
+            return None
+        terrain = ((lmu.definition.get("parameters") or {}).get("cbParameters") or {}).get("Terrain") or {}
+        return {"texture": texture, "uvSet": uv_set,
+                "uvScale": rounded(lmu.uv_scale.get("SplatterOverlay", [1.0, 1.0]), 6),
+                "strength": round(float(terrain.get("SplatterOverlay", 1.0)), 6)}
 
 
 # --------------------------------------------------------------------------- geometry
@@ -557,12 +476,11 @@ class CellGrid:
                 continue
             color = None
             if terrain.is_terrain(mat_name):
-                mat, world = terrain.placeholder(mat_name, gmt, select)
+                mat = terrain.get(mat_name, gmt_textures)
                 uv = gmt.uv
             else:
                 mat = builder.get(mat_name, gmt_textures)
                 uv = gmt.pos[:, [0, 2]] if mat.uv_source == "WorldPlanar" else gmt.uv
-                world = None
                 tint = builder.palette_tint(mat_name)
                 if tint is not None:
                     # Per-vertex palette swatch in COLOR_0; the albedo's alpha is
@@ -582,7 +500,7 @@ class CellGrid:
             for stem, faces in parts:
                 prims = self.files.setdefault(stem, (kind, {}))[1]
                 prims.setdefault(mat.name, Primitive(mat)).add(
-                    pos, nrm, uv, gmt.uv_b, gmt.uv_c, tan, btan, gmt.tris[faces], world, color)
+                    pos, nrm, uv, gmt.uv_b, gmt.uv_c, tan, btan, gmt.tris[faces], color)
             added += int(select.sum())
         return added
 
@@ -686,8 +604,6 @@ def main():
     ap.add_argument("--name", default="Road Atlanta")
     ap.add_argument("--cell-size", type=float, default=250.0)
     ap.add_argument("--max-texture-size", type=int, default=2048)
-    ap.add_argument("--terrain-texel", type=float, default=0.1,
-                    help="metres per texel of the baked terrain albedo (capped by --max-texture-size)")
     ap.add_argument("--shared", type=Path, action="append", default=[],
                     help="extra directory searched for materials and textures (repeatable)")
     args = ap.parse_args()
@@ -699,12 +615,13 @@ def main():
         raise SystemExit(f"{args.raw} needs a .scn and an .AIW")
 
     args.out.mkdir(parents=True, exist_ok=True)
-    for stale in [*args.out.glob("*.gltf"), *args.out.glob("*.bin"), *args.out.glob("textures/*.dds")]:
+    for stale in [*args.out.glob("*.gltf"), *args.out.glob("*.bin"), *args.out.glob("*.foxmat"),
+                  *args.out.glob("textures/*.dds")]:
         stale.unlink()
     textures = TextureWriter(args.out, args.max_texture_size)
     builder = TrackMaterialBuilder(raw, textures)
     grid = CellGrid(args.cell_size)
-    terrain = TerrainBaker(raw, textures, args.terrain_texel, args.max_texture_size)
+    terrain = TerrainMaterials(raw, textures, builder)
 
     gmts, surfaces, counts = {}, [], defaultdict(int)
     instances, shadow_distance = read_scn(scn)
@@ -727,7 +644,7 @@ def main():
             if kind == "surface":
                 surfaces.append(gmts[key])
 
-    terrain.bake(grid.files)
+    terrain.write(args.out)
     mesh_entries = []
     for stem, (kind, prims) in sorted(grid.files.items()):
         write_gltf(args.out / f"{stem}.gltf", stem, list(prims.values()), GENERATOR)

@@ -412,6 +412,9 @@ class Material:
         # glTF extras fox.vertexTint: "albedoAlphaMask" or "multiply" when the
         # LMU material colours itself from the mesh's COLOR_0 stream.
         self.vertex_tint = None
+        # glTF extras fox.material: path of the material's .foxmat sidecar,
+        # relative to the glTF (layered terrain, written by the track importer).
+        self.foxmat = None
 
     def __copy__(self):
         """Copy with independent texture slots (the palette tint rewrites one)."""
@@ -756,15 +759,12 @@ class Primitive:
         self.material = material
         self.pos, self.nrm, self.uv, self.uv_b, self.uv_c = [], [], [], [], []
         self.tan, self.btan, self.idx, self.color = [], [], [], []
-        # Terrain bake input: (n, 2) world X/Z per chunk, else None.
-        self.world = []
         self.count = 0
 
-    def add(self, pos, nrm, uv, uv_b, uv_c, tangent, bitangent, tris, world=None, color=None):
+    def add(self, pos, nrm, uv, uv_b, uv_c, tangent, bitangent, tris, color=None):
         """Append a chunk: positions/normals/tangents, UV_A as `uv`, LMU UV_B and
-        UV_C (their own glTF streams), the per-vertex linear RGB `color` of the
-        material's vertex tint (None = no COLOR_0 stream) and, for terrain
-        placeholders, the world X/Z the bake maps the texture through."""
+        UV_C (their own glTF streams) and the per-vertex linear RGB `color` of the
+        material's vertex tint (None = no COLOR_0 stream)."""
         used, remap = np.unique(tris, return_inverse=True)
         if self.color and (self.color[-1] is None) != (color is None):
             raise ValueError(f"{self.material.name}: mixed vertex-tint chunks in one primitive")
@@ -776,7 +776,6 @@ class Primitive:
         self.tan.append(tangent[used])
         self.btan.append(bitangent[used])
         self.color.append(None if color is None else np.asarray(color, np.float32)[used])
-        self.world.append(None if world is None else world[used])
         self.idx.append(remap.reshape(-1, 3) + self.count)
         self.count += len(used)
 
@@ -849,9 +848,13 @@ def write_gltf(path, name, primitives, generator):
                 occlusion.setdefault("texCoord", 0)
                 occlusion["strength"] = 1.0
                 entry["occlusionTexture"] = occlusion
+            fox = {}
+            if mat.foxmat:
+                # Sidecar layered material (terrain), path relative to the glTF.
+                fox["material"] = mat.foxmat
             if mat.occlusion or mat.detail_albedo or mat.detail_normal or mat.vertex_tint:
                 # LMU AOS maps pack ambient occlusion in R (occlusionChannel 0).
-                fox = {"occlusionChannel": 0}
+                fox["occlusionChannel"] = 0
                 if mat.detail_albedo:
                     detail = fox_texture(mat.detail_albedo)
                     detail["mode"] = mat.detail_albedo_mode
@@ -861,6 +864,7 @@ def write_gltf(path, name, primitives, generator):
                     fox["detailNormal"] = fox_texture(mat.detail_normal)
                 if mat.vertex_tint:
                     fox["vertexTint"] = mat.vertex_tint
+            if fox:
                 entry["extras"] = {"fox": fox}
             if mat.alpha_mode == "MASK":
                 entry["alphaCutoff"] = mat.alpha_cutoff
