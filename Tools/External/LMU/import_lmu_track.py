@@ -263,13 +263,6 @@ class TrackMaterialBuilder(MaterialBuilder):
             return "MASK"
         return mode
 
-    @staticmethod
-    def _alpha_is_data(lmu):
-        """Albedo alpha that is not opacity: a clearcoat mask, or the blend mask
-        between albedo and palette of L2IBLSTANDARDBLEND (BLENDMASK=AlbedoA_A,
-        e.g. parked trucks, half of whose texels are 'clear')."""
-        return "CLEARCOAT" in lmu.shader or lmu.uv_flags.get("BLENDMASK", "").startswith("Albedo")
-
     def _json_detail_albedo(self, mat, lmu, name):
         """A palette-tinted material carries its swatches in COLOR_0, so the map
         its detail stage names is that palette, not a detail layer: emitting it

@@ -205,6 +205,8 @@ class VehicleMaterialBuilder(MaterialBuilder):
         return True
 
     def _build_livery(self, mat):
+        # L2IBLCARBODY: one full clearcoat over the paint, no albedo-alpha mask.
+        mat.clearcoat_factor, mat.clearcoat_roughness = 1.0, 0.03
         mat.base_color = self.textures.copy(self.livery)
         region = self.raw.texture(self.livery_stem + "_region")
         selected = (self.raw.json(self.livery_stem) or {}).get("meta", {}).get("selectedMaterial", {})

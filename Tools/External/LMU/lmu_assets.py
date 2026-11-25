@@ -415,6 +415,12 @@ class Material:
         # glTF extras fox.material: path of the material's .foxmat sidecar,
         # relative to the glTF (layered terrain, written by the track importer).
         self.foxmat = None
+        # KHR_materials_clearcoat: coat strength and roughness (0 = no coat) and
+        # whether the albedo alpha is the coat mask (fox.clearcoatMask) rather
+        # than opacity.
+        self.clearcoat_factor = 0.0
+        self.clearcoat_roughness = 0.0
+        self.clearcoat_mask = False
 
     def __copy__(self):
         """Copy with independent texture slots (the palette tint rewrites one)."""
@@ -458,6 +464,7 @@ class LmuMaterialDefinition:
         self.adjust_values = cb.get("Material_Adjust") or {}
         self.uv_scale = cb.get("UV_Scale") or {}
         self.detail_values = cb.get("Detail") or {}
+        self.clearcoat_values = cb.get("ClearCoat") or {}
         self.uv_flags = definition.get("preprocessorFlags") or {}
         self.stages = {t.get("Name"): t.get("Texture") for t in definition.get("textures") or []
                        if t.get("Texture") and not t.get("inactive")}
@@ -650,18 +657,34 @@ class MaterialBuilder:
         mr = self._json_metal_rough(mat, lmu)
         self._json_occlusion(mat, lmu)
         self._json_detail(mat, lmu, name)
+        self._json_clearcoat(mat, lmu)
         mat.alpha_mode = self._alpha_mode(lmu, albedo)
         mapping = "" if (mat.uv_source, mat.uv_scale) == ("UV_A", (1.0, 1.0)) else \
             f" {mat.uv_source}*{list(mat.uv_scale)}"
         detail = [label for label, attribute in (("alb", "detail_albedo"), ("nrm", "detail_normal"))
                   if getattr(mat, attribute)]
+        coat = ""
+        if mat.clearcoat_factor > 0:
+            coat = f" coat={mat.clearcoat_factor:.2f}/{mat.clearcoat_roughness:.2f}" + \
+                (" mask" if mat.clearcoat_mask else "")
         self.report.append(f"{name}: {lmu.shader} base={'tex' if albedo else 'const'} "
                            f"normal={'tex' if mat.normal else '-'} mr={'tex' if mr else 'const'} "
                            f"ao={'tex' if mat.occlusion else '-'} detail={','.join(detail) or '-'} "
-                           f"{mat.alpha_mode}{mapping}")
+                           f"{mat.alpha_mode}{mapping}{coat}")
 
     def _alpha_mode(self, lmu, albedo):
+        """A material whose albedo alpha is data (a clearcoat mask or a blend
+        mask) never renders as cutout or transparent: alpha is not opacity."""
+        if self._alpha_is_data(lmu):
+            return "OPAQUE"
         return lmu.alpha_mode(albedo, "OPAQUE")
+
+    @staticmethod
+    def _alpha_is_data(lmu):
+        """Albedo alpha that is not opacity: a clearcoat mask, or the blend mask
+        between albedo and palette of L2IBLSTANDARDBLEND (BLENDMASK=AlbedoA_A,
+        e.g. parked trucks, half of whose texels are 'clear')."""
+        return "CLEARCOAT" in lmu.shader or lmu.uv_flags.get("BLENDMASK", "").startswith("Albedo")
 
     def _json_base_color(self, mat, name, lmu):
         """Override, else the albedo map with its mapping, else its mean color.
@@ -720,6 +743,20 @@ class MaterialBuilder:
             self._copy_slot(mat, "detail_albedo", slot)
             mat.detail_albedo_mode = mode
             mat.detail_albedo_strength = lmu.detail_albedo_strength
+
+    def _json_clearcoat(self, mat, lmu):
+        """KHR_materials_clearcoat: the clearcoat shader forms carry the coat
+        strength and roughness in cbParameters.ClearCoat (1.0/0.05 when absent),
+        and ALBEDOALPHA=ClearCoatMask makes the albedo alpha the coat mask
+        (fox.clearcoatMask). L2IBLCARBODY car bodies are a single full coat."""
+        if lmu.shader.startswith("L2IBLCARBODY"):
+            mat.clearcoat_factor, mat.clearcoat_roughness = 1.0, 0.03
+            return
+        if "CLEARCOAT" not in lmu.shader:
+            return
+        mat.clearcoat_factor = float(lmu.clearcoat_values.get("Strength", 1.0))
+        mat.clearcoat_roughness = float(lmu.clearcoat_values.get("Roughness", 0.05))
+        mat.clearcoat_mask = lmu.uv_flags.get("ALBEDOALPHA") == "ClearCoatMask"
 
     def _mean_metal_rough(self, stem):
         path = self.raw.texture(stem) if stem else None
@@ -841,6 +878,12 @@ def write_gltf(path, name, primitives, generator):
             if mat.metal_rough:
                 pbr["metallicRoughnessTexture"] = texture_info(mat.metal_rough)
             entry = {"name": mat.name, "pbrMetallicRoughness": pbr, "alphaMode": mat.alpha_mode}
+            if mat.clearcoat_factor > 0.0:
+                entry["extensions"] = {"KHR_materials_clearcoat": {
+                    "clearcoatFactor": round(float(mat.clearcoat_factor), 6),
+                    "clearcoatRoughnessFactor": round(float(mat.clearcoat_roughness), 6)}}
+                if "KHR_materials_clearcoat" not in extensions:
+                    extensions.append("KHR_materials_clearcoat")
             if mat.normal:
                 entry["normalTexture"] = texture_info(mat.normal)
             if mat.occlusion:
@@ -852,7 +895,11 @@ def write_gltf(path, name, primitives, generator):
             if mat.foxmat:
                 # Sidecar layered material (terrain), path relative to the glTF.
                 fox["material"] = mat.foxmat
-            if mat.occlusion or mat.detail_albedo or mat.detail_normal or mat.vertex_tint:
+            if mat.clearcoat_mask and mat.clearcoat_factor > 0.0:
+                # The albedo alpha is the coat mask, never opacity.
+                fox["clearcoatMask"] = "albedoAlpha"
+            if mat.occlusion or mat.detail_albedo or mat.detail_normal or mat.vertex_tint \
+                    or "clearcoatMask" in fox:
                 # LMU AOS maps pack ambient occlusion in R (occlusionChannel 0).
                 fox["occlusionChannel"] = 0
                 if mat.detail_albedo:
