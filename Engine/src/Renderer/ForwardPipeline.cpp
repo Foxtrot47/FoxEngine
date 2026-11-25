@@ -439,6 +439,16 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
         mc.terrainST = { terrain.splatUVScale[0], terrain.splatUVScale[1],
                          terrain.overlayUVScale[0], terrain.overlayUVScale[1] };
     }
+    const uint32_t coatTexMask = (mat.clearcoatTex ? 1u : 0u) | (mat.clearcoatRoughnessTex ? 2u : 0u);
+    const bool coatMaskFromAlpha = mat.alphaMode == AlphaMode::Opaque && mat.clearcoatMaskFromAlbedoAlpha;
+    mc.clearcoat = { mat.clearcoat, mat.clearcoatRoughness,
+                     coatMaskFromAlpha ? 1.0f : 0.0f, static_cast<float>(coatTexMask) };
+    mc.clearcoatST[0] = { mat.clearcoatSlot.scale[0], mat.clearcoatSlot.scale[1],
+                          mat.clearcoatSlot.offset[0], mat.clearcoatSlot.offset[1] };
+    mc.clearcoatST[1] = { mat.clearcoatRoughnessSlot.scale[0], mat.clearcoatRoughnessSlot.scale[1],
+                          mat.clearcoatRoughnessSlot.offset[0], mat.clearcoatRoughnessSlot.offset[1] };
+    mc.clearcoatUV = { static_cast<float>(mat.clearcoatSlot.uvSet),
+                       static_cast<float>(mat.clearcoatRoughnessSlot.uvSet), 0.0f, 0.0f };
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 
@@ -462,6 +472,8 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
         (terrain.splat ? terrain.splat : m_defaultBlack)->BindPS(ctx, 20);
         (terrain.overlay ? terrain.overlay : m_defaultWhite)->BindPSSrgb(ctx, 21);
     }
+    if (mat.clearcoatTex) mat.clearcoatTex->BindPS(ctx, 26);
+    if (mat.clearcoatRoughnessTex) mat.clearcoatRoughnessTex->BindPS(ctx, 27);
 }
 
 void ForwardPipeline::Flush(ID3D11DeviceContext* ctx)
@@ -522,7 +534,7 @@ void ForwardPipeline::SetMaterialParams(ID3D11DeviceContext* ctx,
     mc.unlit = viewShading == ViewShading::Lit ? 0.0f : static_cast<float>(viewShading) + 1.0f;
     mc.emissiveIntensity = emissiveIntensity;
     mc.emissiveColor  = emissiveColor;
-    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail, vertex tint and terrain keep their neutral defaults
+    mc.receiveShadows = 1.0f; // slot transforms, occlusion, detail, vertex tint, terrain and clearcoat keep their neutral defaults
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 }

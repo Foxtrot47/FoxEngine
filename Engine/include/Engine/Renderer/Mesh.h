@@ -84,6 +84,10 @@ struct SubMeshInfo
     VertexTint  vertexTint = VertexTint::None;
     MaterialKind kind = MaterialKind::Standard;
     TerrainMaterial terrain;                 // used when kind == Terrain
+    float       clearcoat = 0.0f;
+    float       clearcoatRoughness = 0.0f;
+    TextureSlot clearcoatTex, clearcoatRoughnessTex;
+    bool        clearcoatMaskFromAlbedoAlpha = false;
 };
 
 // Calls fn(const std::string&) for every non-empty texture path of the material.
@@ -92,6 +96,7 @@ void ForEachTexturePath(const SubMeshInfo& info, Fn&& fn)
 {
     for (const TextureSlot* slot : { &info.albedo, &info.normal, &info.roughness, &info.emissive,
                                      &info.occlusion, &info.detailAlbedo, &info.detailNormal,
+                                     &info.clearcoatTex, &info.clearcoatRoughnessTex,
                                      &info.terrain.splat, &info.terrain.overlay })
         if (!slot->path.empty())
             fn(slot->path);

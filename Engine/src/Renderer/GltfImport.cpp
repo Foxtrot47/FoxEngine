@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -176,7 +177,7 @@ TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, co
 }
 
 // materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength), detailNormal (+ strength),
-// vertexTint, material (.foxmat sidecar path relative to the glTF file, returned in `foxmat`).
+// vertexTint, clearcoatMask, material (.foxmat sidecar path relative to the glTF file, returned in `foxmat`).
 void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
                    SubMeshInfo& out, std::string& foxmat)
 {
@@ -259,6 +260,25 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
         {
             const std::string raw = vertexTint->dump();
             SE_LOG_WARN("glTF material '%s': unknown vertexTint '%s'",
+                        material->name ? material->name : "", raw.c_str());
+        }
+    }
+    const auto clearcoatMask = fox->find("clearcoatMask");
+    if (clearcoatMask != fox->end())
+    {
+        if (clearcoatMask->is_string())
+        {
+            const std::string mode = clearcoatMask->get<std::string>();
+            if (mode == "albedoAlpha")
+                out.clearcoatMaskFromAlbedoAlpha = true;
+            else
+                SE_LOG_WARN("glTF material '%s': unknown clearcoatMask '%s'",
+                            material->name ? material->name : "", mode.c_str());
+        }
+        else
+        {
+            const std::string raw = clearcoatMask->dump();
+            SE_LOG_WARN("glTF material '%s': unknown clearcoatMask '%s'",
                         material->name ? material->name : "", raw.c_str());
         }
     }
@@ -445,6 +465,21 @@ SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material,
     out.occlusion = ReadSlot(data, material->occlusion_texture, material, path);
     if (!out.occlusion.path.empty())
         out.occlusionStrength = material->occlusion_texture.scale;
+    if (material->has_clearcoat)
+    {
+        const cgltf_clearcoat& cc = material->clearcoat;
+        out.clearcoat = (std::clamp)(cc.clearcoat_factor, 0.0f, 1.0f);
+        out.clearcoatRoughness = (std::clamp)(cc.clearcoat_roughness_factor, 0.0f, 1.0f);
+        out.clearcoatTex = ReadSlot(data, cc.clearcoat_texture, material, path);
+        out.clearcoatRoughnessTex = ReadSlot(data, cc.clearcoat_roughness_texture, material, path);
+        if (cc.clearcoat_normal_texture.texture)
+        {
+            static std::atomic<bool> warnedClearcoatNormal { false };
+            if (!warnedClearcoatNormal.exchange(true, std::memory_order_relaxed))
+                SE_LOG_WARN("glTF material '%s': clearcoatNormalTexture ignored (coat uses vertex normal)",
+                            material->name ? material->name : "");
+        }
+    }
     std::string foxmat;
     ReadFoxExtras(data, material, path, out, foxmat);
     if (!foxmat.empty())
@@ -466,6 +501,9 @@ SubMeshInfo ReadMaterial(const cgltf_data* data, const cgltf_material* material,
     else if (material->alpha_mode == cgltf_alpha_mode_blend)
         out.alphaMode = AlphaMode::Transparent;
     out.alphaCutoff = material->alpha_cutoff;
+    // Clearcoat albedo-alpha mask is honoured only for opaque materials; cutout/blend alpha stays opacity.
+    if (out.alphaMode != AlphaMode::Opaque)
+        out.clearcoatMaskFromAlbedoAlpha = false;
     return out;
 }
 

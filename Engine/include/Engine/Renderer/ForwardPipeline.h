@@ -80,6 +80,13 @@ public:
         VertexTint vertexTint = VertexTint::None;
         MaterialKind kind = MaterialKind::Standard;
         TerrainMat terrain; // kind == Terrain: replaces albedo/roughness/normal; roughnessScale applies
+        AssetHandle<Texture2D> clearcoatTex;          // t26; nullptr → not sampled
+        AssetHandle<Texture2D> clearcoatRoughnessTex; // t27; nullptr → not sampled
+        SlotTransform clearcoatSlot;
+        SlotTransform clearcoatRoughnessSlot;
+        float     clearcoat = 0.0f;
+        float     clearcoatRoughness = 0.0f;
+        bool      clearcoatMaskFromAlbedoAlpha = false;
     };
 
     bool Init(ID3D11Device* device, AssetManager& assets, ShaderLibrary& shaders);
@@ -211,8 +218,11 @@ private:
         DirectX::XMFLOAT4 terrainParams;  // x layerCount, y albedoAlphaIsRoughness, z overlayStrength, w overlay uvSet
         DirectX::XMFLOAT4 terrainParams2; // x splat uvSet
         DirectX::XMFLOAT4 terrainST = { 1.0f, 1.0f, 1.0f, 1.0f }; // xy splat uv scale, zw overlay uv scale
+        DirectX::XMFLOAT4 clearcoat = { 0.0f, 0.0f, 0.0f, 0.0f }; // x factor, y roughness, z maskFromAlbedoAlpha, w hasTextures (1 coat, 2 rough)
+        DirectX::XMFLOAT4 clearcoatST[2] = { { 1, 1, 0, 0 }, { 1, 1, 0, 0 } }; // 0 coat, 1 coat roughness: xy scale, zw offset
+        DirectX::XMFLOAT4 clearcoatUV = { 0.0f, 0.0f, 0.0f, 0.0f }; // x coat uv set, y coat-roughness uv set
     };
-    static_assert(sizeof(MaterialParamsCBData) == 304, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
+    static_assert(sizeof(MaterialParamsCBData) == 368, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
     struct PlanarReflectionCBData
     {
         DirectX::XMFLOAT4X4 reflectionViewProj;

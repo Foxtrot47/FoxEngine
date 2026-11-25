@@ -2,7 +2,8 @@
 // Registers: b0=TransformCB, b1=LightCB, b2=PointLightCB, b3=MaterialCB, b4=ForwardShadowCB
 //            t0=albedo, t1=roughness, t2=normal, t3=shadowMap, t4=sky(IBL), t5-t6=pointShadow, t7=metallic,
 //            t13=occlusion, t14=detail albedo, t15=detail normal,
-//            FOX_TERRAIN only: t16-t19=layer albedo A-D, t20=splat, t21=overlay, t22-t25=layer normal A-D
+//            FOX_TERRAIN only: t16-t19=layer albedo A-D, t20=splat, t21=overlay, t22-t25=layer normal A-D,
+//            t26=clearcoat, t27=clearcoat roughness
 //            s0=sampler, s1=shadowSampler(cmp), s2=cubeSampler
 // FOX_TERRAIN=1 (layered terrain permutation) replaces albedo, roughness and normal sampling.
 
@@ -56,6 +57,9 @@ cbuffer MaterialCB : register(b3)
     float4 TerrainParams;  // x layerCount, y albedoAlphaIsRoughness, z overlayStrength, w overlay uvSet
     float4 TerrainParams2; // x splat uvSet
     float4 TerrainST;      // xy splat uv scale, zw overlay uv scale
+    float4 Clearcoat;      // x factor, y roughness, z maskFromAlbedoAlpha, w hasTextures bitmask (1 coat, 2 rough)
+    float4 ClearcoatST[2]; // 0 coat, 1 coat roughness: xy scale, zw offset
+    float4 ClearcoatUV;    // x coat uv set, y coat-roughness uv set
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -118,6 +122,8 @@ Texture2D              g_terrainNormal1 : register(t23);
 Texture2D              g_terrainNormal2 : register(t24);
 Texture2D              g_terrainNormal3 : register(t25);
 #endif
+Texture2D              g_clearcoat          : register(t26);
+Texture2D              g_clearcoatRoughness : register(t27);
 SamplerState           g_sampler      : register(s0);
 SamplerComparisonState g_shadowSampler: register(s1);
 SamplerState           g_cubeSampler  : register(s2);  // linear-clamp for point shadows
@@ -220,6 +226,35 @@ float3 CookTorrance(float3 N, float3 V, float3 L,
     return (kD * albedo / PI + spec) * NdotL;
 }
 
+// Clearcoat dielectric specular lobe (F0 = 0.04) times NdotL.
+float ClearcoatSpecular(float3 Nv, float3 V, float3 L, float coatRough)
+{
+    float NdotL = dot(Nv, L);
+    if (NdotL <= 0.0f)
+        return 0.0f;
+    float3 Hsum  = L + V;
+    float  Hlen2 = dot(Hsum, Hsum);
+    float3 H     = Hlen2 > 1e-8f ? Hsum * rsqrt(Hlen2) : Nv;
+    float NdotV  = max(dot(Nv, V), 1e-4f);
+    float NdotH  = saturate(dot(Nv, H));
+    float VdotH  = saturate(dot(V, H));
+
+    float a  = coatRough * coatRough;
+    float a2 = a * a;
+    float oneMinusNdotH2 = 1.0f - NdotH * NdotH;
+    float d  = NdotH * NdotH * a2 + oneMinusNdotH2;
+    float D  = a2 / max(PI * d * d, 1e-12f);
+
+    float r  = coatRough + 1.0f;
+    float k  = (r * r) / 8.0f;
+    float gv = max(NdotV * (1.0f - k) + k, 1e-5f);
+    float gl = max(NdotL * (1.0f - k) + k, 1e-5f);
+    float Vis = 0.25f / (gv * gl);
+
+    float F  = 0.04f + 0.96f * pow(1.0f - VdotH, 5.0f);
+    return D * Vis * F * NdotL;
+}
+
 // ---- IBL helpers ----
 
 float2 DirToEnvUV(float3 dir)
@@ -228,25 +263,8 @@ float2 DirToEnvUV(float3 dir)
                   0.5f - asin(clamp(dir.y, -1.0f, 1.0f)) / PI);
 }
 
-// IBL ambient:
-//   Diffuse  — samples the panorama at max mip in the normal direction (approximate irradiance).
-//   Specular — split-sum approximation: prefiltered env × BRDF(NdotV, roughness).
-//              BRDF term uses Lazarov 2013 analytical fit to avoid a LUT texture.
-float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
-           float roughness, float metallic, float3 F0)
+float3 SampleSpecularEnv(float3 R, float3 worldPos, float roughness)
 {
-    float NdotV = max(dot(N, V), 0.0f);
-    float3 F    = F_SchlickRoughness(NdotV, F0, roughness);
-    float3 kD   = (1.0f - F) * (1.0f - metallic);
-
-    // Diffuse: sample panorama at its maximum mip level (approximate average irradiance).
-    float3 irradiance = g_irradiance.SampleLevel(g_sampler, DirToEnvUV(N), 0).rgb;
-    float irradianceLuma = dot(irradiance, float3(0.2126f, 0.7152f, 0.0722f));
-    irradiance = lerp(irradianceLuma.xxx, irradiance, saturate(DiffuseIBLSaturation));
-    float3 diffuse    = kD * irradiance * albedo * IBLIntensity;
-
-    // Specular: prefiltered env at roughness-scaled LOD × split-sum BRDF approximation.
-    float3 R = reflect(-V, N);
     float envW, envH, envMips;
     g_prefilteredEnv.GetDimensions(0, envW, envH, envMips);
     float3 envColor = g_prefilteredEnv.SampleLevel(
@@ -266,6 +284,28 @@ float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
             g_sampler, reflectedUV, roughness * (planarMips - 1.0f)).rgb;
         envColor = lerp(envColor, planar, confidence);
     }
+    return envColor;
+}
+
+// IBL ambient:
+//   Diffuse  — samples the panorama at max mip in the normal direction (approximate irradiance).
+//   Specular — split-sum approximation: prefiltered env × BRDF(NdotV, roughness).
+float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
+           float roughness, float metallic, float3 F0)
+{
+    float NdotV = max(dot(N, V), 0.0f);
+    float3 F    = F_SchlickRoughness(NdotV, F0, roughness);
+    float3 kD   = (1.0f - F) * (1.0f - metallic);
+
+    // Diffuse: sample panorama at its maximum mip level (approximate average irradiance).
+    float3 irradiance = g_irradiance.SampleLevel(g_sampler, DirToEnvUV(N), 0).rgb;
+    float irradianceLuma = dot(irradiance, float3(0.2126f, 0.7152f, 0.0722f));
+    irradiance = lerp(irradianceLuma.xxx, irradiance, saturate(DiffuseIBLSaturation));
+    float3 diffuse    = kD * irradiance * albedo * IBLIntensity;
+
+    // Specular: prefiltered env at roughness-scaled LOD × split-sum BRDF approximation.
+    float3 R        = reflect(-V, N);
+    float3 envColor = SampleSpecularEnv(R, worldPos, roughness);
 
     float2 brdf = g_brdfLut.SampleLevel(
         g_sampler, float2(NdotV, 1.0f - roughness), 0).rg;
@@ -273,6 +313,16 @@ float3 IBL(float3 N, float3 V, float3 worldPos, float3 albedo,
     float3 specular = envColor * (F0 * brdf.x + brdf.y) * IBLIntensity;
 
     return diffuse + specular;
+}
+
+float3 ClearcoatIBL(float3 Nv, float3 V, float3 worldPos, float coatRough)
+{
+    float  NdotV    = max(dot(Nv, V), 0.0f);
+    float3 R        = reflect(-V, Nv);
+    float3 envColor = SampleSpecularEnv(R, worldPos, coatRough);
+    float2 brdf     = g_brdfLut.SampleLevel(
+        g_sampler, float2(NdotV, 1.0f - coatRough), 0).rg;
+    return envColor * (0.04f * brdf.x + brdf.y) * IBLIntensity;
 }
 
 // ---- PS ----
@@ -396,6 +446,7 @@ PSOut PS_Main(PSIn input)
 #if !FOX_TERRAIN
     float4 albedo   = g_albedo.Sample(g_sampler, SlotUV(SLOT_ALBEDO, input));
 #endif
+    float albedoSampleAlpha = albedo.a;
     // Vertex colour tint: 1 = multiply, 2 = albedo-alpha mask (alpha is mask, not opacity).
     if (TintParams.x > 1.5f)
     {
@@ -425,6 +476,8 @@ PSOut PS_Main(PSIn input)
     // Alpha test (cutout): discard fragments below threshold
     if (AlphaCutoff > 0.0f)
         clip(albedo.a - AlphaCutoff);
+    if (Clearcoat.x > 0.0f && Clearcoat.z > 0.5f)
+        albedo.a = 1.0f;
 
     // Viewport overrides preserve alpha testing and never modify materials.
     // 2 = textured unlit, 3 = flat wireframe (rasterizer supplies triangle edges).
@@ -476,6 +529,41 @@ PSOut PS_Main(PSIn input)
         roughness = sqrt(saturate(roughness * roughness + kernelRoughness));
     }
 
+    // Clearcoat (KHR_materials_clearcoat): dielectric coat over the base PBR lobe using the
+    // interpolated vertex normal. Branching on Clearcoat.x > 0 is uniform across the draw call.
+    float3 Nv        = normalize(input.N);
+    float  coat      = 0.0f;
+    float  coatRough = 0.04f;
+    float  baseAtten = 1.0f;
+    if (Clearcoat.x > 0.0f)
+    {
+        uint  coatTexMask = (uint)(Clearcoat.w + 0.5f);
+        float coatTex = 1.0f;
+        if ((coatTexMask & 1u) != 0u)
+        {
+            float2 uv = SetUV(ClearcoatUV.x, input) * ClearcoatST[0].xy + ClearcoatST[0].zw;
+            coatTex = g_clearcoat.Sample(g_sampler, uv).r;
+        }
+        float coatRoughTex = 1.0f;
+        if ((coatTexMask & 2u) != 0u)
+        {
+            float2 uv = SetUV(ClearcoatUV.y, input) * ClearcoatST[1].xy + ClearcoatST[1].zw;
+            coatRoughTex = g_clearcoatRoughness.Sample(g_sampler, uv).g;
+        }
+        coat      = saturate(Clearcoat.x * coatTex * (Clearcoat.z > 0.5f ? albedoSampleAlpha : 1.0f));
+        coatRough = max(saturate(Clearcoat.y * coatRoughTex), 0.04f);
+
+        float3 dnvdx = ddx(Nv);
+        float3 dnvdy = ddy(Nv);
+        float  coatVariance = dot(dnvdx, dnvdx) + dot(dnvdy, dnvdy);
+        float  coatKernelRoughness = min(2.0f * coatVariance, 0.18f);
+        coatRough = sqrt(saturate(coatRough * coatRough + coatKernelRoughness));
+
+        float NdotVc = max(dot(Nv, V), 0.0f);
+        float Fc     = F_Schlick(NdotVc, float3(0.04f, 0.04f, 0.04f)).x;
+        baseAtten    = 1.0f - coat * Fc;
+    }
+
     // Cascaded directional shadow (PCF 3×3)
     float shadow = 1.0f;
     if (ReceiveShadows > 0.5f)
@@ -522,10 +610,17 @@ PSOut PS_Main(PSIn input)
         float2 occlusion = g_occlusion.Sample(g_sampler, SlotUV(SLOT_OCCLUSION, input)).rg;
         ao = lerp(1.0f, SlotFlags.w > 0.5f ? occlusion.g : occlusion.r, OcclusionStrength);
     }
-    float3 color = IBL(N, V, input.WorldPos, albedo.rgb, roughness, metallic, F0) * ao;
+    float3 ibl = IBL(N, V, input.WorldPos, albedo.rgb, roughness, metallic, F0);
+    if (Clearcoat.x > 0.0f)
+        ibl = ibl * baseAtten + coat * ClearcoatIBL(Nv, V, input.WorldPos, coatRough);
+    float3 color = ibl * ao;
 
     // Directional light (Cook-Torrance)
-    color += shadow * LightColor * CookTorrance(N, V, L, albedo.rgb, roughness, metallic, F0);
+    float3 sunBase = CookTorrance(N, V, L, albedo.rgb, roughness, metallic, F0);
+    if (Clearcoat.x > 0.0f)
+        color += shadow * LightColor * (sunBase * baseAtten + coat * ClearcoatSpecular(Nv, V, L, coatRough));
+    else
+        color += shadow * LightColor * sunBase;
 
     // Point lights
     for (int i = 0; i < NumPointLights; ++i)
@@ -547,8 +642,12 @@ PSOut PS_Main(PSIn input)
         }
 
         float3 PL = toL / d;
-        color += ptShadow * atten * PointLights[i].Color
-               * CookTorrance(N, V, PL, albedo.rgb, roughness, metallic, F0);
+        float3 ptBase = CookTorrance(N, V, PL, albedo.rgb, roughness, metallic, F0);
+        if (Clearcoat.x > 0.0f)
+            color += ptShadow * atten * PointLights[i].Color
+                   * (ptBase * baseAtten + coat * ClearcoatSpecular(Nv, V, PL, coatRough));
+        else
+            color += ptShadow * atten * PointLights[i].Color * ptBase;
     }
 
     // Spot light
@@ -589,8 +688,12 @@ PSOut PS_Main(PSIn input)
                     }
                 }
 
-                color += spotShadow * cone * distAtten * SpotColor
-                       * CookTorrance(N, V, SL, albedo.rgb, roughness, metallic, F0);
+                float3 spotBase = CookTorrance(N, V, SL, albedo.rgb, roughness, metallic, F0);
+                if (Clearcoat.x > 0.0f)
+                    color += spotShadow * cone * distAtten * SpotColor
+                           * (spotBase * baseAtten + coat * ClearcoatSpecular(Nv, V, SL, coatRough));
+                else
+                    color += spotShadow * cone * distAtten * SpotColor * spotBase;
             }
         }
     }

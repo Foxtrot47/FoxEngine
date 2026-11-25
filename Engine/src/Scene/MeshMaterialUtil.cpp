@@ -121,6 +121,20 @@ std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
         material.alphaMode = info.alphaMode;
         material.alphaCutoff = info.alphaCutoff;
         material.vertexTint = info.vertexTint;
+        material.clearcoat = info.clearcoat;
+        material.clearcoatRoughness = info.clearcoatRoughness;
+        material.clearcoatMaskFromAlbedoAlpha = info.clearcoatMaskFromAlbedoAlpha;
+        material.clearcoatTex = resolve(info.clearcoatTex);
+        material.clearcoatRoughnessTex = resolve(info.clearcoatRoughnessTex);
+        const auto copySlot = [](const TextureSlot& src, ForwardPipeline::SlotTransform& dst) {
+            dst.uvSet = src.uvSet;
+            dst.scale[0] = src.scale[0];
+            dst.scale[1] = src.scale[1];
+            dst.offset[0] = src.offset[0];
+            dst.offset[1] = src.offset[1];
+        };
+        copySlot(info.clearcoatTex, material.clearcoatSlot);
+        copySlot(info.clearcoatRoughnessTex, material.clearcoatRoughnessSlot);
         if (info.kind == MaterialKind::Terrain)
         {
             // Missing textures stay null: the pipeline binds white albedo/overlay,

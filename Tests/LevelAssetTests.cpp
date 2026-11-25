@@ -612,9 +612,13 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, boo
             return false;
     if (gltfExtras &&
         (!SameSlot(a.detailAlbedo, b.detailAlbedo, true) || !SameSlot(a.detailNormal, b.detailNormal, true) ||
+         !SameSlot(a.clearcoatTex, b.clearcoatTex, true) ||
+         !SameSlot(a.clearcoatRoughnessTex, b.clearcoatRoughnessTex, true) ||
          a.occlusionStrength != b.occlusionStrength || a.occlusionChannel != b.occlusionChannel ||
          a.detailAlbedoBlend != b.detailAlbedoBlend || a.detailAlbedoStrength != b.detailAlbedoStrength ||
-         a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint))
+         a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint ||
+         a.clearcoat != b.clearcoat || a.clearcoatRoughness != b.clearcoatRoughness ||
+         a.clearcoatMaskFromAlbedoAlpha != b.clearcoatMaskFromAlbedoAlpha))
         return false;
     if (gltfExtras)
     {
@@ -1098,6 +1102,76 @@ static void TestTerrainMaterial()
             " \"overlay\": { \"texture\": \"o.dds\", \"uvScale\": [2, 0] } }");
     loadStandard("invalid uvScale");
     fs::remove_all(root);
+}
+
+// KHR_materials_clearcoat factors/textures, extras.fox.clearcoatMask ("albedoAlpha"
+// honoured only for Opaque), ForEachTexturePath enumeration, and MeshCache round trip.
+static void TestClearcoat()
+{
+    const auto checkSlot = [](const SE::TextureSlot& slot, const char* path, uint8_t uvSet,
+                              float sx, float sy, float ox, float oy, const char* label) {
+        Require(slot.path == path && slot.uvSet == uvSet &&
+                slot.scale[0] == sx && slot.scale[1] == sy &&
+                slot.offset[0] == ox && slot.offset[1] == oy,
+                (std::string("clearcoat.gltf ") + label + " slot mismatch").c_str());
+    };
+    const auto checkSource = [&](const SE::MeshSourceData& data) {
+        Require(data.subMeshes.size() == 5, "clearcoat.gltf submesh count mismatch");
+
+        const SE::SubMeshInfo& full = data.subMeshes[0].material;
+        Require(full.clearcoat == 0.85f && full.clearcoatRoughness == 0.15f,
+                "clearcoat.gltf full clearcoat factors mismatch");
+        Require(full.clearcoatMaskFromAlbedoAlpha,
+                "clearcoat.gltf opaque albedoAlpha mask was not set");
+        checkSlot(full.clearcoatTex, "coat.png", 1, 2.0f, 2.0f, 0.25f, 0.5f, "clearcoat");
+        checkSlot(full.clearcoatRoughnessTex, "coat_rough.dds", 2, 4.0f, 4.0f, 0.0f, 0.0f, "clearcoat roughness");
+        size_t paths = 0;
+        SE::ForEachTexturePath(full, [&paths](const std::string&) { ++paths; });
+        Require(paths == 2, "ForEachTexturePath did not enumerate clearcoat texture slots");
+
+        const SE::SubMeshInfo& cutout = data.subMeshes[1].material;
+        Require(cutout.alphaMode == SE::AlphaMode::Cutout &&
+                cutout.clearcoat == 1.0f && cutout.clearcoatRoughness == 0.05f &&
+                !cutout.clearcoatMaskFromAlbedoAlpha,
+                "clearcoat.gltf cutout material must ignore albedoAlpha clearcoat mask");
+
+        const SE::SubMeshInfo& blend = data.subMeshes[2].material;
+        Require(blend.alphaMode == SE::AlphaMode::Transparent &&
+                blend.clearcoat == 0.5f && blend.clearcoatRoughness == 0.2f &&
+                !blend.clearcoatMaskFromAlbedoAlpha,
+                "clearcoat.gltf blend material must ignore albedoAlpha clearcoat mask");
+
+        const SE::SubMeshInfo& unknown = data.subMeshes[3].material;
+        Require(unknown.clearcoat == 1.0f && unknown.clearcoatRoughness == 0.0f &&
+                !unknown.clearcoatMaskFromAlbedoAlpha,
+                "clearcoat.gltf unknown clearcoatMask did not default to false");
+
+        const SE::SubMeshInfo& defaults = data.subMeshes[4].material;
+        Require(defaults.clearcoat == 0.0f && defaults.clearcoatRoughness == 0.0f &&
+                !defaults.clearcoatMaskFromAlbedoAlpha,
+                "clearcoat.gltf default clearcoat scalars mismatch");
+        checkSlot(defaults.clearcoatTex, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default clearcoat");
+        checkSlot(defaults.clearcoatRoughnessTex, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default clearcoat roughness");
+    };
+
+    SE::MeshSourceData imported;
+    Require(SE::Mesh::Import("Assets/TestFixtures/clearcoat.gltf", imported), "failed to import clearcoat.gltf");
+    checkSource(imported);
+
+    const std::filesystem::path cacheDir = std::filesystem::temp_directory_path() / "FoxEngineClearcoatCache";
+    std::filesystem::remove_all(cacheDir);
+    const SE::MeshCache cache(cacheDir.string());
+    SE::MeshSourceData firstLoad, cachedLoad;
+    bool hit = true;
+    Require(cache.Load("Assets/TestFixtures/clearcoat.gltf", firstLoad, {}, nullptr, &hit) && !hit,
+            "clearcoat.gltf first cache load did not import");
+    Require(cache.Load("Assets/TestFixtures/clearcoat.gltf", cachedLoad, {}, nullptr, &hit) && hit,
+            "clearcoat.gltf second cache load missed");
+    checkSource(cachedLoad);
+    for (size_t i = 0; i < imported.subMeshes.size(); ++i)
+        Require(SameMaterial(cachedLoad.subMeshes[i].material, imported.subMeshes[i].material),
+                "clearcoat.gltf MeshCache round trip altered clearcoat material");
+    std::filesystem::remove_all(cacheDir);
 }
 
 // glTF image URIs are relative to the mesh file; the converted DDS sits beside
@@ -1709,6 +1783,7 @@ static void RunTests()
     TestTextureSlots();
     TestVertexTint();
     TestTerrainMaterial();
+    TestClearcoat();
     std::cout << "LevelAssetTests: all tests passed\n";
 }
 
