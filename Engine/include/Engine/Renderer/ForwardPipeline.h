@@ -44,11 +44,13 @@ public:
         AssetHandle<Texture2D> metallic;   // t7; nullptr → default black (0 = dielectric)
         AssetHandle<Texture2D> emissive;   // t9; nullptr → default black (no emission)
         AssetHandle<Texture2D> occlusion;  // t13; nullptr → default white (no occlusion)
-        AssetHandle<Texture2D> detailAlbedo; // t14 (sRGB, neutral at mid-grey); nullptr → not sampled
+        AssetHandle<Texture2D> detailAlbedo; // t14 (sRGB); nullptr → not sampled
         AssetHandle<Texture2D> detailNormal; // t15; nullptr → not sampled
         SlotTransform slots[SlotCount];      // t7 (metallic) follows SlotRoughness
         float     occlusionStrength = 1.0f;
         uint8_t   occlusionChannel = 0;      // 0 = R, 1 = G
+        DetailBlend detailAlbedoBlend = DetailBlend::Overlay;
+        float     detailAlbedoStrength = 1.0f;
         float     detailNormalStrength = 1.0f;
         AlphaMode alphaMode  = AlphaMode::Opaque;
         float     alphaCutoff = 0.5f;
@@ -185,7 +187,7 @@ private:
         DirectX::XMFLOAT4 slotUVA;   // UV set of slots 0-3
         DirectX::XMFLOAT4 slotUVB;   // UV set of slots 4-6, w = detail normal strength
         DirectX::XMFLOAT4 slotFlags; // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel
-        DirectX::XMFLOAT4 tintParams = { 0.0f, 0.0f, 0.0f, 0.0f }; // x = VertexTint mode (0 none, 1 multiply, 2 albedoAlphaMask)
+        DirectX::XMFLOAT4 tintParams = { 0.0f, 0.0f, 1.0f, 0.0f }; // x = VertexTint (0..2), y = DetailBlend (0..2), z = detailAlbedoStrength
     };
     static_assert(sizeof(MaterialParamsCBData) == 240, "MaterialParamsCBData must match Basic.hlsl MaterialCB");
     struct PlanarReflectionCBData

@@ -416,7 +416,9 @@ void ForwardPipeline::BindSubMaterial(ID3D11DeviceContext* ctx, const SubMat& ma
     mc.slotUVB   = { uvSets[4], uvSets[5], uvSets[6], mat.detailNormalStrength };
     mc.slotFlags = { mat.occlusion ? 1.0f : 0.0f, mat.detailAlbedo ? 1.0f : 0.0f,
                      mat.detailNormal ? 1.0f : 0.0f, static_cast<float>(mat.occlusionChannel) };
-    mc.tintParams = { static_cast<float>(mat.vertexTint), 0.0f, 0.0f, 0.0f };
+    mc.tintParams = { static_cast<float>(mat.vertexTint),
+                      static_cast<float>(mat.detailAlbedoBlend),
+                      mat.detailAlbedoStrength, 0.0f };
     m_materialCB.Update(ctx, mc);
     m_materialCB.BindPS(ctx, 3);
 

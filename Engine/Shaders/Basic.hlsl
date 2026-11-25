@@ -45,7 +45,7 @@ cbuffer MaterialCB : register(b3)
     float4 SlotUVA;     // UV set (0..2) of slots 0-3
     float4 SlotUVB;     // UV set of slots 4-6, w = DetailNormalStrength
     float4 SlotFlags;   // x hasOcclusion, y hasDetailAlbedo, z hasDetailNormal, w occlusionChannel (0 R, 1 G)
-    float4 TintParams;  // x = vertex tint mode (0 none, 1 multiply, 2 albedoAlphaMask)
+    float4 TintParams;  // x = vertex tint mode (0 none, 1 multiply, 2 albedoAlphaMask), y = detail albedo mode (0 overlay, 1 multiply, 2 alphaBlend), z = detail albedo strength
 };
 
 cbuffer ForwardShadowCB : register(b4)
@@ -328,9 +328,20 @@ PSOut PS_Main(PSIn input)
     {
         albedo.rgb *= input.Color.rgb;
     }
-    // Detail albedo (sRGB) is neutral at mid-grey: sRGB 0.5 = linear 1 / 4.59479.
+    // Detail albedo (sRGB rgb, linear alpha):
+    // 0 = overlay (sRGB 0.5 neutral -> linear 1 / 4.59479), 1 = multiply, 2 = alphaBlend.
+    // Albedo alpha is never changed by detail.
     if (SlotFlags.y > 0.5f)
-        albedo.rgb *= g_detailAlbedo.Sample(g_sampler, SlotUV(SLOT_DETAIL_ALBEDO, input)).rgb * 4.59479f;
+    {
+        float4 detail = g_detailAlbedo.Sample(g_sampler, SlotUV(SLOT_DETAIL_ALBEDO, input));
+        float  s      = TintParams.z;
+        if (TintParams.y > 1.5f)
+            albedo.rgb = lerp(albedo.rgb, detail.rgb, saturate(detail.a * s));
+        else if (TintParams.y > 0.5f)
+            albedo.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), detail.rgb, s);
+        else
+            albedo.rgb *= lerp(float3(1.0f, 1.0f, 1.0f), detail.rgb * 4.59479f, s);
+    }
     albedo.rgb     *= AlbedoTint;
 
     // Alpha test (cutout): discard fragments below threshold

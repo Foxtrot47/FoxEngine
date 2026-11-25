@@ -23,7 +23,7 @@ namespace {
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 
-constexpr uint32_t k_meshCacheVersion = 6;
+constexpr uint32_t k_meshCacheVersion = 7;
 constexpr uint32_t k_blockSize = 256 * 1024;
 constexpr int k_compressionLevel = 3;
 constexpr uint64_t k_ioChunk = 16ull * 1024 * 1024;
@@ -75,15 +75,16 @@ struct SubMeshRecord
     uint32_t firstVertex, vertexCount, firstIndex, indexCount;
     SlotRecord slots[k_slotCount];
     float alphaCutoff, roughnessFactor, glossinessFactor;
-    float occlusionStrength, detailNormalStrength;
+    float occlusionStrength, detailAlbedoStrength, detailNormalStrength;
     uint8_t alphaMode, workflow, occlusionChannel, vertexTint;
+    uint8_t detailAlbedoBlend, pad[3];
 };
 
 static_assert(sizeof(StringRef) == 8, ".fxmesh StringRef size");
 static_assert(sizeof(FileHeader) == 96, ".fxmesh FileHeader size");
 static_assert(sizeof(DependencyRecord) == 24, ".fxmesh DependencyRecord size");
 static_assert(sizeof(SlotRecord) == 28, ".fxmesh SlotRecord size");
-static_assert(sizeof(SubMeshRecord) == 236, ".fxmesh SubMeshRecord size");
+static_assert(sizeof(SubMeshRecord) == 244, ".fxmesh SubMeshRecord size");
 
 // SubMeshInfo slots in SubMeshRecord::slots order (const or mutable pointers).
 template <typename Info>
@@ -347,11 +348,13 @@ bool WriteEntry(const std::string& entry, const std::string& key, const MeshSour
         record.roughnessFactor = sub.material.roughnessFactor;
         record.glossinessFactor = sub.material.glossinessFactor;
         record.occlusionStrength = sub.material.occlusionStrength;
+        record.detailAlbedoStrength = sub.material.detailAlbedoStrength;
         record.detailNormalStrength = sub.material.detailNormalStrength;
         record.alphaMode = static_cast<uint8_t>(sub.material.alphaMode);
         record.workflow = static_cast<uint8_t>(sub.material.workflow);
         record.occlusionChannel = sub.material.occlusionChannel;
         record.vertexTint = static_cast<uint8_t>(sub.material.vertexTint);
+        record.detailAlbedoBlend = static_cast<uint8_t>(sub.material.detailAlbedoBlend);
         subMeshes.push_back(record);
     }
     header.stringBytes = static_cast<uint32_t>(strings.size());
@@ -521,7 +524,7 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         if (uint64_t(sub.firstVertex) + sub.vertexCount > header.vertexCount ||
             uint64_t(sub.firstIndex) + sub.indexCount > header.indexCount ||
             sub.alphaMode > 2 || sub.workflow > 2 || sub.occlusionChannel > 1 ||
-            sub.vertexTint > 2)
+            sub.vertexTint > 2 || sub.detailAlbedoBlend > 2)
             return miss("corrupt submesh table");
     }
     if (text(header.sourceKey) != key) return miss("key collision");
@@ -584,6 +587,8 @@ ReadResult ReadEntry(const std::string& entry, const std::string& key, bool veri
         }
         sub.material.occlusionStrength = record.occlusionStrength;
         sub.material.occlusionChannel = record.occlusionChannel;
+        sub.material.detailAlbedoBlend = static_cast<DetailBlend>(record.detailAlbedoBlend);
+        sub.material.detailAlbedoStrength = record.detailAlbedoStrength;
         sub.material.detailNormalStrength = record.detailNormalStrength;
         sub.material.alphaMode = static_cast<AlphaMode>(record.alphaMode);
         sub.material.alphaCutoff = record.alphaCutoff;

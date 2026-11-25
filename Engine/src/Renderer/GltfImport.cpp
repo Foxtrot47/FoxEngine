@@ -173,7 +173,7 @@ TextureSlot ReadExtrasSlot(const cgltf_data* data, const nlohmann::json& ref, co
     return slot;
 }
 
-// materials[i].extras.fox: occlusionChannel, detailAlbedo, detailNormal (+ strength), vertexTint.
+// materials[i].extras.fox: occlusionChannel, detailAlbedo (+ mode/strength), detailNormal (+ strength), vertexTint.
 void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const char* path,
                    SubMeshInfo& out)
 {
@@ -200,8 +200,36 @@ void ReadFoxExtras(const cgltf_data* data, const cgltf_material* material, const
     if (channel != fox->end() && channel->is_number_integer())
         out.occlusionChannel = channel->get<int>() == 1 ? uint8_t(1) : uint8_t(0);
     const auto detailAlbedo = fox->find("detailAlbedo");
-    if (detailAlbedo != fox->end())
+    if (detailAlbedo != fox->end() && detailAlbedo->is_object())
+    {
         out.detailAlbedo = ReadExtrasSlot(data, *detailAlbedo, path);
+        const auto mode = detailAlbedo->find("mode");
+        if (mode != detailAlbedo->end())
+        {
+            if (mode->is_string())
+            {
+                const std::string value = mode->get<std::string>();
+                if (value == "overlay")
+                    out.detailAlbedoBlend = DetailBlend::Overlay;
+                else if (value == "multiply")
+                    out.detailAlbedoBlend = DetailBlend::Multiply;
+                else if (value == "alphaBlend")
+                    out.detailAlbedoBlend = DetailBlend::AlphaBlend;
+                else
+                    SE_LOG_WARN("glTF material '%s': unknown detailAlbedo mode '%s'",
+                                material->name ? material->name : "", value.c_str());
+            }
+            else
+            {
+                const std::string raw = mode->dump();
+                SE_LOG_WARN("glTF material '%s': unknown detailAlbedo mode '%s'",
+                            material->name ? material->name : "", raw.c_str());
+            }
+        }
+        const auto strength = detailAlbedo->find("strength");
+        if (strength != detailAlbedo->end() && strength->is_number())
+            out.detailAlbedoStrength = strength->get<float>();
+    }
     const auto detailNormal = fox->find("detailNormal");
     if (detailNormal != fox->end() && detailNormal->is_object())
     {

@@ -34,6 +34,8 @@ enum class AlphaMode : uint8_t { Opaque, Cutout, Transparent };
 enum class MaterialWorkflow : uint8_t { SeparateMR, PackedMR, SpecularGloss };
 // How vertex colour (COLOR0) tints albedo in Basic.hlsl.
 enum class VertexTint : uint8_t { None, Multiply, AlbedoAlphaMask };
+// How detail albedo (t14) blends with base albedo in Basic.hlsl.
+enum class DetailBlend : uint8_t { Overlay, Multiply, AlphaBlend };
 
 // One material texture: path relative to GetDirectory() (empty = no texture), the UV
 // set it samples (0..2 = TEXCOORD_0..2) and its tiling, applied as uv * scale + offset.
@@ -50,6 +52,8 @@ struct SubMeshInfo
     TextureSlot albedo, normal, roughness, emissive, occlusion, detailAlbedo, detailNormal;
     float       occlusionStrength = 1.0f;    // ao = lerp(1, occlusion, strength)
     uint8_t     occlusionChannel = 0;        // 0 = R, 1 = G
+    DetailBlend detailAlbedoBlend = DetailBlend::Overlay;
+    float       detailAlbedoStrength = 1.0f;
     float       detailNormalStrength = 1.0f;
     AlphaMode   alphaMode = AlphaMode::Opaque;
     float       alphaCutoff = 0.5f;

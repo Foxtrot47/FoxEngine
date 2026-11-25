@@ -613,6 +613,7 @@ static bool SameMaterial(const SE::SubMeshInfo& a, const SE::SubMeshInfo& b, boo
     if (gltfExtras &&
         (!SameSlot(a.detailAlbedo, b.detailAlbedo, true) || !SameSlot(a.detailNormal, b.detailNormal, true) ||
          a.occlusionStrength != b.occlusionStrength || a.occlusionChannel != b.occlusionChannel ||
+         a.detailAlbedoBlend != b.detailAlbedoBlend || a.detailAlbedoStrength != b.detailAlbedoStrength ||
          a.detailNormalStrength != b.detailNormalStrength || a.vertexTint != b.vertexTint))
         return false;
     return a.alphaMode == b.alphaMode && a.alphaCutoff == b.alphaCutoff &&
@@ -889,7 +890,7 @@ static void TestTextureSlots()
             throw std::runtime_error(std::string("slots.gltf: ") + label + " slot mismatch");
     };
     const auto checkSource = [&](const SE::MeshSourceData& data) {
-        Require(data.subMeshes.size() == 2, "slots.gltf submesh count mismatch");
+        Require(data.subMeshes.size() == 5, "slots.gltf submesh count mismatch");
         const SE::SubMeshInfo& slots = data.subMeshes[0].material;
         checkSlot(slots.albedo, "albedo.png", 0, 4.0f, 4.0f, 0.5f, 0.0f, "albedo");
         checkSlot(slots.normal, "normal.png", 0, 2.0f, 2.0f, 0.0f, 0.0f, "normal");
@@ -900,6 +901,9 @@ static void TestTextureSlots()
         checkSlot(slots.detailNormal, "detail_normal.dds", 2, 16.0f, 16.0f, 0.0f, 0.0f, "detail normal");
         Require(slots.occlusionStrength == 0.5f, "slots.gltf occlusion strength mismatch");
         Require(slots.occlusionChannel == 1, "slots.gltf occlusion channel mismatch");
+        Require(slots.detailAlbedoBlend == SE::DetailBlend::Overlay &&
+                slots.detailAlbedoStrength == 1.0f,
+                "slots.gltf absent detailAlbedo mode/strength did not default to Overlay/1.0");
         Require(slots.detailNormalStrength == 0.75f, "slots.gltf detail normal strength mismatch");
         Require(slots.workflow == SE::MaterialWorkflow::PackedMR, "slots.gltf workflow mismatch");
         size_t paths = 0;
@@ -911,7 +915,27 @@ static void TestTextureSlots()
         checkSlot(defaults.detailAlbedo, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default detail albedo");
         checkSlot(defaults.detailNormal, "", 0, 1.0f, 1.0f, 0.0f, 0.0f, "default detail normal");
         Require(defaults.occlusionStrength == 1.0f && defaults.occlusionChannel == 0 &&
+                defaults.detailAlbedoBlend == SE::DetailBlend::Overlay &&
+                defaults.detailAlbedoStrength == 1.0f &&
                 defaults.detailNormalStrength == 1.0f, "slots.gltf default scalars mismatch");
+
+        const SE::SubMeshInfo& mul = data.subMeshes[2].material;
+        checkSlot(mul.detailAlbedo, "detail.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "detail multiply");
+        Require(mul.detailAlbedoBlend == SE::DetailBlend::Multiply &&
+                mul.detailAlbedoStrength == 0.5f,
+                "slots.gltf detailAlbedo multiply mode/strength mismatch");
+
+        const SE::SubMeshInfo& blend = data.subMeshes[3].material;
+        checkSlot(blend.detailAlbedo, "detail.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "detail alphaBlend");
+        Require(blend.detailAlbedoBlend == SE::DetailBlend::AlphaBlend &&
+                blend.detailAlbedoStrength == 1.0f,
+                "slots.gltf detailAlbedo alphaBlend mode/strength mismatch");
+
+        const SE::SubMeshInfo& unknown = data.subMeshes[4].material;
+        checkSlot(unknown.detailAlbedo, "detail.png", 0, 1.0f, 1.0f, 0.0f, 0.0f, "detail unknown");
+        Require(unknown.detailAlbedoBlend == SE::DetailBlend::Overlay &&
+                unknown.detailAlbedoStrength == 1.0f,
+                "slots.gltf unknown detailAlbedo mode/non-number strength did not fall back to Overlay/1.0");
     };
 
     SE::MeshSourceData imported;

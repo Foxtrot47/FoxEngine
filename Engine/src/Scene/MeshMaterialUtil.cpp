@@ -105,6 +105,8 @@ std::vector<ForwardPipeline::SubMat> BuildSubMeshMaterials(AssetManager& assets,
         }
         material.occlusionStrength = info.occlusionStrength;
         material.occlusionChannel = info.occlusionChannel;
+        material.detailAlbedoBlend = info.detailAlbedoBlend;
+        material.detailAlbedoStrength = info.detailAlbedoStrength;
         material.detailNormalStrength = info.detailNormalStrength;
         material.workflow = material.roughness ? info.workflow
                                                : MaterialWorkflow::SeparateMR;
