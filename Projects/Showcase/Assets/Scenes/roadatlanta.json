@@ -1455,19 +1455,6 @@
     },
     {
       "id": "0000000000000064",
-      "name": "scenery_0_-5",
-      "components": {
-        "meshRenderer": {
-          "mesh": "Assets/Tracks/RoadAtlanta/scenery_0_-5.gltf",
-          "castShadows": true,
-          "receiveShadows": true,
-          "collision": false,
-          "visible": true
-        }
-      }
-    },
-    {
-      "id": "0000000000000065",
       "name": "scenery_0_0",
       "components": {
         "meshRenderer": {
@@ -1480,7 +1467,7 @@
       }
     },
     {
-      "id": "0000000000000066",
+      "id": "0000000000000065",
       "name": "scenery_0_1",
       "components": {
         "meshRenderer": {
@@ -1493,7 +1480,7 @@
       }
     },
     {
-      "id": "0000000000000067",
+      "id": "0000000000000066",
       "name": "scenery_0_2",
       "components": {
         "meshRenderer": {
@@ -1506,7 +1493,7 @@
       }
     },
     {
-      "id": "0000000000000068",
+      "id": "0000000000000067",
       "name": "scenery_1_-1",
       "components": {
         "meshRenderer": {
@@ -1519,7 +1506,7 @@
       }
     },
     {
-      "id": "0000000000000069",
+      "id": "0000000000000068",
       "name": "scenery_1_-2",
       "components": {
         "meshRenderer": {
@@ -1532,7 +1519,7 @@
       }
     },
     {
-      "id": "000000000000006A",
+      "id": "0000000000000069",
       "name": "scenery_1_-3",
       "components": {
         "meshRenderer": {
@@ -1545,7 +1532,7 @@
       }
     },
     {
-      "id": "000000000000006B",
+      "id": "000000000000006A",
       "name": "scenery_1_0",
       "components": {
         "meshRenderer": {
@@ -1558,7 +1545,7 @@
       }
     },
     {
-      "id": "000000000000006C",
+      "id": "000000000000006B",
       "name": "scenery_1_1",
       "components": {
         "meshRenderer": {
@@ -1571,7 +1558,7 @@
       }
     },
     {
-      "id": "000000000000006D",
+      "id": "000000000000006C",
       "name": "scenery_1_2",
       "components": {
         "meshRenderer": {
@@ -1584,7 +1571,7 @@
       }
     },
     {
-      "id": "000000000000006E",
+      "id": "000000000000006D",
       "name": "scenery_2_-1",
       "components": {
         "meshRenderer": {
@@ -1597,7 +1584,7 @@
       }
     },
     {
-      "id": "000000000000006F",
+      "id": "000000000000006E",
       "name": "scenery_2_-2",
       "components": {
         "meshRenderer": {
@@ -1610,7 +1597,7 @@
       }
     },
     {
-      "id": "0000000000000070",
+      "id": "000000000000006F",
       "name": "scenery_2_0",
       "components": {
         "meshRenderer": {
@@ -1623,7 +1610,7 @@
       }
     },
     {
-      "id": "0000000000000071",
+      "id": "0000000000000070",
       "name": "scenery_2_1",
       "components": {
         "meshRenderer": {
@@ -1636,7 +1623,7 @@
       }
     },
     {
-      "id": "0000000000000072",
+      "id": "0000000000000071",
       "name": "scenery_3_-1",
       "components": {
         "meshRenderer": {
@@ -1649,7 +1636,7 @@
       }
     },
     {
-      "id": "0000000000000073",
+      "id": "0000000000000072",
       "name": "scenery_3_-2",
       "components": {
         "meshRenderer": {
@@ -1662,7 +1649,7 @@
       }
     },
     {
-      "id": "0000000000000074",
+      "id": "0000000000000073",
       "name": "scenery_3_0",
       "components": {
         "meshRenderer": {
@@ -1675,7 +1662,7 @@
       }
     },
     {
-      "id": "0000000000000075",
+      "id": "0000000000000074",
       "name": "scenery_3_1",
       "components": {
         "meshRenderer": {
@@ -1688,7 +1675,7 @@
       }
     },
     {
-      "id": "0000000000000076",
+      "id": "0000000000000075",
       "name": "scenery_4_-1",
       "components": {
         "meshRenderer": {
@@ -1701,7 +1688,7 @@
       }
     },
     {
-      "id": "0000000000000077",
+      "id": "0000000000000076",
       "name": "scenery_4_-2",
       "components": {
         "meshRenderer": {
@@ -1714,7 +1701,7 @@
       }
     },
     {
-      "id": "0000000000000078",
+      "id": "0000000000000077",
       "name": "scenery_4_0",
       "components": {
         "meshRenderer": {
@@ -1727,7 +1714,7 @@
       }
     },
     {
-      "id": "0000000000000079",
+      "id": "0000000000000078",
       "name": "scenery_4_1",
       "components": {
         "meshRenderer": {
@@ -1740,7 +1727,7 @@
       }
     },
     {
-      "id": "000000000000007A",
+      "id": "0000000000000079",
       "name": "scenery_5_-1",
       "components": {
         "meshRenderer": {
@@ -1753,7 +1740,7 @@
       }
     },
     {
-      "id": "000000000000007B",
+      "id": "000000000000007A",
       "name": "scenery_5_0",
       "components": {
         "meshRenderer": {
@@ -1766,7 +1753,7 @@
       }
     },
     {
-      "id": "000000000000007C",
+      "id": "000000000000007B",
       "name": "scenery_wide",
       "components": {
         "meshRenderer": {
@@ -1779,7 +1766,7 @@
       }
     },
     {
-      "id": "000000000000007D",
+      "id": "000000000000007C",
       "name": "surface_-1_-1",
       "components": {
         "meshRenderer": {
@@ -1792,7 +1779,7 @@
       }
     },
     {
-      "id": "000000000000007E",
+      "id": "000000000000007D",
       "name": "surface_-1_-3",
       "components": {
         "meshRenderer": {
@@ -1805,7 +1792,7 @@
       }
     },
     {
-      "id": "000000000000007F",
+      "id": "000000000000007E",
       "name": "surface_-1_-4",
       "components": {
         "meshRenderer": {
@@ -1818,7 +1805,7 @@
       }
     },
     {
-      "id": "0000000000000080",
+      "id": "000000000000007F",
       "name": "surface_-1_-5",
       "components": {
         "meshRenderer": {
@@ -1831,7 +1818,7 @@
       }
     },
     {
-      "id": "0000000000000081",
+      "id": "0000000000000080",
       "name": "surface_-1_-6",
       "components": {
         "meshRenderer": {
@@ -1844,7 +1831,7 @@
       }
     },
     {
-      "id": "0000000000000082",
+      "id": "0000000000000081",
       "name": "surface_-1_-7",
       "components": {
         "meshRenderer": {
@@ -1857,7 +1844,7 @@
       }
     },
     {
-      "id": "0000000000000083",
+      "id": "0000000000000082",
       "name": "surface_-1_0",
       "components": {
         "meshRenderer": {
@@ -1870,7 +1857,7 @@
       }
     },
     {
-      "id": "0000000000000084",
+      "id": "0000000000000083",
       "name": "surface_-2_-1",
       "components": {
         "meshRenderer": {
@@ -1883,7 +1870,7 @@
       }
     },
     {
-      "id": "0000000000000085",
+      "id": "0000000000000084",
       "name": "surface_-2_-2",
       "components": {
         "meshRenderer": {
@@ -1896,7 +1883,7 @@
       }
     },
     {
-      "id": "0000000000000086",
+      "id": "0000000000000085",
       "name": "surface_-2_-3",
       "components": {
         "meshRenderer": {
@@ -1909,7 +1896,7 @@
       }
     },
     {
-      "id": "0000000000000087",
+      "id": "0000000000000086",
       "name": "surface_-2_-4",
       "components": {
         "meshRenderer": {
@@ -1922,7 +1909,7 @@
       }
     },
     {
-      "id": "0000000000000088",
+      "id": "0000000000000087",
       "name": "surface_-2_-5",
       "components": {
         "meshRenderer": {
@@ -1935,7 +1922,7 @@
       }
     },
     {
-      "id": "0000000000000089",
+      "id": "0000000000000088",
       "name": "surface_-2_-6",
       "components": {
         "meshRenderer": {
@@ -1948,7 +1935,7 @@
       }
     },
     {
-      "id": "000000000000008A",
+      "id": "0000000000000089",
       "name": "surface_-2_-7",
       "components": {
         "meshRenderer": {
@@ -1961,7 +1948,7 @@
       }
     },
     {
-      "id": "000000000000008B",
+      "id": "000000000000008A",
       "name": "surface_-2_0",
       "components": {
         "meshRenderer": {
@@ -1974,7 +1961,7 @@
       }
     },
     {
-      "id": "000000000000008C",
+      "id": "000000000000008B",
       "name": "surface_0_-1",
       "components": {
         "meshRenderer": {
@@ -1987,7 +1974,7 @@
       }
     },
     {
-      "id": "000000000000008D",
+      "id": "000000000000008C",
       "name": "surface_0_-2",
       "components": {
         "meshRenderer": {
@@ -2000,7 +1987,7 @@
       }
     },
     {
-      "id": "000000000000008E",
+      "id": "000000000000008D",
       "name": "surface_0_-3",
       "components": {
         "meshRenderer": {
@@ -2013,7 +2000,7 @@
       }
     },
     {
-      "id": "000000000000008F",
+      "id": "000000000000008E",
       "name": "surface_0_-4",
       "components": {
         "meshRenderer": {
@@ -2026,7 +2013,7 @@
       }
     },
     {
-      "id": "0000000000000090",
+      "id": "000000000000008F",
       "name": "surface_0_0",
       "components": {
         "meshRenderer": {
@@ -2039,7 +2026,7 @@
       }
     },
     {
-      "id": "0000000000000091",
+      "id": "0000000000000090",
       "name": "surface_1_-1",
       "components": {
         "meshRenderer": {
@@ -2052,7 +2039,7 @@
       }
     },
     {
-      "id": "0000000000000092",
+      "id": "0000000000000091",
       "name": "surface_1_-2",
       "components": {
         "meshRenderer": {

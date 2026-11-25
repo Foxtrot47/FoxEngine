@@ -38,9 +38,12 @@ Pipeline:
              except Moveable instances (ground ad and speed-limit signs): their
              vertices are rotated in place but centred on the origin, and the
              game puts them at the GMT header pivot, so the pivot is added.
-             Every other track mesh has a zero pivot. Billboards (trees,
-             bushes, crowds) are expanded from their UV_D corner offsets,
-             see expand_billboards.
+             Every other track mesh has a zero pivot. Crowd cards are expanded
+             along their stored tangent from their UV_D corner offsets; the
+             L2IBLVEGETATION trees and bushes stay at their base point and
+             become cylindrical billboards instead (the UV_D offsets travel in
+             the `_BILLBOARD` vertex stream, the material carries
+             extras.fox.billboard), see expand_billboards.
     material .json -> glTF metallic-roughness (lmu_assets.MaterialBuilder),
              plus what track shaders need: the albedo stage's UV scale or
              WorldPlanar mapping is baked into TEXCOORD_0, other WorldPlanar
@@ -485,41 +488,33 @@ UP = np.array([0.0, 1.0, 0.0])
 
 
 def expand_billboards(gmt, builder):
-    """Expand an LMU mesh's billboard quads in place; returns how many.
+    """Expand an LMU mesh's fixed billboard quads in place; returns the
+    (camera-facing, fixed) sprite counts.
 
     LMU stores all four corners of a billboard at its base point, with each
     corner's offset (side, up) in metres in UV_D, and its shader spreads them:
     along the stored tangent for crowd cards, which keep their authored facing,
-    and toward the camera for L2IBLVEGETATION trees and bushes, whose tangents
-    are all +X. The engine has no camera-facing quads, so those become two
-    cards crossed at right angles (cutout materials draw both sides)."""
-    a, b, c = (gmt.pos[gmt.tris[:, k]] for k in range(3))
+    and toward the camera around the vertical axis for L2IBLVEGETATION trees and
+    bushes, whose tangents are all +X. Crowd cards are expanded here; the
+    camera-facing ones keep their base position, their UV_D offsets travel in the
+    `_BILLBOARD` vertex stream, and their faces are marked in `billboard_faces`
+    so the zero-area filter keeps them."""
+    tri = gmt.tris
+    a, b, c = (gmt.pos[tri[:, k]] for k in range(3))
     flat = np.linalg.norm(np.cross(b - a, c - a), axis=1) <= 1e-12
-    corners = np.unique(gmt.tris[flat])
-    corners = corners[np.abs(gmt.uv_d[corners]).max(axis=1) > 1e-6]
-    if not len(corners):
-        return 0
-    base = gmt.pos.copy()
-    gmt.pos[corners] += gmt.tangent[corners] * gmt.uv_d[corners, :1] + UP * gmt.uv_d[corners, 1:]
-    quads = flat & np.isin(gmt.tris, corners).all(axis=1)
-    sprites = [i for i, (name, _) in enumerate(gmt.materials) if builder.camera_facing(name)]
-    crossed = quads & np.isin(gmt.face_mat, sprites)
-    if crossed.any():
-        src = np.unique(gmt.tris[crossed])
-        remap = np.full(len(gmt.pos), -1, dtype=np.int64)
-        remap[src] = len(gmt.pos) + np.arange(len(src))
-        turn = lambda v: np.stack([-v[:, 2], v[:, 1], v[:, 0]], axis=1)  # 90 degrees about +Y
-        tangent = turn(gmt.tangent[src])
-        added = {
-            "pos": base[src] + tangent * gmt.uv_d[src, :1] + UP * gmt.uv_d[src, 1:],
-            "nrm": turn(gmt.nrm[src]), "tangent": tangent, "bitangent": gmt.bitangent[src],
-            "uv": gmt.uv[src], "uv_b": gmt.uv_b[src], "uv_c": gmt.uv_c[src], "uv_d": gmt.uv_d[src],
-        }
-        for key, values in added.items():
-            setattr(gmt, key, np.concatenate([getattr(gmt, key), values]))
-        gmt.tris = np.concatenate([gmt.tris, remap[gmt.tris[crossed]]])
-        gmt.face_mat = np.concatenate([gmt.face_mat, gmt.face_mat[crossed]])
-    return int(quads.sum()) // 2
+    offsets = gmt.uv_d[tri]
+    quads = flat & (np.ptp(offsets, axis=1).max(axis=1) > 1e-6)
+    camera = np.zeros(len(tri), dtype=bool)
+    fixed = np.zeros(len(tri), dtype=bool)
+    if quads.any():
+        sprites = np.array([builder.camera_facing(name) for name, _ in gmt.materials], dtype=bool)
+        sprite_faces = np.isin(gmt.face_mat, np.flatnonzero(sprites))
+        camera = quads & sprite_faces
+        fixed = quads & ~sprite_faces
+        expand = np.unique(tri[fixed])
+        gmt.pos[expand] += gmt.tangent[expand] * gmt.uv_d[expand, :1] + UP * gmt.uv_d[expand, 1:]
+    gmt.billboard_faces = camera
+    return int(camera.sum()) // 2, int(fixed.sum()) // 2
 
 
 class CellGrid:
@@ -539,6 +534,9 @@ class CellGrid:
     def add(self, kind, gmt, builder, terrain):
         a, b, c = (gmt.pos[gmt.tris[:, k]] for k in range(3))
         has_area = np.linalg.norm(np.cross(b - a, c - a), axis=1) > 1e-12
+        billboard = getattr(gmt, "billboard_faces", None)
+        if billboard is None:
+            billboard = np.zeros(len(gmt.tris), dtype=bool)
         centroid = (a + b + c) / 3.0
         cells = np.floor(centroid[:, [0, 2]] / self.cell_size).astype(np.int64)
         whole = None
@@ -557,9 +555,16 @@ class CellGrid:
                 mat_name, gmt_textures = COLLISION_MATERIAL, []
             elif builder.skipped(mat_name):
                 continue
-            select = (gmt.face_mat == mat_index) & has_area
+            select = (gmt.face_mat == mat_index) & (has_area | billboard)
             if not select.any():
                 continue
+            offsets = None
+            if billboard[select].any():
+                # One material is one kind; a camera-facing sprite's faces stay at
+                # the base point and carry their UV_D corner offsets instead.
+                if not billboard[select].all():
+                    raise ValueError(f"{mat_name}: billboard and non-billboard faces share a material")
+                offsets = gmt.uv_d
             color = None
             if terrain.is_terrain(mat_name):
                 mat = terrain.get(mat_name, gmt_textures)
@@ -578,6 +583,8 @@ class CellGrid:
                     # the stream is white (neutral) and the mode still emitted.
                     mat.vertex_tint = "multiply"
                     color = np.ones((len(gmt.pos), 3), np.float32)
+            if offsets is not None:
+                builder.mark_billboard(mat)
             if whole:
                 parts = [(whole, select)]
             else:
@@ -586,7 +593,7 @@ class CellGrid:
             for stem, faces in parts:
                 prims = self.files.setdefault(stem, (kind, {}))[1]
                 prims.setdefault(mat.name, Primitive(mat)).add(
-                    pos, nrm, uv, gmt.uv_b, gmt.uv_c, tan, btan, gmt.tris[faces], color)
+                    pos, nrm, uv, gmt.uv_b, gmt.uv_c, tan, btan, gmt.tris[faces], color, offsets)
             added += int(select.sum())
         return added
 
@@ -741,7 +748,8 @@ def main():
     grid = CellGrid(args.cell_size)
     terrain = TerrainMaterials(raw, textures, builder)
 
-    gmts, surfaces, counts, billboards = {}, [], defaultdict(int), 0
+    gmts, surfaces, counts = {}, [], defaultdict(int)
+    camera_facing, fixed = 0, 0
     instances, shadow_distance = read_scn(scn)
     probes = read_probes(instances, raw)
     for instance in instances:
@@ -759,7 +767,9 @@ def main():
                 gmt = Gmt(path, with_materials=kind != "collision")
                 gmt.pos = gmt.pos + gmt.pivot
                 if kind != "collision":
-                    billboards += expand_billboards(gmt, builder)
+                    facing, cards = expand_billboards(gmt, builder)
+                    camera_facing += facing
+                    fixed += cards
                 gmts[key] = gmt
             counts[kind] += grid.add(kind, gmts[key], builder, terrain)
             if kind == "surface":
@@ -786,7 +796,7 @@ def main():
     print(f"Output: {args.out}  scene: {args.scene}")
     print("Triangles: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     print(f"  {len(mesh_entries)} meshes, {len(builder.cache)} materials, {len(textures.written)} textures")
-    print(f"  {len(probes)} reflection probes, {billboards} billboards")
+    print(f"  {len(probes)} reflection probes, {camera_facing} camera-facing, {fixed} fixed")
     print(f"  pole {rounded(pole, 3)} yaw {yaw:.2f} (surface {'found' if ground is not None else 'missing'})")
     print("Materials:")
     for line in builder.report + terrain.report:

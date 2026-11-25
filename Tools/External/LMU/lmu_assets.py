@@ -447,6 +447,9 @@ class Material:
         # glTF extras fox.material: path of the material's .foxmat sidecar,
         # relative to the glTF (layered terrain, written by the track importer).
         self.foxmat = None
+        # glTF extras fox.billboard: "cylindrical" when the primitives carry a
+        # per-vertex _BILLBOARD offset stream instead of expanded quads.
+        self.billboard = None
         # KHR_materials_clearcoat: coat strength and roughness (0 = no coat) and
         # whether the albedo alpha is the coat mask (fox.clearcoatMask) rather
         # than opacity.
@@ -644,6 +647,22 @@ class MaterialBuilder:
         if name not in self.cache:
             self.cache[name] = self._build(name, gmt_textures)
         return self.cache[name]
+
+    def mark_billboard(self, mat):
+        """Make `mat` a cylindrical billboard material (extras.fox.billboard).
+
+        The engine reads a billboard's corner offsets from the vertex stream
+        that TEXCOORD_2 would otherwise supply, so a texture slot on that set
+        cannot be sampled: log and drop it."""
+        if mat.billboard == "cylindrical":
+            return
+        mat.billboard = "cylindrical"
+        for name in SLOTS:
+            slot = getattr(mat, name)
+            if slot.path and slot.uv_set == 2:
+                self.report.append(f"{mat.name}: dropped {name} texture '{slot.path}' "
+                                   f"(TEXCOORD_2 is the billboard offset)")
+                setattr(mat, name, TextureSlot())
 
     def _solid_color(self, mat, rgb_linear):
         rgba8 = list((linear_to_srgb(rgb_linear) * 255 + 0.5).astype(int)) + [255]
@@ -856,15 +875,21 @@ class Primitive:
         self.material = material
         self.pos, self.nrm, self.uv, self.uv_b, self.uv_c = [], [], [], [], []
         self.tan, self.btan, self.idx, self.color = [], [], [], []
+        self.billboard = []
         self.count = 0
 
-    def add(self, pos, nrm, uv, uv_b, uv_c, tangent, bitangent, tris, color=None):
+    def add(self, pos, nrm, uv, uv_b, uv_c, tangent, bitangent, tris, color=None,
+            billboard=None):
         """Append a chunk: positions/normals/tangents, UV_A as `uv`, LMU UV_B and
-        UV_C (their own glTF streams) and the per-vertex linear RGB `color` of the
-        material's vertex tint (None = no COLOR_0 stream)."""
+        UV_C (their own glTF streams), the per-vertex linear RGB `color` of the
+        material's vertex tint (None = no COLOR_0 stream) and, for a camera-facing
+        billboard material, the per-vertex corner `billboard` offsets in metres
+        (None = no _BILLBOARD stream). A primitive is one kind or the other."""
         used, remap = np.unique(tris, return_inverse=True)
         if self.color and (self.color[-1] is None) != (color is None):
             raise ValueError(f"{self.material.name}: mixed vertex-tint chunks in one primitive")
+        if self.billboard and (self.billboard[-1] is None) != (billboard is None):
+            raise ValueError(f"{self.material.name}: mixed billboard chunks in one primitive")
         self.pos.append(pos[used])
         self.nrm.append(nrm[used])
         self.uv.append(uv[used])
@@ -873,6 +898,7 @@ class Primitive:
         self.tan.append(tangent[used])
         self.btan.append(bitangent[used])
         self.color.append(None if color is None else np.asarray(color, np.float32)[used])
+        self.billboard.append(None if billboard is None else np.asarray(billboard, np.float32)[used])
         self.idx.append(remap.reshape(-1, 3) + self.count)
         self.count += len(used)
 
@@ -969,6 +995,8 @@ def write_gltf(path, name, primitives, generator):
                 # Slots that sample world X/Z: the engine ignores their
                 # texCoord/KHR_texture_transform and uses these scales.
                 fox["worldUV"] = world_uv
+            if mat.billboard:
+                fox["billboard"] = mat.billboard
             if mat.occlusion or mat.detail_albedo or mat.detail_normal or mat.vertex_tint \
                     or "clearcoatMask" in fox:
                 # LMU AOS maps pack ambient occlusion in R (occlusionChannel 0).
@@ -1022,6 +1050,8 @@ def write_gltf(path, name, primitives, generator):
                      -1.0, 1.0)
         tangent = np.concatenate([tan, w[:, None]], axis=1).astype("<f4")
         idx = np.concatenate(prim.idx).astype("<u4").reshape(-1)
+        offsets = (np.concatenate([o for o in prim.billboard if o is not None]).astype("<f4")
+                   if any(o is not None for o in prim.billboard) else None)
         attributes = {
             "POSITION": add_accessor(pos, "VEC3", 5126, 34962, True),
             "NORMAL": add_accessor(nrm, "VEC3", 5126, 34962),
@@ -1029,6 +1059,7 @@ def write_gltf(path, name, primitives, generator):
             "TEXCOORD_1": add_accessor(uv_b, "VEC2", 5126, 34962),
             "TEXCOORD_2": add_accessor(uv_c, "VEC2", 5126, 34962),
             "TANGENT": add_accessor(tangent, "VEC4", 5126, 34962),
+            "_BILLBOARD": add_accessor(offsets, "VEC2", 5126, 34962) if offsets is not None else None,
             "COLOR_0": add_accessor(
                 np.concatenate([np.c_[c, np.ones(len(c))] for c in prim.color
                                 if c is not None]).astype("<f4"), "VEC4", 5126, 34962)
